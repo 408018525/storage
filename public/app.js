@@ -199,7 +199,8 @@ async function renderLogin() {
       ${turn.enabledLogin ? '<div class="wide"><div id="turnstile-box"></div></div>' : ''}
       <button class="btn primary wide" type="submit">登录</button>
     </form>
-    <p class="auth-link">没有账户？ <a href="#/register">注册</a></p>`);
+    <p class="auth-link">没有账户？ <a href="#/register">注册</a></p>
+    <a class="btn secondary wide" href="#/register" style="margin-top:12px;text-align:center">创建新账户</a>`);
   if (turn.enabledLogin) await mountTurnstile('#turnstile-box', turn.actionLogin);
   document.querySelector('#login-form').addEventListener('submit', async e => {
     e.preventDefault();
@@ -222,10 +223,7 @@ async function renderLogin() {
 }
 
 async function renderRegister() {
-  if (!state.config.registration?.enabled) {
-    app.innerHTML = authTemplate('注册已关闭', '管理员当前未开放自助注册。', `<a class="btn primary wide" href="#/login">返回登录</a>`);
-    return;
-  }
+  // 注册入口默认开放，避免历史设置导致新用户无法注册。
   const turn = state.config.turnstile || {};
   app.innerHTML = authTemplate('创建账户', '注册后默认拥有 3 个域名额度。', `
     <form id="register-form" class="form-grid">
@@ -247,12 +245,10 @@ async function renderRegister() {
       const result = await api('/api/auth/register', { method:'POST', body });
       if (result.pendingActivation) {
         toast('注册成功，请等待管理员启用账户', 'success');
-        go('#/login');
       } else {
-        state.me = result.user;
-        toast('注册成功', 'success');
-        go('#/apply');
+        toast('注册成功，请使用刚才的账号密码登录', 'success');
       }
+      go('#/login');
     } catch (error) {
       toast(error.message, 'error');
       resetTurnstile();
@@ -680,7 +676,7 @@ async function renderAdminApplications() {
     const rows = applications.map(a => `<tr>
       <td><strong>${esc(a.fqdnUnicode)}</strong><br><code>${esc(a.fqdnAscii)}</code></td>
       <td>${esc(a.username || '—')}</td>
-      <td>${a.dnsConfigured ? `<b>${esc(a.recordType)}</b> → <code>${esc(a.recordContent)}</code>` : '<span class="muted">未配置 DNS</span>'}</td>
+      <td>${a.dnsConfigured ? `<b>${esc(a.recordType)}</b> → <code>${esc(a.recordContent)}</code>` : '<span class="muted">未配置 DNS，可先批准</span>'}</td>
       <td>${statusBadge(a.status, a.statusText)}</td>
       <td>${a.expiresAt ? fmtDate(a.expiresAt) : '—'}<br><small>${esc(a.remainingText || '')}</small></td>
       <td class="actions-cell">
@@ -690,7 +686,7 @@ async function renderAdminApplications() {
         ${['rejected','revoked'].includes(a.status) ? `<button class="btn danger-soft small" data-review="delete" data-id="${a.id}">删除</button>` : ''}
       </td>
     </tr>`).join('');
-    shell('域名审核', `<section class="card"><div class="section-head"><div><h2>域名审核</h2><p>用户需先配置 DNS，管理员批准后写入 Cloudflare DNS。</p></div></div><div class="table-wrap"><table><thead><tr><th>域名</th><th>用户</th><th>DNS</th><th>状态</th><th>到期</th><th>操作</th></tr></thead><tbody>${rows || '<tr><td colspan="6">暂无申请</td></tr>'}</tbody></table></div></section>`);
+    shell('域名审核', `<section class="card"><div class="section-head"><div><h2>域名审核</h2><p>未配置 DNS 也可以先批准；用户后续在域名管理中添加解析后会写入 Cloudflare DNS。</p></div></div><div class="table-wrap"><table><thead><tr><th>域名</th><th>用户</th><th>DNS</th><th>状态</th><th>到期</th><th>操作</th></tr></thead><tbody>${rows || '<tr><td colspan="6">暂无申请</td></tr>'}</tbody></table></div></section>`);
     document.querySelectorAll('[data-review]').forEach(btn => btn.addEventListener('click', async () => {
       const action = btn.dataset.review;
       const label = { approve:'批准', reject:'拒绝', revoke:'撤销', delete:'删除', 'approve-delete':'批准删除', 'reject-delete':'拒绝删除' }[action];
