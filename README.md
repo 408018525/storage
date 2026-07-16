@@ -37,3 +37,9 @@ Assets：`ASSETS`
 `TURNSTILE_ACTION_APPLY`
 `TURNSTILE_ACTION_LOGIN`
 `TURNSTILE_ACTION_REGISTER`
+
+v7 更新
+正常域名增加“申请删除域名”按钮。
+用户提交后显示“待删除审核”，管理员在“域名审核”中批准或拒绝。
+管理员批准删除后，系统自动删除 Cloudflare DNS 记录，并从用户域名列表隐藏。
+已拒绝/已撤销域名仍支持用户直接删除无效记录。
