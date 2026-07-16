@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "cn-subdomain-portal",
+  "name": "storage",
   "main": "src/index.ts",
   "compatibility_date": "2026-07-15",
   "workers_dev": true,
@@ -21,7 +21,7 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "subdomain-portal-db"
+      "database_name": "s"
     }
   ],
   "kv_namespaces": [
