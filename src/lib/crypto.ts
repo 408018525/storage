@@ -40,7 +40,7 @@ export async function hashPassword(password: string, saltValue?: string): Promis
   const salt = saltValue ? fromBase64Url(saltValue) : crypto.getRandomValues(new Uint8Array(16));
   const key = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']);
   const bits = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', hash: 'SHA-256', salt: arrayBuffer(salt), iterations: 210_000 },
+    { name: 'PBKDF2', hash: 'SHA-256', salt: arrayBuffer(salt), iterations: 100000 },
     key,
     256,
   );
