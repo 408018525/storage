@@ -227,3 +227,6 @@ th{color:#64748b;font-size:14px}
   .form-grid{grid-template-columns:1fr}
   .section-head{align-items:flex-start;flex-direction:column}
 }
+
+.status-delete-requested,.status-delete_requested{background:#fff7ed;color:#9a3412}
+.delete-box .danger-text{color:#b91c1c;font-weight:700}
