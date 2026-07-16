@@ -1,0 +1,35 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "storage",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-15",
+  "workers_dev": true,
+
+  // Keep Variables configured in the Cloudflare dashboard when Git deploys a new version.
+  "keep_vars": true,
+
+  "observability": { "enabled": true },
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+
+  // No IDs are stored in GitHub. Cloudflare automatic provisioning creates these
+  // resources during the first dashboard/Git deployment.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "s"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "APP_KV"
+    }
+  ]
+
+  // Custom domains are intentionally not declared here. Add them later from
+  // Workers > Settings > Domains & Routes in the Cloudflare dashboard.
+}

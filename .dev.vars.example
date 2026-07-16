@@ -1,0 +1,26 @@
+# Local development only. Never commit .dev.vars.
+CONFIG_MODE=env
+BOOTSTRAP_ADMIN_TOKEN=replace-with-a-long-random-token
+
+TURNSTILE_SITE_KEY=
+TURNSTILE_SECRET=
+TURNSTILE_EXPECTED_HOSTNAME=storage.example.com
+TURNSTILE_ENABLE_APPLY=true
+TURNSTILE_ENABLE_LOGIN=false
+TURNSTILE_ENABLE_REGISTER=false
+TURNSTILE_ACTION_APPLY=domain_apply
+TURNSTILE_ACTION_LOGIN=login
+TURNSTILE_ACTION_REGISTER=register
+
+CF_API_TOKEN=
+DNS_SUFFIX_LABEL=免费二级域名
+DNS_SUFFIX=example.com
+DNS_ZONE_ID=0123456789abcdef0123456789abcdef
+DNS_ALLOWED_TYPES=CNAME,A,AAAA
+DNS_DEFAULT_TYPE=CNAME
+DNS_TTL=1
+DNS_PROXIED=false
+DNS_RESERVED_PREFIXES=www,api,admin,apply,storage,mail,smtp,imap,pop,ftp,cdn,static,status,support
+
+# Multi-suffix alternative:
+# DNS_SUFFIXES_JSON=[{"label":"主域名","suffix":"example.com","zoneId":"0123456789abcdef0123456789abcdef","allowedTypes":["CNAME","A","AAAA"],"defaultType":"CNAME","ttl":1,"proxied":false,"enabled":true}]
