@@ -47,6 +47,8 @@ CREATE TABLE IF NOT EXISTS domain_applications (
   renewed_at TEXT,
   renew_count INTEGER DEFAULT 0,
   deleted_at TEXT,
+  delete_requested_at TEXT,
+  delete_requested_by TEXT,
   updated_at TEXT
 );
 
