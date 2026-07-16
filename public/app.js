@@ -298,7 +298,11 @@ function shell(title, content) {
 async function loadApplications() {
   const result = await api('/api/applications');
   state.applications = result.applications || [];
-  state.quota = result.quota || { used: 0, total: 3, remaining: 3 };
+  const fallbackTotal = Number(domainConfig().defaultQuota || 3);
+  const q = result.quota || { used: 0, total: fallbackTotal, remaining: fallbackTotal };
+  const total = Number(q.total || fallbackTotal) >= 9999 ? fallbackTotal : Number(q.total || fallbackTotal);
+  const used = Number(q.used || 0);
+  state.quota = { ...q, used, total, remaining: Math.max(0, total - used), label: `${used} / ${total}` };
   return result;
 }
 
@@ -334,6 +338,7 @@ async function renderApply() {
         ${recentHtml || '<div class="empty">暂无域名，点击右上方注册新域名。</div>'}
       </section>`);
     document.querySelector('#open-register').addEventListener('click', showRegisterDomainModal);
+    bindDomainCardActions();
   } catch (error) {
     toast(error.message, 'error');
   }
@@ -570,13 +575,15 @@ function showDeleteDomainModal(id) {
     <div class="modal-actions"><button type="button" class="btn secondary" data-cancel>取消</button><button class="btn danger" id="confirm-delete">确认删除</button></div>
   `);
   document.querySelector('[data-cancel]').addEventListener('click', closeModal);
-  document.querySelector('#confirm-delete').addEventListener('click', async () => {
+  document.querySelector('#confirm-delete').addEventListener('click', async e => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
     try {
       await api(`/api/applications/${encodeURIComponent(id)}`, { method:'DELETE' });
       closeModal();
       toast('无效域名已删除', 'success');
       await renderDomains();
-    } catch (error) { toast(error.message, 'error'); }
+    } catch (error) { toast(error.message, 'error'); btn.disabled = false; }
   });
 }
 
