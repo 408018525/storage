@@ -5,9 +5,9 @@ const modalRoot = document.querySelector('#modal-root');
 const state = {
   config: null,
   me: null,
-  turnstilePromise: null,
+  applications: [],
+  quota: { used: 0, total: 3, remaining: 3 },
   widgetId: null,
-  adminSettings: null,
 };
 
 const statusText = {
@@ -17,48 +17,23 @@ const statusText = {
   rejected: '已拒绝',
   revoking: '撤销中',
   revoked: '已撤销',
-  error: '错误',
+  deleted: '已删除',
   active: '启用',
   disabled: '禁用',
-  deleted: '已删除',
 };
 
 function esc(value) {
-  return String(value ?? '').replace(/[&<>'"]/g, c => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
-  }[c]));
+  return String(value ?? '').replace(/[&<>'"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' }[c]));
 }
 function attr(value) { return esc(value).replace(/`/g, '&#96;'); }
-function asArray(value) { return Array.isArray(value) ? value : []; }
-function normalizeDateValue(value) {
-  if (!value) return null;
-  const raw = String(value);
-  const date = new Date(raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z');
-  return Number.isNaN(date.getTime()) ? null : date;
+function fmtDate(value, withTime = false) {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return esc(value);
+  return d.toLocaleString('zh-CN', withTime ? { hour12:false } : { year:'numeric', month:'2-digit', day:'2-digit' }).replace(/\//g, '/');
 }
-function fmtDate(value) {
-  const date = normalizeDateValue(value);
-  if (!date) return '—';
-  return date.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
-}
-function fmtDateTime(value) {
-  const date = normalizeDateValue(value);
-  if (!date) return '—';
-  return date.toLocaleString('zh-CN', { hour12: false });
-}
-function remainingText(appRow) {
-  if (appRow.remainingDays !== undefined && appRow.remainingDays !== null) {
-    const n = Number(appRow.remainingDays);
-    if (Number.isFinite(n)) return n <= 0 ? '已到期' : `剩余 ${n} 天`;
-  }
-  const expires = normalizeDateValue(appRow.expiresAt);
-  if (!expires) return '未设置到期时间';
-  const days = Math.ceil((expires.getTime() - Date.now()) / 86400000);
-  return days <= 0 ? '已到期' : `剩余 ${days} 天`;
-}
-function badge(status) {
-  const text = statusText[status] || status || '未知';
-  return `<span class="badge ${esc(status || '')}">${esc(text)}</span>`;
+function statusBadge(status, label) {
+  return `<span class="status-pill status-${esc(status)}">${esc(label || statusText[status] || status)}</span>`;
 }
 function toast(message, type = '') {
   const el = document.createElement('div');
@@ -67,33 +42,37 @@ function toast(message, type = '') {
   toastRoot.appendChild(el);
   setTimeout(() => el.remove(), 3600);
 }
-function closeModal() { modalRoot.innerHTML = ''; }
-function openModal(title, content, large = false) {
-  modalRoot.innerHTML = `<div class="modal-backdrop"><div class="modal ${large ? 'large' : ''}">
-    <div class="modal-header"><h3>${esc(title)}</h3><button class="btn btn-ghost btn-sm" data-close-modal>关闭</button></div>
-    ${content}
-  </div></div>`;
-  modalRoot.querySelector('[data-close-modal]')?.addEventListener('click', closeModal);
-  modalRoot.querySelector('.modal-backdrop')?.addEventListener('click', e => {
+function closeModal() {
+  modalRoot.innerHTML = '';
+  state.widgetId = null;
+}
+function openModal(title, subtitle, content, size = '') {
+  modalRoot.innerHTML = `
+    <div class="modal-backdrop">
+      <div class="modal ${size}">
+        <div class="modal-titlebar">
+          <div class="modal-icon">＋</div>
+          <div><h2>${esc(title)}</h2><p>${esc(subtitle || '')}</p></div>
+          <button class="modal-x" data-close-modal type="button">×</button>
+        </div>
+        <div class="modal-body">${content}</div>
+      </div>
+    </div>`;
+  modalRoot.querySelector('[data-close-modal]').addEventListener('click', closeModal);
+  modalRoot.querySelector('.modal-backdrop').addEventListener('click', e => {
     if (e.target.classList.contains('modal-backdrop')) closeModal();
   });
 }
-
 async function api(path, options = {}) {
-  const opts = {
-    method: options.method || 'GET',
-    headers: { ...(options.headers || {}) },
-    credentials: 'same-origin',
-  };
-  if (options.body instanceof FormData) opts.body = options.body;
-  else if (options.body !== undefined) {
+  const opts = { method: options.method || 'GET', headers: { ...(options.headers || {}) }, credentials: 'same-origin' };
+  if (options.body !== undefined) {
     opts.headers['content-type'] = 'application/json';
     opts.body = JSON.stringify(options.body);
   }
-  const response = await fetch(path, opts);
+  const res = await fetch(path, opts);
   let data;
-  try { data = await response.json(); } catch { data = { ok: false, message: `HTTP ${response.status}` }; }
-  if (!response.ok || data.ok === false) {
+  try { data = await res.json(); } catch { data = { ok:false, message:`HTTP ${res.status}` }; }
+  if (!res.ok || data.ok === false) {
     const error = new Error(data.message || '请求失败');
     error.code = data.code;
     error.details = data.details;
@@ -104,39 +83,25 @@ async function api(path, options = {}) {
 
 function applyTheme() {
   const site = state.config?.site || {};
-  document.documentElement.style.setProperty('--accent', site.accent || '#5468ff');
-  document.documentElement.style.setProperty('--accent-2', site.accent2 || '#7c3aed');
-  document.documentElement.style.setProperty('--bg-overlay', String(site.backgroundOverlay ?? .08));
-  const bg = document.querySelector('#background-layer');
-  if (bg) {
-    if (site.backgroundType === 'image') bg.style.backgroundImage = `url("${String(site.backgroundValue || '').replace(/["\\]/g, '')}")`;
-    else bg.style.background = site.backgroundValue || 'linear-gradient(135deg,#eef2ff,#f8fafc,#f5f3ff)';
-  }
-  document.title = site.title || '中文二级域名申请中心';
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', site.accent || '#5468ff');
+  document.documentElement.style.setProperty('--accent', site.accent || '#4f63f6');
+  document.documentElement.style.setProperty('--accent-2', site.accent2 || '#7c4dff');
+  document.title = site.title || '免费二级域名注册中心';
 }
 
 async function init() {
   try {
-    const [{ config }, me] = await Promise.all([api('/api/public/config'), api('/api/auth/me')]);
+    const [{ config }, me] = await Promise.all([
+      api('/api/public/config'),
+      api('/api/auth/me').catch(() => ({ user:null })),
+    ]);
     state.config = config;
     state.me = me.user;
     applyTheme();
-    maybeShowPopup();
     await route();
   } catch (error) {
-    app.innerHTML = `<div class="loading-screen"><h2>应用加载失败</h2><p>${esc(error.message)}</p><button class="btn btn-primary" id="retry">重试</button></div>`;
+    app.innerHTML = `<div class="center-screen"><h2>应用加载失败</h2><p>${esc(error.message)}</p><button class="btn primary" id="retry">重试</button></div>`;
     document.querySelector('#retry')?.addEventListener('click', () => location.reload());
   }
-}
-
-function maybeShowPopup() {
-  const popup = state.config?.popup;
-  if (!popup?.enabled || !popup.content) return;
-  const key = 'portal-popup-shown';
-  if (popup.oncePerSession && sessionStorage.getItem(key)) return;
-  sessionStorage.setItem(key, '1');
-  openModal(popup.title || '网站公告', `<div style="white-space:pre-wrap;line-height:1.8">${esc(popup.content)}</div>`);
 }
 
 function go(hash) { location.hash = hash; }
@@ -144,560 +109,691 @@ window.addEventListener('hashchange', route);
 
 async function route() {
   const hash = location.hash || (state.me ? '#/apply' : '#/login');
+
   if (state.config?.needsBootstrap && hash !== '#/setup') return go('#/setup');
   if (!state.me && !['#/login', '#/register', '#/setup'].includes(hash)) return go('#/login');
   if (state.me && ['#/login', '#/register', '#/setup'].includes(hash)) return go('#/apply');
-
-  const routes = {
-    '#/setup': renderSetup,
-    '#/login': renderLogin,
-    '#/register': renderRegister,
-    '#/apply': renderApply,
-    '#/applications': renderMyApplications,
-    '#/account': renderAccount,
-    '#/admin': renderAdminOverview,
-    '#/admin/applications': renderAdminApplications,
-    '#/admin/users': renderAdminUsers,
-    '#/admin/settings': renderAdminSettings,
-    '#/admin/analytics': renderAdminAnalytics,
-    '#/admin/audit': renderAdminAudit,
-  };
-  const fn = routes[hash] || (state.me ? renderApply : renderLogin);
   if (hash.startsWith('#/admin') && state.me?.role !== 'admin') return go('#/apply');
+
   state.widgetId = null;
-  await fn();
+
+  if (hash.startsWith('#/domain/')) return renderDomainDetail(hash.replace('#/domain/', ''));
+  if (hash === '#/setup') return renderSetup();
+  if (hash === '#/login') return renderLogin();
+  if (hash === '#/register') return renderRegister();
+  if (hash === '#/apply') return renderApply();
+  if (hash === '#/domains' || hash === '#/applications') return renderDomains();
+  if (hash === '#/account') return renderAccount();
+  if (hash === '#/admin') return renderAdminOverview();
+  if (hash === '#/admin/applications') return renderAdminApplications();
+  if (hash === '#/admin/users') return renderAdminUsers();
+  if (hash === '#/admin/settings') return renderAdminSettings();
+
+  return state.me ? renderApply() : renderLogin();
 }
 
-function authTemplate(title, subtitle, formHtml, extraClass = '') {
+function authTemplate(title, subtitle, formHtml) {
   const site = state.config?.site || {};
-  return `<div class="auth-shell ${extraClass}">
+  return `<main class="auth-wrap">
     <section class="auth-brand">
-      <div class="brand-mark">域</div>
-      <h1>${esc(site.title || '中文二级域名申请中心')}</h1>
-      <p>${esc(site.subtitle || '轻量、可审核、可续期的二级域名管理系统')}</p>
+      <div class="auth-logo">${esc(site.logoText || '域')}</div>
+      <h1>${esc(site.title || '免费二级域名注册中心')}</h1>
+      <p>${esc(site.subtitle || '快速注册并管理您的专属免费域名')}</p>
     </section>
-    <section class="auth-panel"><div class="auth-card"><h2>${esc(title)}</h2><p class="sub">${esc(subtitle)}</p>${formHtml}</div></section>
-  </div>`;
+    <section class="auth-card">
+      <h2>${esc(title)}</h2>
+      <p>${esc(subtitle)}</p>
+      ${formHtml}
+    </section>
+  </main>`;
 }
 
 async function renderSetup() {
-  app.innerHTML = authTemplate('初始化管理员', '系统首次部署，需要用 Worker Secret 中的初始化令牌创建第一个管理员。', `
+  app.innerHTML = authTemplate('初始化管理员', '首次部署需要创建管理员账户。', `
     <form id="setup-form" class="form-grid">
-      <div class="form-group full"><label>初始化令牌</label><input name="setupToken" type="password" required autocomplete="off"></div>
-      <div class="form-group"><label>管理员用户名</label><input name="username" required minlength="3" maxlength="32" autocomplete="username"></div>
-      <div class="form-group"><label>邮箱</label><input name="email" type="email" autocomplete="email"></div>
-      <div class="form-group full"><label>管理员密码</label><input name="password" type="password" required minlength="10" autocomplete="new-password"><span class="help">至少 10 位，并包含字母和数字。</span></div>
-      <div class="form-group full"><button class="btn btn-primary" type="submit">创建管理员并登录</button></div>
+      <label class="field wide"><span>初始化令牌</span><input name="setupToken" type="password" required></label>
+      <label class="field"><span>管理员用户名</span><input name="username" required minlength="3" maxlength="32"></label>
+      <label class="field"><span>邮箱</span><input name="email" type="email"></label>
+      <label class="field wide"><span>管理员密码</span><input name="password" type="password" required minlength="10"><em>至少 10 位，并包含字母和数字。</em></label>
+      <button class="btn primary wide" type="submit">创建管理员</button>
     </form>`);
   document.querySelector('#setup-form').addEventListener('submit', async e => {
     e.preventDefault();
-    const button = e.submitter; button.disabled = true;
-    const body = Object.fromEntries(new FormData(e.currentTarget));
+    const btn = e.submitter;
+    btn.disabled = true;
     try {
-      const result = await api('/api/setup/bootstrap', { method: 'POST', body });
+      const result = await api('/api/setup/bootstrap', { method:'POST', body:Object.fromEntries(new FormData(e.currentTarget)) });
       state.me = result.user;
       state.config.needsBootstrap = false;
       toast('管理员创建成功', 'success');
       go('#/admin/settings');
-    } catch (error) { toast(error.message, 'error'); button.disabled = false; }
+    } catch (error) {
+      toast(error.message, 'error');
+      btn.disabled = false;
+    }
   });
 }
 
 async function renderLogin() {
-  const turn = state.config.turnstile;
-  app.innerHTML = authTemplate('登录', '使用您的账户进入域名申请中心。', `
+  const turn = state.config.turnstile || {};
+  app.innerHTML = authTemplate('登录', '进入域名注册与管理中心。', `
     <form id="login-form" class="form-grid">
-      <div class="form-group full"><label>用户名或邮箱</label><input name="identity" required autocomplete="username"></div>
-      <div class="form-group full"><label>密码</label><input name="password" type="password" required autocomplete="current-password"></div>
-      <div class="form-group full"><label class="checkbox"><input name="remember" type="checkbox">30 天内保持登录</label></div>
-      ${turn.enabledLogin ? '<div class="form-group full"><div id="turnstile-box"></div></div>' : ''}
-      <div class="form-group full"><button class="btn btn-primary" type="submit">登录</button></div>
+      <label class="field wide"><span>用户名或邮箱</span><input name="identity" required autocomplete="username"></label>
+      <label class="field wide"><span>密码</span><input name="password" type="password" required autocomplete="current-password"></label>
+      <label class="check wide"><input name="remember" type="checkbox"> 30 天内保持登录</label>
+      ${turn.enabledLogin ? '<div class="wide"><div id="turnstile-box"></div></div>' : ''}
+      <button class="btn primary wide" type="submit">登录</button>
     </form>
-    <p class="muted auth-link">没有账户？ <a href="#/register">注册</a></p>`);
+    <p class="auth-link">没有账户？ <a href="#/register">注册</a></p>`);
   if (turn.enabledLogin) await mountTurnstile('#turnstile-box', turn.actionLogin);
   document.querySelector('#login-form').addEventListener('submit', async e => {
     e.preventDefault();
-    const button = e.submitter; button.disabled = true;
-    const form = new FormData(e.currentTarget);
-    const body = {
-      identity: form.get('identity'),
-      password: form.get('password'),
-      remember: form.get('remember') === 'on',
-      turnstileToken: turnstileToken(),
-    };
+    const btn = e.submitter;
+    btn.disabled = true;
+    const f = new FormData(e.currentTarget);
     try {
-      const result = await api('/api/auth/login', { method: 'POST', body });
+      const result = await api('/api/auth/login', { method:'POST', body:{
+        identity:f.get('identity'), password:f.get('password'), remember:f.get('remember') === 'on', turnstileToken:turnstileToken(),
+      }});
       state.me = result.user;
       toast('登录成功', 'success');
       go(result.user.role === 'admin' ? '#/admin' : '#/apply');
-    } catch (error) { toast(error.message, 'error'); resetTurnstile(); button.disabled = false; }
+    } catch (error) {
+      toast(error.message, 'error');
+      resetTurnstile();
+      btn.disabled = false;
+    }
   });
 }
 
 async function renderRegister() {
-  if (!state.config.registration.enabled) {
-    app.innerHTML = authTemplate('注册已关闭', '管理员当前未开放自助注册。', `<a class="btn btn-primary" href="#/login">返回登录</a>`);
+  if (!state.config.registration?.enabled) {
+    app.innerHTML = authTemplate('注册已关闭', '管理员当前未开放自助注册。', `<a class="btn primary wide" href="#/login">返回登录</a>`);
     return;
   }
-  const turn = state.config.turnstile;
-  app.innerHTML = authTemplate('注册账户', '创建账户后可注册并管理专属二级域名。', `
-    <form id="register-form" class="form-grid register-form-clean">
-      <div class="form-group full"><label>用户名</label><input name="username" placeholder="请输入用户名" required minlength="3" maxlength="32" autocomplete="username"></div>
-      <div class="form-group full"><label>邮箱</label><input name="email" type="email" placeholder="可选，用于接收通知" autocomplete="email"></div>
-      <div class="form-group full"><label>密码</label><input name="password" type="password" required minlength="10" placeholder="至少10位，包含字母和数字" autocomplete="new-password"></div>
-      ${state.config.registration.requireKey ? '<div class="form-group full"><label>注册密钥</label><input name="registrationKey" required autocomplete="off" placeholder="请输入邀请密钥"></div>' : ''}
-      ${turn.enabledRegister ? '<div class="form-group full"><div id="turnstile-box"></div></div>' : ''}
-      <div class="form-group full"><button class="btn btn-primary btn-wide" type="submit">注册</button></div>
+  const turn = state.config.turnstile || {};
+  app.innerHTML = authTemplate('创建账户', '注册后默认拥有 3 个域名额度。', `
+    <form id="register-form" class="form-grid">
+      <label class="field"><span>用户名</span><input name="username" required minlength="3" maxlength="32"></label>
+      <label class="field"><span>邮箱</span><input name="email" type="email"></label>
+      <label class="field wide"><span>密码</span><input name="password" type="password" required minlength="10"><em>至少 10 位，并包含字母和数字。</em></label>
+      ${turn.enabledRegister ? '<div class="wide"><div id="turnstile-box"></div></div>' : ''}
+      <button class="btn primary wide" type="submit">注册</button>
     </form>
-    <p class="muted auth-link">已有账户？ <a href="#/login">去登录</a></p>`, 'register-clean');
+    <p class="auth-link">已有账户？ <a href="#/login">登录</a></p>`);
   if (turn.enabledRegister) await mountTurnstile('#turnstile-box', turn.actionRegister);
   document.querySelector('#register-form').addEventListener('submit', async e => {
     e.preventDefault();
-    const button = e.submitter; button.disabled = true;
-    const form = new FormData(e.currentTarget);
-    const body = Object.fromEntries(form);
+    const btn = e.submitter;
+    btn.disabled = true;
+    const body = Object.fromEntries(new FormData(e.currentTarget));
     body.turnstileToken = turnstileToken();
     try {
-      const result = await api('/api/auth/register', { method: 'POST', body });
-      if (result.pendingActivation) { toast('注册成功，请等待管理员启用账户', 'success'); go('#/login'); }
-      else { state.me = result.user; toast('注册成功', 'success'); go('#/apply'); }
-    } catch (error) { toast(error.message, 'error'); resetTurnstile(); button.disabled = false; }
+      const result = await api('/api/auth/register', { method:'POST', body });
+      if (result.pendingActivation) {
+        toast('注册成功，请等待管理员启用账户', 'success');
+        go('#/login');
+      } else {
+        state.me = result.user;
+        toast('注册成功', 'success');
+        go('#/apply');
+      }
+    } catch (error) {
+      toast(error.message, 'error');
+      resetTurnstile();
+      btn.disabled = false;
+    }
   });
 }
 
-function navLink(hash, icon, text) {
-  return `<a class="nav-link ${location.hash === hash ? 'active' : ''}" href="${hash}"><span class="icon">${icon}</span>${esc(text)}</a>`;
+function nav(hash, icon, text) {
+  return `<a class="nav ${location.hash === hash ? 'active' : ''}" href="${hash}"><span>${icon}</span>${esc(text)}</a>`;
 }
 function shell(title, content) {
   const site = state.config.site || {};
   const isAdmin = state.me?.role === 'admin';
-  const announcement = state.config.announcement?.enabled && state.config.announcement.text
-    ? `<div class="announcement ${esc(state.config.announcement.level)}">${esc(state.config.announcement.text)}</div>` : '';
   app.innerHTML = `<div class="app-shell">
-    <aside class="sidebar" id="sidebar">
-      <div class="sidebar-brand"><div class="sidebar-logo">${site.logoUrl ? `<img src="${attr(site.logoUrl)}" alt="">` : '域'}</div><span>${esc(site.title || '域名申请中心')}</span></div>
-      <nav><div class="nav-section"><div class="nav-label">申请服务</div>
-        ${navLink('#/apply', '＋', '注册域名')}${navLink('#/applications', '▤', '域名管理')}${navLink('#/account', '⚙', '账户设置')}
-      </div>${isAdmin ? `<div class="nav-section"><div class="nav-label">管理后台</div>
-        ${navLink('#/admin','▦','管理概览')}${navLink('#/admin/applications','✓','申请审核')}${navLink('#/admin/users','♟','用户管理')}${navLink('#/admin/settings','⚙','系统设置')}${navLink('#/admin/analytics','↗','数据分析')}${navLink('#/admin/audit','≡','审计日志')}
-      </div>` : ''}</nav>
-      <div class="sidebar-footer"><div class="user-mini"><strong>${esc(state.me.username)}</strong><small>${isAdmin ? '管理员' : '普通用户'}</small></div><button class="btn btn-ghost" id="logout" style="color:#cbd5e1;width:100%">退出登录</button></div>
+    <aside class="sidebar">
+      <div class="brand"><div>${esc(site.logoText || '域')}</div><strong>${esc(site.title || '域名注册中心')}</strong></div>
+      <nav>
+        ${nav('#/apply','＋','域名注册')}
+        ${nav('#/domains','🌐','域名管理')}
+        ${nav('#/account','⚙','账户设置')}
+        ${isAdmin ? `<hr>${nav('#/admin','▦','管理概览')}${nav('#/admin/applications','✓','域名审核')}${nav('#/admin/users','♟','用户管理')}${nav('#/admin/settings','⚙','管理员设置')}` : ''}
+      </nav>
+      <div class="side-user"><strong>${esc(state.me.username)}</strong><small>${isAdmin ? '管理员' : '普通用户'}</small><button id="logout" class="btn ghost">退出登录</button></div>
     </aside>
-    <main class="main-wrap"><header class="topbar"><div class="actions"><button class="btn btn-secondary mobile-menu" id="menu">☰</button><h1>${esc(title)}</h1></div><div class="top-actions">${badge(state.me.status || 'active')}</div></header>
-      <div class="content">${announcement}${content}<p class="muted" style="text-align:center;margin-top:34px">${esc(site.footer || '')}</p></div></main>
+    <main class="main">
+      <header class="topbar">
+        <button class="btn ghost menu-btn" id="menu">☰</button>
+        <h1>${esc(title)}</h1>
+        <div>${statusBadge(state.me.status || 'active')}</div>
+      </header>
+      <section class="content">${content}</section>
+    </main>
   </div>`;
-  document.querySelector('#menu')?.addEventListener('click', () => document.querySelector('#sidebar').classList.toggle('open'));
   document.querySelector('#logout')?.addEventListener('click', async () => {
-    try { await api('/api/auth/logout', { method: 'POST', body: {} }); } catch {}
-    state.me = null; go('#/login');
+    try { await api('/api/auth/logout', { method:'POST', body:{} }); } catch {}
+    state.me = null;
+    go('#/login');
   });
+  document.querySelector('#menu')?.addEventListener('click', () => document.querySelector('.sidebar')?.classList.toggle('open'));
 }
 
-async function loadApplicationState() {
+async function loadApplications() {
   const result = await api('/api/applications');
-  const applications = asArray(result.applications);
-  const quota = result.quota || {
-    used: applications.filter(x => ['approved', 'pending', 'processing'].includes(x.status)).length,
-    total: Number(state.me?.domainQuota || state.me?.domain_quota || 3),
-  };
-  quota.remaining = Math.max(0, Number(quota.remaining ?? (Number(quota.total || 3) - Number(quota.used || 0))));
-  return { applications, quota };
-}
-
-function quotaBlock(quota) {
-  const total = Number(quota?.total || 3);
-  const used = Number(quota?.used || 0);
-  const remaining = Math.max(0, Number(quota?.remaining ?? total - used));
-  return `<section class="quota-hero">
-    <div class="quota-icon">☁</div>
-    <div class="quota-main"><div class="quota-number">${used} / ${total}</div><div class="quota-label">已注册</div></div>
-    <div class="quota-remain"><span>剩余</span><strong>${remaining}</strong></div>
-    <button class="btn btn-primary" id="open-register-domain">＋ 注册新域名</button>
-  </section>`;
-}
-
-function registerDomainModal(suffixes) {
-  const suffixOptions = suffixes.map(s => `<option value="${attr(s.suffix)}">${esc(s.label || '根域名')} — ${esc(s.suffix)}</option>`).join('');
-  openModal('注册新域名', `<form id="domain-register-form" class="form-grid domain-register-form">
-    <p class="muted full">选择根域名并输入前缀，快速注册一个专属域名。</p>
-    <div class="form-group full"><label>选择根域名</label><select id="domain-suffix" name="suffix" required>${suffixOptions}</select></div>
-    <div class="form-group full"><label>域名前缀</label><input id="domain-prefix" name="prefix" placeholder="输入前缀，如 myblog" maxlength="32" required autocomplete="off"></div>
-    <div class="domain-preview full"><span class="muted">完整域名预览</span><strong id="domain-preview-name">—</strong><code id="domain-preview-ascii">Punycode：—</code></div>
-    ${state.config.turnstile.enabledApply ? '<div class="form-group full"><div id="turnstile-box"></div></div>' : ''}
-    <div class="form-group full"><button class="btn btn-primary btn-wide" type="submit">确认注册</button></div>
-  </form>`);
-
-  const prefixInput = document.querySelector('#domain-prefix');
-  const suffixSelect = document.querySelector('#domain-suffix');
-  const updatePreview = () => {
-    const prefix = prefixInput.value.trim();
-    const suffix = suffixSelect.value;
-    document.querySelector('#domain-preview-name').textContent = prefix ? `${prefix}.${suffix}` : '—';
-    let ascii = '—';
-    if (prefix) { try { ascii = new URL(`https://${prefix}.${suffix}`).hostname; } catch { ascii = '等待合法输入'; } }
-    document.querySelector('#domain-preview-ascii').textContent = `Punycode：${ascii}`;
-  };
-  prefixInput.addEventListener('input', updatePreview);
-  suffixSelect.addEventListener('change', updatePreview);
-  updatePreview();
-
-  const mount = async () => { if (state.config.turnstile.enabledApply) await mountTurnstile('#turnstile-box', state.config.turnstile.actionApply); };
-  mount();
-
-  document.querySelector('#domain-register-form').addEventListener('submit', async e => {
-    e.preventDefault();
-    const button = e.submitter; button.disabled = true;
-    const form = new FormData(e.currentTarget);
-    try {
-      await api('/api/applications', {
-        method: 'POST',
-        body: { prefix: form.get('prefix'), suffix: form.get('suffix'), turnstileToken: turnstileToken() },
-      });
-      toast('域名注册申请已提交，等待管理员审核', 'success');
-      closeModal();
-      go('#/applications');
-    } catch (error) { toast(error.message, 'error'); resetTurnstile(); button.disabled = false; }
-  });
+  state.applications = result.applications || [];
+  state.quota = result.quota || { used: 0, total: 3, remaining: 3 };
+  return result;
 }
 
 async function renderApply() {
-  const suffixes = state.config.suffixes || [];
-  shell('注册域名', `<section class="card"><div class="empty"><div class="spinner"></div><p>正在读取额度…</p></div></section>`);
+  shell('域名注册', `<div class="loading-card">正在读取域名数据…</div>`);
   try {
-    const { quota, applications } = await loadApplicationState();
-    const recent = applications.slice(0, 3).map(domainCard).join('');
-    shell('注册域名', `<div class="domain-dashboard">
-      ${quotaBlock(quota)}
-      <section class="card register-guide">
-        <h2>域名注册</h2>
-        <p class="muted">申请时只需要填写前缀和根域名。DNS 记录类型与目标地址在“域名管理”中填写，管理员审核通过后写入 Cloudflare DNS。</p>
-        <div class="register-steps"><div><strong>1</strong><span>填写前缀</span></div><div><strong>2</strong><span>提交审核</span></div><div><strong>3</strong><span>配置 DNS</span></div><div><strong>4</strong><span>管理员批准</span></div></div>
+    await loadApplications();
+    const recent = state.applications.slice(0, 3);
+    const recentHtml = recent.map(domainCard).join('');
+
+    shell('域名注册', `
+      <div class="notice">请勿申请违法、侵权、仿冒或误导性域名。</div>
+      <section class="quota-hero">
+        <div class="quota-icon">☁</div>
+        <div><strong>${state.quota.used} / ${state.quota.total}</strong><span>已注册</span></div>
+        <div class="quota-left"><span>剩余</span><strong>${state.quota.remaining}</strong></div>
+        <button class="btn primary" id="open-register">＋ 注册新域名</button>
       </section>
-      <section class="card"><div class="actions" style="justify-content:space-between"><div><h2 style="margin:0">最近域名</h2><p class="muted">默认有效期 1 年，最后 60 天可申请续期。</p></div><a class="btn btn-secondary" href="#/applications">全部域名</a></div>${recent || '<div class="empty">还没有域名，点击上方按钮开始注册。</div>'}</section>
-    </div>`);
-    document.querySelector('#open-register-domain')?.addEventListener('click', () => {
-      if (!suffixes.length) return toast('管理员尚未配置可申请后缀', 'error');
-      registerDomainModal(suffixes);
-    });
+
+      <section class="card">
+        <h2>域名注册</h2>
+        <p>申请时只需要填写前缀和根域名。DNS 记录类型与目标地址在“域名管理”中填写，管理员审核通过后写入 Cloudflare DNS。</p>
+        <div class="steps">
+          <div><b>1</b><strong>填写前缀</strong></div>
+          <div><b>2</b><strong>提交审核</strong></div>
+          <div><b>3</b><strong>配置 DNS</strong></div>
+          <div><b>4</b><strong>管理员批准</strong></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-head"><div><h2>最近域名</h2><p>默认有效期 ${state.config.domain.validDays} 天，最后 ${state.config.domain.renewWindowDays} 天可申请续期。</p></div><a class="btn soft" href="#/domains">全部域名</a></div>
+        ${recentHtml || '<div class="empty">暂无域名，点击右上方注册新域名。</div>'}
+      </section>`);
+    document.querySelector('#open-register').addEventListener('click', showRegisterDomainModal);
+  } catch (error) {
+    toast(error.message, 'error');
+  }
+}
+
+function showRegisterDomainModal() {
+  const suffixes = state.config.suffixes || [];
+  const options = suffixes.map(s => `<option value="${attr(s.suffix)}">${esc(s.label)} / ${esc(s.suffix)}</option>`).join('');
+  openModal('注册新域名', '选择根域名并输入前缀，快速注册一个专属您的免费域名', `
+    <form id="domain-register-form" class="modal-form">
+      <label class="field wide">
+        <span>选择根域名</span>
+        <select id="domain-suffix" name="suffix" required>
+          <option value="">请选择根域名</option>${options}
+        </select>
+      </label>
+      <label class="field wide">
+        <span>域名前缀</span>
+        <div class="suffix-input">
+          <input id="domain-prefix" name="prefix" placeholder="输入前缀，如: myblog" minlength="2" maxlength="36" required>
+          <strong id="suffix-preview">.请选择根域名</strong>
+        </div>
+        <em>2-36 位，仅支持字母、数字和连字符 -</em>
+      </label>
+      <div class="preview-box">
+        <span>完整域名预览</span>
+        <strong id="full-preview">请选择根域名并输入前缀</strong>
+      </div>
+      <div class="dns-note"><span>ℹ</span><strong>注册成功后，您需要手动设置 DNS 解析</strong><button type="button" id="dns-help">查看完整说明 ›</button></div>
+      ${state.config.turnstile.enabledApply ? '<div id="turnstile-box" class="turnstile-holder"></div>' : ''}
+      <div class="modal-actions"><button type="button" class="btn secondary" data-cancel>取消</button><button id="confirm-register" class="btn primary" type="submit" disabled>确认注册</button></div>
+    </form>
+  `, 'wide');
+  const suffix = document.querySelector('#domain-suffix');
+  const prefix = document.querySelector('#domain-prefix');
+  const submit = document.querySelector('#confirm-register');
+  const refresh = () => {
+    const s = suffix.value;
+    const p = prefix.value.trim();
+    document.querySelector('#suffix-preview').textContent = s ? `.${s}` : '.请选择根域名';
+    document.querySelector('#full-preview').textContent = s && p ? `${p}.${s}` : '请选择根域名并输入前缀';
+    submit.disabled = !(s && /^[a-z0-9](?:[a-z0-9-]{0,34}[a-z0-9])?$/.test(p) && p.length >= 2);
+  };
+  suffix.addEventListener('change', refresh);
+  prefix.addEventListener('input', refresh);
+  document.querySelector('[data-cancel]').addEventListener('click', closeModal);
+  document.querySelector('#dns-help').addEventListener('click', () => toast('注册后进入“域名管理”点击“管理域名”，在 DNS 解析中添加 CNAME/A/AAAA。', 'success'));
+  if (state.config.turnstile.enabledApply) mountTurnstile('#turnstile-box', state.config.turnstile.actionApply);
+  document.querySelector('#domain-register-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    submit.disabled = true;
+    try {
+      await api('/api/applications', { method:'POST', body:{ prefix:prefix.value, suffix:suffix.value, turnstileToken:turnstileToken() } });
+      closeModal();
+      toast('域名已提交，请继续配置 DNS 解析', 'success');
+      await renderApply();
+    } catch (error) {
+      toast(error.message, 'error');
+      resetTurnstile();
+      submit.disabled = false;
+    }
+  });
+}
+
+async function renderDomains() {
+  shell('域名管理', `<div class="loading-card">正在读取域名列表…</div>`);
+  try {
+    await loadApplications();
+    const cards = state.applications.map(domainCard).join('');
+    shell('域名管理', `
+      <section class="quota-hero compact">
+        <div class="quota-icon">☁</div>
+        <div><strong>${state.quota.used} / ${state.quota.total}</strong><span>已注册</span></div>
+        <div class="quota-left"><span>剩余</span><strong>${state.quota.remaining}</strong></div>
+        <button class="btn primary" id="open-register">＋ 注册新域名</button>
+      </section>
+      <section class="card">
+        <div class="section-head"><div><h2>我的域名</h2><p>到期时间、剩余时间、DNS 状态都在这里查看。</p></div></div>
+        <div class="domain-list">${cards || '<div class="empty">暂无域名。</div>'}</div>
+      </section>`);
+    document.querySelector('#open-register')?.addEventListener('click', showRegisterDomainModal);
+    bindDomainCardActions();
   } catch (error) { toast(error.message, 'error'); }
 }
 
 function domainCard(a) {
-  const isApproved = a.status === 'approved';
-  const isPending = ['pending', 'processing'].includes(a.status);
-  const dnsText = a.dnsConfigured || a.recordContent ? `${a.recordType || 'CNAME'} → ${a.recordContent || '未配置'}` : 'DNS 未配置';
-  return `<article class="domain-card ${esc(a.status)}">
-    <div class="domain-card-head"><div class="domain-icon">🌐</div><div><h3>${esc(a.fqdnUnicode)}</h3><small class="mono muted">${esc(a.fqdnAscii || '')}</small></div>${badge(a.status)}</div>
-    <div class="domain-card-grid">
-      <div><span>注册时间</span><strong>${fmtDate(a.createdAt)}</strong></div>
-      <div><span>到期时间</span><strong>${fmtDate(a.expiresAt)}</strong></div>
-      <div><span>剩余时间</span><strong>${esc(a.remainingText || remainingText(a))}</strong></div>
-      <div><span>DNS</span><strong class="mono small-text">${esc(dnsText)}</strong></div>
+  const dns = a.dnsConfigured ? `${a.recordType} → ${a.recordContent}` : '未配置';
+  const status = a.statusText || statusText[a.status] || a.status;
+  return `<article class="domain-card" data-id="${attr(a.id)}">
+    <div class="domain-head">
+      <div class="globe">🌐</div>
+      <div class="domain-title"><h3>${esc(a.fqdnUnicode)}</h3><code>${esc(a.fqdnAscii)}</code></div>
+      ${statusBadge(a.status, status)}
     </div>
-    ${a.reviewNote ? `<p class="note-line">备注：${esc(a.reviewNote)}</p>` : ''}
-    ${a.errorMessage ? `<p class="note-line danger">错误：${esc(a.errorMessage)}</p>` : ''}
-    <div class="domain-actions">
-      <button class="btn btn-secondary btn-sm" data-manage-domain="${attr(a.id)}">管理域名</button>
-      ${a.canRenew ? `<button class="btn btn-primary btn-sm" data-renew-domain="${attr(a.id)}">申请续期</button>` : ''}
-      ${isPending ? '<span class="help">审核中，暂不可生效。</span>' : ''}
-      ${isApproved && !a.dnsConfigured ? '<span class="help warning-text">请先配置 DNS 目标。</span>' : ''}
+    <div class="domain-metrics">
+      <div><span>注册时间</span><strong>${fmtDate(a.createdAt)}</strong></div>
+      <div><span>到期时间</span><strong>${a.expiresAt ? fmtDate(a.expiresAt) : '—'}</strong></div>
+      <div><span>剩余时间</span><strong>${esc(a.remainingText || '未设置到期时间')}</strong></div>
+      <div><span>DNS</span><strong class="mono">${esc(dns)}</strong></div>
+    </div>
+    ${a.errorMessage ? `<p class="error-line">${esc(a.errorMessage)}</p>` : ''}
+    <div class="card-actions">
+      <button class="btn soft" data-manage="${attr(a.id)}">管理域名</button>
+      ${a.canRenew ? `<button class="btn success" data-renew="${attr(a.id)}">续期</button>` : ''}
+      ${a.canDelete ? `<button class="btn danger-soft" data-delete="${attr(a.id)}">删除无效域名</button>` : ''}
     </div>
   </article>`;
 }
 
-async function renderMyApplications() {
-  shell('域名管理', `<section class="card"><div class="empty"><div class="spinner"></div><p>正在读取域名…</p></div></section>`);
+function bindDomainCardActions() {
+  document.querySelectorAll('[data-manage]').forEach(btn => btn.addEventListener('click', () => go(`#/domain/${btn.dataset.manage}`)));
+  document.querySelectorAll('[data-renew]').forEach(btn => btn.addEventListener('click', () => renewDomain(btn.dataset.renew)));
+  document.querySelectorAll('[data-delete]').forEach(btn => btn.addEventListener('click', () => showDeleteDomainModal(btn.dataset.delete)));
+}
+
+async function renderDomainDetail(id) {
+  shell('域名管理', `<div class="loading-card">正在读取域名详情…</div>`);
   try {
-    const { applications, quota } = await loadApplicationState();
-    shell('域名管理', `<div class="domain-dashboard">
-      ${quotaBlock(quota)}
-      <section class="card"><div class="actions" style="justify-content:space-between;margin-bottom:18px"><div><h2 style="margin:0">我的域名</h2><p class="muted">管理 DNS、查看到期时间，并在最后 60 天申请续期。</p></div></div>
-      <div class="domain-card-list">${applications.length ? applications.map(domainCard).join('') : '<div class="empty">暂无域名记录。</div>'}</div></section>
-    </div>`);
-    document.querySelector('#open-register-domain')?.addEventListener('click', () => registerDomainModal(state.config.suffixes || []));
-    bindDomainActions(applications);
-  } catch (error) { toast(error.message, 'error'); }
+    const { application: a } = await api(`/api/applications/${encodeURIComponent(id)}`);
+    const dnsRows = a.dnsConfigured ? `
+      <tr><td>@</td><td>${esc(a.recordType)}</td><td class="mono">${esc(a.recordContent)}</td><td>${a.ttl === 1 ? '自动' : esc(a.ttl)}</td><td>${a.proxied ? '代理' : 'DNS Only'}</td></tr>
+    ` : '';
+
+    shell('域名管理', `
+      <section class="detail-hero">
+        <a class="back-link" href="#/domains">← 返回域名列表</a>
+        <div class="detail-main">
+          <div class="globe big">🌐</div>
+          <div><h1>${esc(a.fqdnUnicode)}</h1><code>${esc(a.fqdnAscii)}</code></div>
+          ${statusBadge(a.status, a.statusText)}
+          <div class="detail-actions">
+            <button class="btn primary" id="add-dns">＋ 添加解析</button>
+            ${a.canRenew ? `<button class="btn success" id="renew-domain">▣ 续期</button>` : ''}
+          </div>
+        </div>
+      </section>
+
+      <section class="detail-panel">
+        <div class="tabs">
+          <button class="tab active" data-tab="overview">⌂ 概览</button>
+          <button class="tab" data-tab="dns">☷ DNS 解析</button>
+          <button class="tab" data-tab="renew">▦ 续期和域名详情</button>
+        </div>
+
+        <div class="tab-page active" data-page="overview">
+          <div class="detail-grid">
+            <div class="info-card"><h2>域名状态</h2>
+              <dl>
+                <dt>域名状态</dt><dd>${statusBadge(a.status, a.statusText)}</dd>
+                <dt>DNS 状态</dt><dd>${a.dnsConfigured ? statusBadge('approved','已配置') : statusBadge('pending','未配置')}</dd>
+                <dt>DNS 记录</dt><dd>${a.dnsConfigured ? 1 : 0}</dd>
+                <dt>到期时间</dt><dd>${a.expiresAt ? fmtDate(a.expiresAt, true) : '未设置'}</dd>
+              </dl>
+            </div>
+            <div class="info-card"><h2>快捷操作</h2>
+              <div class="quick-actions">
+                <button class="btn primary" data-open-dns>＋ 添加解析</button>
+                ${a.canRenew ? `<button class="btn success" data-renew-one>▣ 续期</button>` : '<button class="btn secondary" disabled>未到续期时间</button>'}
+                ${a.canDelete ? `<button class="btn danger-soft" data-delete-one>删除无效域名</button>` : ''}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-page" data-page="dns">
+          <div class="section-head"><div><h2>DNS 解析</h2><p>只管理 DNS 记录类型与目标地址，不显示外部 DNS 服务器。</p></div><button class="btn primary" data-open-dns>＋ 添加解析</button></div>
+          <div class="table-wrap"><table><thead><tr><th>主机</th><th>类型</th><th>目标地址</th><th>TTL</th><th>代理</th></tr></thead><tbody>${dnsRows || '<tr><td colspan="5">暂无 DNS 解析，请点击“添加解析”。</td></tr>'}</tbody></table></div>
+        </div>
+
+        <div class="tab-page" data-page="renew">
+          <div class="detail-grid">
+            <div class="info-card"><h2>续期信息</h2><dl>
+              <dt>注册时间</dt><dd>${fmtDate(a.createdAt, true)}</dd>
+              <dt>到期时间</dt><dd>${a.expiresAt ? fmtDate(a.expiresAt, true) : '未设置'}</dd>
+              <dt>剩余时间</dt><dd>${esc(a.remainingText)}</dd>
+              <dt>续期次数</dt><dd>${esc(a.renewCount || 0)}</dd>
+            </dl></div>
+            <div class="info-card"><h2>操作</h2><p>默认有效期 ${state.config.domain.validDays} 天，最后 ${state.config.domain.renewWindowDays} 天可续期。</p>${a.canRenew ? `<button class="btn success" data-renew-one>立即续期</button>` : `<button class="btn secondary" disabled>暂不可续期</button>`}</div>
+          </div>
+        </div>
+      </section>`);
+    document.querySelectorAll('[data-tab]').forEach(btn => btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-tab]').forEach(x => x.classList.remove('active'));
+      document.querySelectorAll('[data-page]').forEach(x => x.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelector(`[data-page="${btn.dataset.tab}"]`)?.classList.add('active');
+    }));
+    document.querySelectorAll('#add-dns,[data-open-dns]').forEach(btn => btn.addEventListener('click', () => showDnsModal(a)));
+    document.querySelectorAll('#renew-domain,[data-renew-one]').forEach(btn => btn.addEventListener('click', () => renewDomain(a.id)));
+    document.querySelector('[data-delete-one]')?.addEventListener('click', () => showDeleteDomainModal(a.id));
+  } catch (error) {
+    toast(error.message, 'error');
+    go('#/domains');
+  }
 }
 
-function bindDomainActions(applications) {
-  document.querySelectorAll('[data-manage-domain]').forEach(btn => btn.addEventListener('click', () => {
-    const item = applications.find(x => x.id === btn.dataset.manageDomain);
-    if (item) openDomainManageModal(item);
-  }));
-  document.querySelectorAll('[data-renew-domain]').forEach(btn => btn.addEventListener('click', async () => {
-    if (!confirm('确认申请续期 1 年？')) return;
-    btn.disabled = true;
-    try {
-      await api('/api/applications/renew', { method: 'POST', body: { id: btn.dataset.renewDomain } });
-      toast('续期成功', 'success');
-      await renderMyApplications();
-    } catch (error) { toast(error.message, 'error'); btn.disabled = false; }
-  }));
-}
-
-function openDomainManageModal(a) {
-  const currentType = a.recordType || 'CNAME';
-  openModal('管理域名', `<form id="domain-dns-form" class="form-grid">
-    <div class="form-group full"><label>域名</label><input value="${attr(a.fqdnUnicode)}" disabled></div>
-    <div class="form-group"><label>DNS 记录类型</label><select name="recordType">
-      ${['CNAME','A','AAAA'].map(t => `<option value="${t}" ${currentType === t ? 'selected' : ''}>${t}</option>`).join('')}
-    </select></div>
-    <div class="form-group"><label>目标地址</label><input name="target" value="${attr(a.recordContent || '')}" placeholder="CNAME填主机名，A填IPv4，AAAA填IPv6" required maxlength="253" autocomplete="off"></div>
-    <div class="form-group full"><p class="help">CNAME 不要填写 https://、路径、端口；A/AAAA 必须填写公网 IP。保存后管理员审核批准时使用这里的 DNS 配置。</p></div>
-    <div class="form-group full"><button class="btn btn-primary" type="submit">保存 DNS 配置</button></div>
-  </form>`, true);
-  document.querySelector('#domain-dns-form').addEventListener('submit', async e => {
+function showDnsModal(a) {
+  const suffix = (state.config.suffixes || []).find(s => s.suffix === a.suffixUnicode) || (state.config.suffixes || [])[0] || {};
+  const types = suffix.allowedTypes?.length ? suffix.allowedTypes : ['CNAME'];
+  openModal('添加解析', `为 ${a.fqdnUnicode} 设置 DNS 解析`, `
+    <form id="dns-form" class="modal-form">
+      <label class="field wide"><span>DNS 记录类型</span><select name="recordType">${types.map(t => `<option value="${attr(t)}" ${a.recordType === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
+      <label class="field wide"><span>目标地址</span><input name="target" value="${attr(a.recordContent || '')}" placeholder="例如：your-project.pages.dev" required></label>
+      <div class="preview-box"><span>说明</span><strong>CNAME 填完整主机名；A 填 IPv4；AAAA 填 IPv6。不要填写 https:// 或路径。</strong></div>
+      <div class="modal-actions"><button type="button" class="btn secondary" data-cancel>取消</button><button class="btn primary" type="submit">保存解析</button></div>
+    </form>
+  `, 'wide');
+  document.querySelector('[data-cancel]').addEventListener('click', closeModal);
+  document.querySelector('#dns-form').addEventListener('submit', async e => {
     e.preventDefault();
-    const button = e.submitter; button.disabled = true;
-    const form = new FormData(e.currentTarget);
+    const btn = e.submitter;
+    btn.disabled = true;
+    const f = new FormData(e.currentTarget);
     try {
-      await api(`/api/applications/${a.id}/dns`, { method: 'PATCH', body: { recordType: form.get('recordType'), target: form.get('target') } });
-      toast('DNS 配置已保存', 'success');
+      await api(`/api/applications/${encodeURIComponent(a.id)}/dns`, { method:'PATCH', body:{ recordType:f.get('recordType'), target:f.get('target') } });
       closeModal();
-      await renderMyApplications();
-    } catch (error) { toast(error.message, 'error'); button.disabled = false; }
+      toast('DNS 解析已保存', 'success');
+      await renderDomainDetail(a.id);
+    } catch (error) {
+      toast(error.message, 'error');
+      btn.disabled = false;
+    }
   });
 }
 
+function showDeleteDomainModal(id) {
+  const a = state.applications.find(x => x.id === id);
+  openModal('删除无效域名', '此操作只删除已拒绝或已撤销的无效域名记录，不影响正常域名。', `
+    <div class="delete-box">
+      <p>确认删除：</p>
+      <strong>${esc(a?.fqdnUnicode || id)}</strong>
+      <p class="danger-text">删除后该记录将从用户列表中隐藏。</p>
+    </div>
+    <div class="modal-actions"><button type="button" class="btn secondary" data-cancel>取消</button><button class="btn danger" id="confirm-delete">确认删除</button></div>
+  `);
+  document.querySelector('[data-cancel]').addEventListener('click', closeModal);
+  document.querySelector('#confirm-delete').addEventListener('click', async () => {
+    try {
+      await api(`/api/applications/${encodeURIComponent(id)}`, { method:'DELETE' });
+      closeModal();
+      toast('无效域名已删除', 'success');
+      await renderDomains();
+    } catch (error) { toast(error.message, 'error'); }
+  });
+}
+
+async function renewDomain(id) {
+  if (!confirm('确认续期一年？')) return;
+  try {
+    await api(`/api/applications/${encodeURIComponent(id)}/renew`, { method:'POST', body:{} });
+    toast('续期成功', 'success');
+    if (location.hash.startsWith('#/domain/')) await renderDomainDetail(id);
+    else await renderDomains();
+  } catch (error) { toast(error.message, 'error'); }
+}
+
 async function renderAccount() {
-  shell('账户设置', `<div class="grid grid-2"><section class="card"><h2>账户信息</h2><div class="form-grid"><div class="form-group"><label>用户名</label><input value="${attr(state.me.username)}" disabled></div><div class="form-group"><label>角色</label><input value="${state.me.role === 'admin' ? '管理员' : '普通用户'}" disabled></div><div class="form-group full"><label>邮箱</label><input value="${attr(state.me.email || '')}" disabled></div></div></section>
-    <section class="card"><h2>修改密码</h2><form id="password-form" class="form-grid"><div class="form-group full"><label>当前密码</label><input name="currentPassword" type="password" required></div><div class="form-group full"><label>新密码</label><input name="newPassword" type="password" required minlength="10"></div><div class="form-group full"><button class="btn btn-primary" type="submit">修改并退出所有会话</button></div></form></section></div>`);
+  shell('账户设置', `
+    <div class="grid two">
+      <section class="card"><h2>账户信息</h2><div class="info-list"><span>用户名</span><strong>${esc(state.me.username)}</strong><span>角色</span><strong>${state.me.role === 'admin' ? '管理员' : '普通用户'}</strong><span>域名额度</span><strong>${esc(state.me.domainQuota || state.quota.total || 3)}</strong></div></section>
+      <section class="card"><h2>修改密码</h2><form id="password-form" class="form-grid"><label class="field wide"><span>当前密码</span><input name="currentPassword" type="password" required></label><label class="field wide"><span>新密码</span><input name="newPassword" type="password" required minlength="10"></label><button class="btn primary wide" type="submit">修改密码</button></form></section>
+    </div>`);
   document.querySelector('#password-form').addEventListener('submit', async e => {
     e.preventDefault();
-    const button = e.submitter; button.disabled = true;
-    const body = Object.fromEntries(new FormData(e.currentTarget));
-    try { await api('/api/auth/change-password', { method: 'POST', body }); toast('密码已修改，请重新登录', 'success'); state.me = null; go('#/login'); }
-    catch (error) { toast(error.message, 'error'); button.disabled = false; }
+    const btn = e.submitter;
+    btn.disabled = true;
+    try {
+      await api('/api/auth/change-password', { method:'POST', body:Object.fromEntries(new FormData(e.currentTarget)) });
+      toast('密码已修改，请重新登录', 'success');
+      state.me = null;
+      go('#/login');
+    } catch (error) {
+      toast(error.message, 'error');
+      btn.disabled = false;
+    }
   });
 }
 
 async function renderAdminOverview() {
-  shell('管理概览', `<div class="loading-screen" style="min-height:55vh"><div class="spinner"></div><p>正在统计…</p></div>`);
+  shell('管理概览', `<div class="loading-card">正在统计…</div>`);
   try {
     const { overview } = await api('/api/admin/overview');
-    const u = overview.users || {}, a = overview.applications || {};
-    const recent = (overview.recent || []).map(x => `<tr><td>${esc(x.username)}</td><td><strong>${esc(x.fqdn_unicode)}</strong></td><td>${badge(x.status)}</td><td>${fmtDateTime(x.created_at)}</td></tr>`).join('');
-    shell('管理概览', `<div class="grid grid-4">
-      ${stat('用户总数', u.total || 0, '活跃 ' + (u.active || 0))}${stat('待审核', a.pending || 0, '需要处理')}${stat('已批准', a.approved || 0, 'DNS 已创建')}${stat('今日申请', overview.today || 0, '今日新增')}
-    </div><section class="card"><div class="actions" style="justify-content:space-between"><div><h2 style="margin:0">最新申请</h2><p class="muted">最近提交的 8 条申请</p></div><a class="btn btn-secondary" href="#/admin/applications">查看全部</a></div>
-    ${recent ? `<div class="table-wrap"><table><thead><tr><th>用户</th><th>域名</th><th>状态</th><th>时间</th></tr></thead><tbody>${recent}</tbody></table></div>` : '<div class="empty">暂无申请。</div>'}</section>`);
+    const u = overview.users || {};
+    const a = overview.applications || {};
+    shell('管理概览', `
+      <div class="stats">
+        ${stat('用户总数', u.total || 0, `活跃 ${u.active || 0}`)}
+        ${stat('待审核', a.pending || 0, '需要处理')}
+        ${stat('正常域名', a.approved || 0, '已写入 DNS')}
+        ${stat('今日注册', overview.today || 0, '今日新增')}
+      </div>
+      <section class="card"><h2>快速入口</h2><div class="quick-actions"><a class="btn primary" href="#/admin/applications">审核域名</a><a class="btn secondary" href="#/admin/users">用户管理</a><a class="btn secondary" href="#/admin/settings">管理员设置</a></div></section>`);
   } catch (error) { toast(error.message, 'error'); }
 }
-function stat(label, value, trend) { return `<section class="card stat-card"><div class="label">${esc(label)}</div><div class="value">${esc(value)}</div><div class="trend">${esc(trend)}</div></section>`; }
+function stat(label, value, sub) {
+  return `<section class="stat"><span>${esc(label)}</span><strong>${esc(value)}</strong><em>${esc(sub)}</em></section>`;
+}
 
 async function renderAdminApplications() {
-  shell('申请审核', `<section class="card"><div class="empty"><div class="spinner"></div></div></section>`);
+  shell('域名审核', `<div class="loading-card">正在读取申请…</div>`);
   try {
-    const { applications } = await api('/api/admin/applications?limit=300');
-    const filters = ['all', 'pending', 'approved', 'rejected', 'revoked'].map(s => `<button class="tab ${s === 'all' ? 'active' : ''}" data-filter="${s}">${s === 'all' ? '全部' : statusText[s]}</button>`).join('');
-    shell('申请审核', `<section class="card"><div class="actions" style="justify-content:space-between;margin-bottom:18px"><div class="tabs" id="app-filters">${filters}</div><input id="app-search" placeholder="搜索域名或用户名" style="max-width:280px"></div><div id="applications-table"></div></section>`);
-    const draw = (filter = 'all', q = '') => {
-      const list = applications.filter(a => (filter === 'all' || a.status === filter) && (!q || `${a.fqdnUnicode} ${a.fqdnAscii} ${a.username}`.toLowerCase().includes(q.toLowerCase())));
-      document.querySelector('#applications-table').innerHTML = list.length ? `<div class="table-wrap"><table><thead><tr><th>用户</th><th>域名</th><th>DNS</th><th>到期</th><th>状态</th><th>提交时间</th><th>操作</th></tr></thead><tbody>${list.map(a => `<tr>
-        <td>${esc(a.username)}</td><td><strong>${esc(a.fqdnUnicode)}</strong><br><small class="mono muted">${esc(a.fqdnAscii)}</small>${a.errorMessage ? `<br><small style="color:var(--danger)">${esc(a.errorMessage)}</small>` : ''}</td>
-        <td>${esc(a.recordType || 'CNAME')} → <span class="mono">${esc(a.recordContent || '未配置')}</span></td><td>${fmtDate(a.expiresAt)}</td><td>${badge(a.status)}</td><td>${fmtDateTime(a.createdAt)}</td>
-        <td><div class="actions">${a.status === 'pending' ? `<button class="btn btn-success btn-sm" data-review="approve" data-id="${a.id}">批准</button><button class="btn btn-danger btn-sm" data-review="reject" data-id="${a.id}">拒绝</button>` : ''}${a.status === 'approved' ? `<button class="btn btn-warning btn-sm" data-review="revoke" data-id="${a.id}">撤销 DNS</button>` : ''}</div></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">没有匹配记录。</div>';
-      bindReviewButtons();
-    };
-    draw();
-    document.querySelectorAll('[data-filter]').forEach(btn => btn.addEventListener('click', () => {
-      document.querySelectorAll('[data-filter]').forEach(x => x.classList.remove('active'));
-      btn.classList.add('active');
-      draw(btn.dataset.filter, document.querySelector('#app-search').value);
+    const { applications } = await api('/api/admin/applications?limit=500');
+    const rows = applications.map(a => `<tr>
+      <td><strong>${esc(a.fqdnUnicode)}</strong><br><code>${esc(a.fqdnAscii)}</code></td>
+      <td>${esc(a.username || '—')}</td>
+      <td>${a.dnsConfigured ? `<b>${esc(a.recordType)}</b> → <code>${esc(a.recordContent)}</code>` : '<span class="muted">未配置 DNS</span>'}</td>
+      <td>${statusBadge(a.status, a.statusText)}</td>
+      <td>${a.expiresAt ? fmtDate(a.expiresAt) : '—'}<br><small>${esc(a.remainingText || '')}</small></td>
+      <td class="actions-cell">
+        ${a.status === 'pending' ? `<button class="btn success small" data-review="approve" data-id="${a.id}">批准</button><button class="btn danger-soft small" data-review="reject" data-id="${a.id}">拒绝</button>` : ''}
+        ${a.status === 'approved' ? `<button class="btn danger-soft small" data-review="revoke" data-id="${a.id}">撤销</button>` : ''}
+        ${['rejected','revoked'].includes(a.status) ? `<button class="btn danger-soft small" data-review="delete" data-id="${a.id}">删除</button>` : ''}
+      </td>
+    </tr>`).join('');
+    shell('域名审核', `<section class="card"><div class="section-head"><div><h2>域名审核</h2><p>用户需先配置 DNS，管理员批准后写入 Cloudflare DNS。</p></div></div><div class="table-wrap"><table><thead><tr><th>域名</th><th>用户</th><th>DNS</th><th>状态</th><th>到期</th><th>操作</th></tr></thead><tbody>${rows || '<tr><td colspan="6">暂无申请</td></tr>'}</tbody></table></div></section>`);
+    document.querySelectorAll('[data-review]').forEach(btn => btn.addEventListener('click', async () => {
+      const action = btn.dataset.review;
+      const label = { approve:'批准', reject:'拒绝', revoke:'撤销', delete:'删除' }[action];
+      if (!confirm(`确认${label}该域名？`)) return;
+      const note = action === 'delete' ? '' : (prompt('管理员备注，可留空', '') ?? '');
+      btn.disabled = true;
+      try {
+        await api(`/api/admin/applications/${btn.dataset.id}/${action}`, { method:'POST', body:{ note } });
+        toast('操作成功', 'success');
+        await renderAdminApplications();
+      } catch (error) {
+        toast(error.message, 'error');
+        btn.disabled = false;
+      }
     }));
-    document.querySelector('#app-search').addEventListener('input', e => draw(document.querySelector('[data-filter].active').dataset.filter, e.target.value));
   } catch (error) { toast(error.message, 'error'); }
-}
-function bindReviewButtons() {
-  document.querySelectorAll('[data-review]').forEach(btn => btn.addEventListener('click', async () => {
-    const action = btn.dataset.review;
-    const labels = { approve: '批准', reject: '拒绝', revoke: '撤销' };
-    if (!confirm(`确认${labels[action]}该申请？`)) return;
-    const note = prompt('管理员备注（可留空）', '') ?? '';
-    btn.disabled = true;
-    try {
-      await api(`/api/admin/applications/${btn.dataset.id}/${action}`, { method: 'POST', body: { note } });
-      toast(`操作成功：${labels[action]}`, 'success');
-      await renderAdminApplications();
-    } catch (error) { toast(error.message, 'error'); btn.disabled = false; }
-  }));
 }
 
 async function renderAdminUsers() {
-  shell('用户管理', `<section class="card"><div class="empty"><div class="spinner"></div></div></section>`);
+  shell('用户管理', `<div class="loading-card">正在读取用户…</div>`);
   try {
     const { users } = await api('/api/admin/users');
-    const rows = users.map(u => `<tr><td><strong>${esc(u.username)}</strong><br><small class="muted">${esc(u.email || '未填写邮箱')}</small></td><td>${u.role === 'admin' ? '管理员' : '用户'}</td><td>${badge(u.status)}</td><td>${u.applicationCount} / ${u.approvedCount}</td><td>${fmtDateTime(u.lastLoginAt)}</td><td><div class="actions"><button class="btn btn-secondary btn-sm" data-edit-user="${u.id}">权限</button><button class="btn btn-secondary btn-sm" data-reset-user="${u.id}">重置密码</button>${u.id !== state.me.id ? `<button class="btn btn-danger btn-sm" data-delete-user="${u.id}">移除</button>` : ''}</div></td></tr>`).join('');
-    shell('用户管理', `<section class="card"><div class="actions" style="justify-content:space-between;margin-bottom:18px"><div><h2 style="margin:0">用户数据</h2><p class="muted">管理账户状态、角色和域名申请权限。</p></div><button class="btn btn-primary" id="add-user">添加用户</button></div><div class="table-wrap"><table><thead><tr><th>用户</th><th>角色</th><th>状态</th><th>申请/批准</th><th>最后登录</th><th>操作</th></tr></thead><tbody>${rows}</tbody></table></div></section>`);
-    document.querySelector('#add-user').addEventListener('click', showAddUser);
-    document.querySelectorAll('[data-edit-user]').forEach(b => b.addEventListener('click', () => showUserEditor(users.find(u => u.id === b.dataset.editUser))));
-    document.querySelectorAll('[data-reset-user]').forEach(b => b.addEventListener('click', () => resetUserPassword(b.dataset.resetUser)));
-    document.querySelectorAll('[data-delete-user]').forEach(b => b.addEventListener('click', () => deleteUser(b.dataset.deleteUser)));
+    const rows = users.map(u => `<tr>
+      <td><strong>${esc(u.username)}</strong><br><small>${esc(u.email || '未填写邮箱')}</small></td>
+      <td>${u.role === 'admin' ? '管理员' : '用户'}</td>
+      <td>${statusBadge(u.status)}</td>
+      <td>${esc(u.domainQuota)}</td>
+      <td>${u.applicationCount} / ${u.approvedCount}</td>
+      <td><button class="btn soft small" data-edit-user="${u.id}">编辑</button></td>
+    </tr>`).join('');
+    shell('用户管理', `<section class="card"><h2>用户管理</h2><div class="table-wrap"><table><thead><tr><th>用户</th><th>角色</th><th>状态</th><th>额度</th><th>申请/正常</th><th>操作</th></tr></thead><tbody>${rows}</tbody></table></div></section>`);
+    document.querySelectorAll('[data-edit-user]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const u = users.find(x => x.id === btn.dataset.editUser);
+        showUserModal(u);
+      });
+    });
   } catch (error) { toast(error.message, 'error'); }
 }
-function permissionFields(p = {}) {
-  return `<div class="form-group"><label class="checkbox"><input name="canApply" type="checkbox" ${p.canApply !== false ? 'checked' : ''}>允许申请域名</label></div><div class="form-group"><label>待审上限</label><input name="maxPending" type="number" min="0" max="100" value="${attr(p.maxPending ?? 3)}"></div><div class="form-group"><label>总数上限</label><input name="maxTotal" type="number" min="0" max="1000" value="${attr(p.maxTotal ?? 20)}"></div><div class="form-group"><label>域名额度</label><input name="domainQuota" type="number" min="0" max="1000" value="${attr(p.domainQuota ?? 3)}"></div><div class="form-group full"><label>允许后缀</label><input name="allowedSuffixes" value="${attr((p.allowedSuffixes || []).join(','))}" placeholder="留空表示全部；多个后缀用逗号分隔"></div>`;
-}
-function showAddUser() {
-  openModal('添加用户', `<form id="add-user-form" class="form-grid"><div class="form-group"><label>用户名</label><input name="username" required></div><div class="form-group"><label>邮箱</label><input name="email" type="email"></div><div class="form-group full"><label>初始密码</label><input name="password" type="password" minlength="10" required></div><div class="form-group"><label>角色</label><select name="role"><option value="user">用户</option><option value="admin">管理员</option></select></div><div class="form-group"><label>状态</label><select name="status"><option value="active">启用</option><option value="disabled">禁用</option></select></div>${permissionFields()}<div class="form-group full"><button class="btn btn-primary" type="submit">创建用户</button></div></form>`);
-  document.querySelector('#add-user-form').addEventListener('submit', async e => {
+function showUserModal(u) {
+  openModal('编辑用户', u.username, `
+    <form id="user-form" class="modal-form">
+      <label class="field wide"><span>角色</span><select name="role"><option value="user" ${u.role==='user'?'selected':''}>用户</option><option value="admin" ${u.role==='admin'?'selected':''}>管理员</option></select></label>
+      <label class="field wide"><span>状态</span><select name="status"><option value="active" ${u.status==='active'?'selected':''}>启用</option><option value="disabled" ${u.status==='disabled'?'selected':''}>禁用</option></select></label>
+      <label class="field wide"><span>域名额度</span><input name="domainQuota" type="number" min="0" max="9999" value="${attr(u.domainQuota || 3)}"></label>
+      <div class="modal-actions"><button class="btn secondary" type="button" data-cancel>取消</button><button class="btn primary" type="submit">保存</button></div>
+    </form>`);
+  document.querySelector('[data-cancel]').addEventListener('click', closeModal);
+  document.querySelector('#user-form').addEventListener('submit', async e => {
     e.preventDefault();
-    const f = new FormData(e.currentTarget);
-    const body = Object.fromEntries(f);
-    body.permissions = { canApply: f.get('canApply') === 'on', maxPending: f.get('maxPending'), maxTotal: f.get('maxTotal'), allowedSuffixes: String(f.get('allowedSuffixes') || '').split(',') };
-    body.domainQuota = f.get('domainQuota');
-    try { await api('/api/admin/users', { method: 'POST', body }); closeModal(); toast('用户已创建', 'success'); renderAdminUsers(); }
-    catch (error) { toast(error.message, 'error'); }
+    try {
+      await api(`/api/admin/users/${u.id}`, { method:'PATCH', body:Object.fromEntries(new FormData(e.currentTarget)) });
+      closeModal();
+      toast('用户已更新', 'success');
+      renderAdminUsers();
+    } catch (error) { toast(error.message, 'error'); }
   });
-}
-function showUserEditor(user) {
-  openModal(`编辑权限：${user.username}`, `<form id="edit-user-form" class="form-grid"><div class="form-group"><label>角色</label><select name="role"><option value="user" ${user.role === 'user' ? 'selected' : ''}>用户</option><option value="admin" ${user.role === 'admin' ? 'selected' : ''}>管理员</option></select></div><div class="form-group"><label>状态</label><select name="status"><option value="active" ${user.status === 'active' ? 'selected' : ''}>启用</option><option value="disabled" ${user.status === 'disabled' ? 'selected' : ''}>禁用</option></select></div>${permissionFields(user.permissions)}<div class="form-group full"><button class="btn btn-primary" type="submit">保存权限</button></div></form>`);
-  document.querySelector('#edit-user-form').addEventListener('submit', async e => {
-    e.preventDefault();
-    const f = new FormData(e.currentTarget);
-    const body = { role: f.get('role'), status: f.get('status'), permissions: { canApply: f.get('canApply') === 'on', maxPending: f.get('maxPending'), maxTotal: f.get('maxTotal'), allowedSuffixes: String(f.get('allowedSuffixes') || '').split(',') }, domainQuota: f.get('domainQuota') };
-    try { await api(`/api/admin/users/${user.id}`, { method: 'PATCH', body }); closeModal(); toast('用户权限已更新', 'success'); renderAdminUsers(); }
-    catch (error) { toast(error.message, 'error'); }
-  });
-}
-async function resetUserPassword(id) {
-  const password = prompt('输入新密码（至少10位，包含字母和数字）');
-  if (!password) return;
-  try { await api(`/api/admin/users/${id}/reset-password`, { method: 'POST', body: { password } }); toast('密码已重置，用户现有会话已失效', 'success'); }
-  catch (error) { toast(error.message, 'error'); }
-}
-async function deleteUser(id) {
-  if (!confirm('确认移除该用户？账户将被禁用并清除会话。')) return;
-  try { await api(`/api/admin/users/${id}`, { method: 'DELETE' }); toast('用户已移除', 'success'); renderAdminUsers(); }
-  catch (error) { toast(error.message, 'error'); }
 }
 
 async function renderAdminSettings() {
-  shell('系统设置', `<section class="card"><div class="empty"><div class="spinner"></div><p>正在读取配置…</p></div></section>`);
+  shell('管理员设置', `<div class="loading-card">正在读取设置…</div>`);
   try {
-    const [{ settings }, keysResult] = await Promise.all([api('/api/admin/settings'), api('/api/admin/registration-keys')]);
-    state.adminSettings = settings;
-    shell('系统设置', `<section class="card"><div class="tabs" id="settings-tabs">
-      ${['site:界面','turnstile:Turnstile','dns:DNS 后缀','registration:注册与密钥','notice:公告弹窗','security:账户安全'].map((x, i) => { const [k, n] = x.split(':'); return `<button class="tab ${i === 0 ? 'active' : ''}" data-tab="${k}">${n}</button>`; }).join('')}
-    </div>${siteSettings(settings)}${turnstileSettings(settings)}${dnsSettings(settings)}${registrationSettings(settings, keysResult.keys || [])}${noticeSettings(settings)}${securitySettings()}</section>`);
-    bindSettingsEvents();
-  } catch (error) { toast(error.message, 'error'); }
-}
-function siteSettings(s) {
-  return `<div class="setting-section active" data-section="site"><h2>界面与背景</h2><form id="site-form" class="form-grid"><div class="form-group"><label>网站标题</label><input name="title" value="${attr(s.site.title)}"></div><div class="form-group"><label>副标题</label><input name="subtitle" value="${attr(s.site.subtitle)}"></div><div class="form-group"><label>Logo URL</label><input name="logoUrl" value="${attr(s.site.logoUrl)}"></div><div class="form-group"><label>页脚文字</label><input name="footer" value="${attr(s.site.footer)}"></div><div class="form-group"><label>主色</label><input name="accent" type="color" value="${attr(s.site.accent)}"></div><div class="form-group"><label>辅助色</label><input name="accent2" type="color" value="${attr(s.site.accent2)}"></div><div class="form-group"><label>背景类型</label><select name="backgroundType"><option value="gradient" ${s.site.backgroundType === 'gradient' ? 'selected' : ''}>渐变/CSS</option><option value="image" ${s.site.backgroundType === 'image' ? 'selected' : ''}>图片 URL</option><option value="solid" ${s.site.backgroundType === 'solid' ? 'selected' : ''}>纯色</option></select></div><div class="form-group"><label>背景遮罩 0–0.9</label><input name="backgroundOverlay" type="number" min="0" max="0.9" step="0.01" value="${attr(s.site.backgroundOverlay)}"></div><div class="form-group full"><label>背景值</label><input id="background-value" name="backgroundValue" value="${attr(s.site.backgroundValue)}"><span class="help">图片模式填 URL；渐变模式可填 linear-gradient(...); 纯色填颜色。</span></div><div class="form-group full"><button class="btn btn-primary" type="submit">保存界面</button></div></form></div>`;
-}
-function turnstileSettings(s) {
-  const t = s.turnstile;
-  if (t.envManaged) return `<div class="setting-section" data-section="turnstile"><h2>Turnstile 人机验证</h2><div class="announcement info"><strong>当前由 Cloudflare Workers 环境变量管理</strong><br>请到 Worker → 设置 → 变量和机密中修改。后台不会显示或保存 Secret。</div><div class="table-wrap"><table style="min-width:620px"><tbody><tr><th>Site Key</th><td class="mono">${esc(t.siteKey || '未配置')}</td></tr><tr><th>Secret</th><td>${esc(t.secretSource === 'worker-secret' ? '已配置为 Worker Secret' : '未配置')}</td></tr><tr><th>预期主机名</th><td class="mono">${esc(t.expectedHostname || '未限制')}</td></tr><tr><th>申请验证</th><td>${t.enabledApply ? '开启' : '关闭'} / ${esc(t.actionApply)}</td></tr><tr><th>登录验证</th><td>${t.enabledLogin ? '开启' : '关闭'} / ${esc(t.actionLogin)}</td></tr><tr><th>注册验证</th><td>${t.enabledRegister ? '开启' : '关闭'} / ${esc(t.actionRegister)}</td></tr></tbody></table></div></div>`;
-  return `<div class="setting-section" data-section="turnstile"><h2>Turnstile 人机验证</h2><form id="turnstile-form" class="form-grid"><div class="form-group"><label>站点密钥 Site Key</label><input name="siteKey" value="${attr(t.siteKey)}"></div><div class="form-group"><label>Secret Key</label><input name="secret" type="password" placeholder="留空表示不修改"></div><div class="form-group"><label>预期主机名</label><input name="expectedHostname" value="${attr(t.expectedHostname)}"></div><div class="form-group"><label>申请 Action</label><input name="actionApply" value="${attr(t.actionApply)}"></div><div class="form-group"><label>登录 Action</label><input name="actionLogin" value="${attr(t.actionLogin)}"></div><div class="form-group"><label>注册 Action</label><input name="actionRegister" value="${attr(t.actionRegister)}"></div><div class="form-group full actions"><label class="checkbox"><input name="enabledApply" type="checkbox" ${t.enabledApply ? 'checked' : ''}>申请页启用</label><label class="checkbox"><input name="enabledLogin" type="checkbox" ${t.enabledLogin ? 'checked' : ''}>登录页启用</label><label class="checkbox"><input name="enabledRegister" type="checkbox" ${t.enabledRegister ? 'checked' : ''}>注册页启用</label></div><div class="form-group full"><button class="btn btn-primary" type="submit">保存 Turnstile</button></div></form></div>`;
-}
-function dnsSettings(s) {
-  const d = s.dns;
-  return `<div class="setting-section" data-section="dns"><h2>Cloudflare DNS 与可申请后缀</h2><div class="announcement info"><strong>${d.envManaged ? '当前由 Cloudflare Workers 环境变量管理' : '后台配置模式'}</strong><br>用户申请页面不再显示 DNS 记录类型和目标地址；目标地址在“域名管理”中填写。</div><p class="secret-state">API Token：${d.apiTokenSource === 'worker-secret' ? '已配置为 Worker Secret' : '未配置'}；后缀来源：${esc(d.suffixSource || 'settings')}</p><div class="table-wrap"><table><thead><tr><th>显示名</th><th>后缀</th><th>Zone ID</th><th>允许类型</th><th>默认类型</th><th>代理</th><th>状态</th></tr></thead><tbody>${(d.suffixes || []).map(x => `<tr><td>${esc(x.label)}</td><td class="mono">${esc(x.suffix)}</td><td class="mono">${esc(x.zoneId)}</td><td>${esc((x.allowedTypes || []).join(', '))}</td><td>${esc(x.defaultType)}</td><td>${x.proxied ? '是' : '否'}</td><td>${x.enabled ? '启用' : '停用'}</td></tr>`).join('') || '<tr><td colspan="7">尚未配置 DNS 后缀</td></tr>'}</tbody></table></div></div>`;
-}
-function registrationSettings(s, keys) {
-  return `<div class="setting-section" data-section="registration"><h2>注册设置</h2><form id="registration-form" class="form-grid"><div class="form-group full actions"><label class="checkbox"><input name="enabled" type="checkbox" ${s.registration.enabled ? 'checked' : ''}>开放注册</label><label class="checkbox"><input name="requireKey" type="checkbox" ${s.registration.requireKey ? 'checked' : ''}>要求注册密钥</label><label class="checkbox"><input name="autoActivate" type="checkbox" ${s.registration.autoActivate ? 'checked' : ''}>注册后自动启用</label></div><div class="form-group full"><button class="btn btn-primary" type="submit">保存注册设置</button></div></form><hr style="border:0;border-top:1px solid var(--line);margin:28px 0"><div class="grid grid-2"><form id="new-key-form" class="card" style="box-shadow:none"><h3>生成注册密钥</h3><div class="form-group"><label>名称</label><input name="name" value="邀请密钥"></div><div class="form-group"><label>最大使用次数（0=不限）</label><input name="maxUses" type="number" min="0" value="1"></div><div class="form-group"><label>过期时间（可选）</label><input name="expiresAt" type="datetime-local"></div><button class="btn btn-primary" type="submit">生成密钥</button></form><div><h3>现有密钥</h3><div class="table-wrap"><table style="min-width:520px"><thead><tr><th>名称</th><th>前缀</th><th>使用</th><th>状态</th><th></th></tr></thead><tbody>${keys.map(k => `<tr><td>${esc(k.name)}</td><td class="mono">${esc(k.key_prefix)}…</td><td>${k.used_count}/${Number(k.max_uses) === 0 ? '∞' : k.max_uses}</td><td>${k.active ? badge('active') : badge('disabled')}</td><td>${k.active ? `<button class="btn btn-danger btn-sm" data-disable-key="${k.id}">停用</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="5">暂无密钥</td></tr>'}</tbody></table></div></div></div></div>`;
-}
-function noticeSettings(s) {
-  return `<div class="setting-section" data-section="notice"><div class="grid grid-2"><form id="announcement-form" class="card" style="box-shadow:none"><h2>顶部公告</h2><label class="checkbox"><input name="enabled" type="checkbox" ${s.announcement.enabled ? 'checked' : ''}>启用</label><div class="form-group"><label>类型</label><select name="level"><option value="info" ${s.announcement.level === 'info' ? 'selected' : ''}>提示</option><option value="success" ${s.announcement.level === 'success' ? 'selected' : ''}>成功</option><option value="warning" ${s.announcement.level === 'warning' ? 'selected' : ''}>警告</option></select></div><div class="form-group"><label>内容</label><textarea name="text">${esc(s.announcement.text)}</textarea></div><button class="btn btn-primary" type="submit">保存公告</button></form><form id="popup-form" class="card" style="box-shadow:none"><h2>弹窗设置</h2><div class="actions"><label class="checkbox"><input name="enabled" type="checkbox" ${s.popup.enabled ? 'checked' : ''}>启用</label><label class="checkbox"><input name="oncePerSession" type="checkbox" ${s.popup.oncePerSession ? 'checked' : ''}>每个会话仅一次</label></div><div class="form-group"><label>标题</label><input name="title" value="${attr(s.popup.title)}"></div><div class="form-group"><label>内容</label><textarea name="content">${esc(s.popup.content)}</textarea></div><button class="btn btn-primary" type="submit">保存弹窗</button></form></div></div>`;
-}
-function securitySettings() {
-  return `<div class="setting-section" data-section="security"><h2>修改管理员密码</h2><form id="admin-password-form" class="form-grid" style="max-width:620px"><div class="form-group full"><label>当前密码</label><input name="currentPassword" type="password" required></div><div class="form-group full"><label>新密码</label><input name="newPassword" type="password" minlength="10" required></div><div class="form-group full"><button class="btn btn-primary" type="submit">修改并退出所有会话</button></div></form></div>`;
-}
-function bindSettingsEvents() {
-  document.querySelectorAll('[data-tab]').forEach(btn => btn.addEventListener('click', () => {
-    document.querySelectorAll('[data-tab]').forEach(x => x.classList.remove('active'));
-    document.querySelectorAll('[data-section]').forEach(x => x.classList.remove('active'));
-    btn.classList.add('active');
-    document.querySelector(`[data-section="${btn.dataset.tab}"]`)?.classList.add('active');
-  }));
-  bindJsonForm('#site-form', 'site', f => Object.fromEntries(f));
-  bindJsonForm('#turnstile-form', 'turnstile', f => ({ siteKey: f.get('siteKey'), secret: f.get('secret'), expectedHostname: f.get('expectedHostname'), actionApply: f.get('actionApply'), actionLogin: f.get('actionLogin'), actionRegister: f.get('actionRegister'), enabledApply: f.get('enabledApply') === 'on', enabledLogin: f.get('enabledLogin') === 'on', enabledRegister: f.get('enabledRegister') === 'on' }));
-  bindJsonForm('#registration-form', 'registration', f => ({ enabled: f.get('enabled') === 'on', requireKey: f.get('requireKey') === 'on', autoActivate: f.get('autoActivate') === 'on' }));
-  bindJsonForm('#announcement-form', 'announcement', f => ({ enabled: f.get('enabled') === 'on', level: f.get('level'), text: f.get('text') }));
-  bindJsonForm('#popup-form', 'popup', f => ({ enabled: f.get('enabled') === 'on', oncePerSession: f.get('oncePerSession') === 'on', title: f.get('title'), content: f.get('content') }));
-  document.querySelector('#admin-password-form')?.addEventListener('submit', async e => {
-    e.preventDefault();
-    const body = Object.fromEntries(new FormData(e.currentTarget));
-    try { await api('/api/auth/change-password', { method: 'POST', body }); toast('密码已修改，请重新登录', 'success'); state.me = null; go('#/login'); }
-    catch (error) { toast(error.message, 'error'); }
-  });
-  document.querySelector('#new-key-form')?.addEventListener('submit', async e => {
-    e.preventDefault();
-    const f = new FormData(e.currentTarget);
-    try { const { key } = await api('/api/admin/registration-keys', { method: 'POST', body: Object.fromEntries(f) }); openModal('注册密钥已生成', `<p>请立即复制保存，之后不会再次完整显示。</p><code style="display:block;padding:14px;background:#0f172a;color:white;border-radius:12px;word-break:break-all">${esc(key.rawKey)}</code>`); await renderAdminSettings(); }
-    catch (error) { toast(error.message, 'error'); }
-  });
-  document.querySelectorAll('[data-disable-key]').forEach(btn => btn.addEventListener('click', async () => {
-    if (!confirm('停用该注册密钥？')) return;
-    try { await api(`/api/admin/registration-keys/${btn.dataset.disableKey}`, { method: 'DELETE' }); toast('密钥已停用', 'success'); renderAdminSettings(); }
-    catch (error) { toast(error.message, 'error'); }
-  }));
-}
-function bindJsonForm(selector, group, mapper) {
-  const el = document.querySelector(selector);
-  if (!el) return;
-  el.addEventListener('submit', async e => {
-    e.preventDefault();
-    const button = e.submitter; button.disabled = true;
-    try {
-      await api(`/api/admin/settings/${group}`, { method: 'PUT', body: mapper(new FormData(e.currentTarget)) });
-      toast('设置已保存', 'success');
-      await refreshConfig();
-      await renderAdminSettings();
-    } catch (error) { toast(error.message, 'error'); button.disabled = false; }
-  });
-}
-async function refreshConfig() {
-  const { config } = await api('/api/public/config');
-  state.config = config;
-  applyTheme();
-}
+    const { settings } = await api('/api/admin/settings');
+    shell('管理员设置', `<section class="card admin-settings">
+      <div class="tabs">
+        <button class="tab active" data-tab="site">界面设置</button>
+        <button class="tab" data-tab="registration">注册设置</button>
+        <button class="tab" data-tab="domain">域名规则</button>
+        <button class="tab" data-tab="dns">DNS配置</button>
+      </div>
 
-async function renderAdminAnalytics() {
-  shell('数据分析', `<section class="card"><div class="empty"><div class="spinner"></div></div></section>`);
-  try {
-    const { analytics } = await api('/api/admin/analytics?days=30');
-    shell('数据分析', `<div class="grid grid-2"><section class="card"><h2>申请趋势</h2><pre>${esc(JSON.stringify(analytics.daily || [], null, 2))}</pre></section><section class="card"><h2>状态分布</h2><pre>${esc(JSON.stringify(analytics.status || [], null, 2))}</pre></section></div>`);
+      <div class="tab-page active" data-page="site">
+        <form id="site-form" class="form-grid">
+          <label class="field"><span>网站标题</span><input name="title" value="${attr(settings.site.title)}"></label>
+          <label class="field"><span>副标题</span><input name="subtitle" value="${attr(settings.site.subtitle)}"></label>
+          <label class="field"><span>Logo文字</span><input name="logoText" maxlength="6" value="${attr(settings.site.logoText)}"></label>
+          <label class="field"><span>页脚文字</span><input name="footer" value="${attr(settings.site.footer)}"></label>
+          <label class="field"><span>主色</span><input name="accent" type="color" value="${attr(settings.site.accent)}"></label>
+          <label class="field"><span>辅助色</span><input name="accent2" type="color" value="${attr(settings.site.accent2)}"></label>
+          <button class="btn primary wide" type="submit">保存界面设置</button>
+        </form>
+      </div>
+
+      <div class="tab-page" data-page="registration">
+        <form id="registration-form" class="form-grid">
+          <label class="check wide"><input name="enabled" type="checkbox" ${settings.registration.enabled ? 'checked' : ''}> 开放用户注册</label>
+          <label class="check wide"><input name="autoActivate" type="checkbox" ${settings.registration.autoActivate ? 'checked' : ''}> 注册后自动启用账户</label>
+          <button class="btn primary wide" type="submit">保存注册设置</button>
+        </form>
+      </div>
+
+      <div class="tab-page" data-page="domain">
+        <form id="domain-form" class="form-grid">
+          <label class="field"><span>默认域名额度</span><input name="defaultQuota" type="number" min="1" max="9999" value="${attr(settings.domain.defaultQuota)}"></label>
+          <label class="field"><span>默认有效天数</span><input name="validDays" type="number" min="1" max="3650" value="${attr(settings.domain.validDays)}"></label>
+          <label class="field"><span>允许续期窗口/天</span><input name="renewWindowDays" type="number" min="1" max="3650" value="${attr(settings.domain.renewWindowDays)}"></label>
+          <label class="check wide"><input name="allowUserDeleteInvalid" type="checkbox" ${settings.domain.allowUserDeleteInvalid ? 'checked' : ''}> 用户可删除无效域名</label>
+          <label class="check wide"><input name="allowDnsEditAfterApproved" type="checkbox" ${settings.domain.allowDnsEditAfterApproved ? 'checked' : ''}> 生效后允许用户修改 DNS</label>
+          <button class="btn primary wide" type="submit">保存域名规则</button>
+        </form>
+      </div>
+
+      <div class="tab-page" data-page="dns">
+        <div class="notice">DNS、Zone ID、API Token 当前建议通过 Cloudflare Workers 环境变量和机密管理，不在网页中暴露。</div>
+        <div class="table-wrap"><table><thead><tr><th>根域名</th><th>Zone ID</th><th>允许类型</th><th>默认类型</th><th>TTL</th><th>代理</th></tr></thead><tbody>${settings.dns.suffixes.map(s => `<tr><td>${esc(s.suffix)}</td><td><code>${esc(s.zoneId || '未配置')}</code></td><td>${esc((s.allowedTypes || []).join(', '))}</td><td>${esc(s.defaultType)}</td><td>${esc(s.ttl)}</td><td>${s.proxied ? '是' : '否'}</td></tr>`).join('')}</tbody></table></div>
+        <p class="muted">对应变量：DNS_SUFFIX、DNS_ZONE_ID、DNS_ALLOWED_TYPES、DNS_DEFAULT_TYPE、DNS_TTL、DNS_PROXIED、CF_API_TOKEN。</p>
+      </div>
+    </section>`);
+    document.querySelectorAll('[data-tab]').forEach(btn => btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-tab]').forEach(x => x.classList.remove('active'));
+      document.querySelectorAll('[data-page]').forEach(x => x.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelector(`[data-page="${btn.dataset.tab}"]`)?.classList.add('active');
+    }));
+    bindSettingForm('#site-form', 'site', f => Object.fromEntries(f));
+    bindSettingForm('#registration-form', 'registration', f => ({ enabled:f.get('enabled')==='on', autoActivate:f.get('autoActivate')==='on' }));
+    bindSettingForm('#domain-form', 'domain', f => ({
+      defaultQuota:f.get('defaultQuota'),
+      validDays:f.get('validDays'),
+      renewWindowDays:f.get('renewWindowDays'),
+      allowUserDeleteInvalid:f.get('allowUserDeleteInvalid')==='on',
+      allowDnsEditAfterApproved:f.get('allowDnsEditAfterApproved')==='on',
+    }));
   } catch (error) { toast(error.message, 'error'); }
 }
-async function renderAdminAudit() {
-  shell('审计日志', `<section class="card"><div class="empty"><div class="spinner"></div></div></section>`);
-  try {
-    const { logs } = await api('/api/admin/audit?limit=200');
-    const rows = logs.map(l => `<tr><td>${fmtDateTime(l.created_at)}</td><td>${esc(l.username || l.actor_user_id || '系统')}</td><td>${esc(l.action)}</td><td>${esc(l.target_type || '')}/${esc(l.target_id || '')}</td></tr>`).join('');
-    shell('审计日志', `<section class="card"><div class="table-wrap"><table><thead><tr><th>时间</th><th>操作者</th><th>动作</th><th>对象</th></tr></thead><tbody>${rows}</tbody></table></div></section>`);
-  } catch (error) { toast(error.message, 'error'); }
+function bindSettingForm(selector, group, mapper) {
+  const form = document.querySelector(selector);
+  if (!form) return;
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = e.submitter;
+    btn.disabled = true;
+    try {
+      const { settings } = await api(`/api/admin/settings/${group}`, { method:'PUT', body:mapper(new FormData(form)) });
+      state.config.site = settings.site;
+      state.config.registration = settings.registration;
+      state.config.domain = settings.domain;
+      applyTheme();
+      toast('设置已保存', 'success');
+      btn.disabled = false;
+    } catch (error) {
+      toast(error.message, 'error');
+      btn.disabled = false;
+    }
+  });
 }
 
 async function mountTurnstile(selector, action) {
-  if (!state.config.turnstile.siteKey) return;
-  const box = document.querySelector(selector);
-  if (!box) return;
-  await loadTurnstile();
-  if (!window.turnstile) return;
-  state.widgetId = window.turnstile.render(box, { sitekey: state.config.turnstile.siteKey, action });
-}
-function loadTurnstile() {
-  if (window.turnstile) return Promise.resolve();
-  if (state.turnstilePromise) return state.turnstilePromise;
-  state.turnstilePromise = new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
-    script.async = true;
-    script.defer = true;
-    script.onload = resolve;
-    script.onerror = reject;
-    document.head.appendChild(script);
-  });
-  return state.turnstilePromise;
+  const config = state.config.turnstile || {};
+  if (!window.turnstile || !config.siteKey) return;
+  const el = document.querySelector(selector);
+  if (!el) return;
+  state.widgetId = window.turnstile.render(el, { sitekey: config.siteKey, action });
 }
 function turnstileToken() {
-  if (state.widgetId === null || !window.turnstile) return undefined;
-  return window.turnstile.getResponse(state.widgetId);
+  if (window.turnstile && state.widgetId !== null) return window.turnstile.getResponse(state.widgetId);
+  return '';
 }
 function resetTurnstile() {
-  if (state.widgetId !== null && window.turnstile) window.turnstile.reset(state.widgetId);
+  if (window.turnstile && state.widgetId !== null) window.turnstile.reset(state.widgetId);
 }
 
 init();
