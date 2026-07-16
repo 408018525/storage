@@ -51,6 +51,9 @@ interface ApplicationRow {
   created_at: string;
   reviewed_at: string | null;
   reviewed_by: string | null;
+  expires_at: string | null;
+  renewed_at: string | null;
+  renew_count?: number | null;
 }
 
 export default {
@@ -102,6 +105,10 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
 
   if (method === 'GET' && pathname === '/api/applications') return listOwnApplications(request, env);
   if (method === 'POST' && pathname === '/api/applications') return createApplication(request, env);
+  if (method === 'POST' && pathname === '/api/applications/renew') return renewApplication(request, env);
+
+  let userMatch = pathname.match(/^\/api\/applications\/([^/]+)\/dns$/);
+  if (userMatch && method === 'PATCH') return updateApplicationDns(request, env, decodeURIComponent(userMatch[1]));
 
   if (method === 'GET' && pathname === '/api/admin/overview') return adminOverview(request, env);
   if (method === 'GET' && pathname === '/api/admin/applications') return adminApplications(request, env, url);
@@ -254,10 +261,22 @@ async function changeOwnPassword(request: Request, env: Env): Promise<Response> 
 
 async function listOwnApplications(request: Request, env: Env): Promise<Response> {
   const user = await requireUser(env, request);
-  const rows = await env.DB.prepare(`
-    SELECT * FROM domain_applications WHERE user_id=? ORDER BY created_at DESC LIMIT 200
-  `).bind(user.id).all<ApplicationRow>();
-  return ok({ applications: (rows.results || []).map(serializeApplication) });
+  const [rows, quota] = await Promise.all([
+    env.DB.prepare(`
+      SELECT * FROM domain_applications WHERE user_id=? ORDER BY created_at DESC LIMIT 200
+    `).bind(user.id).all<ApplicationRow>(),
+    getUserQuota(env, user.id),
+  ]);
+  const applications = (rows.results || []).map(serializeApplication);
+  const used = applications.filter(app => !['rejected', 'revoked'].includes(app.status)).length;
+  return ok({
+    applications,
+    quota: {
+      used,
+      total: quota,
+      remaining: Math.max(0, quota - used),
+    },
+  });
 }
 
 async function createApplication(request: Request, env: Env): Promise<Response> {
@@ -282,30 +301,34 @@ async function createApplication(request: Request, env: Env): Promise<Response> 
   const counts = await env.DB.prepare(`
     SELECT
       SUM(CASE WHEN status IN ('pending','processing') THEN 1 ELSE 0 END) AS pending_count,
-      SUM(CASE WHEN status != 'revoked' THEN 1 ELSE 0 END) AS total_count
+      SUM(CASE WHEN status NOT IN ('rejected','revoked') THEN 1 ELSE 0 END) AS total_count
     FROM domain_applications WHERE user_id=?
   `).bind(user.id).first<{ pending_count: number | null; total_count: number | null }>();
+  const quota = await getUserQuota(env, user.id);
   if (user.role !== 'admin' && Number(counts?.pending_count || 0) >= user.permissions.maxPending) {
     throw new HttpError(403, 'PENDING_LIMIT', '待审核申请数量已达到上限');
   }
-  if (user.role !== 'admin' && Number(counts?.total_count || 0) >= user.permissions.maxTotal) {
-    throw new HttpError(403, 'TOTAL_LIMIT', '申请总数已达到上限');
+  if (user.role !== 'admin' && Number(counts?.total_count || 0) >= Math.min(user.permissions.maxTotal, quota)) {
+    throw new HttpError(403, 'TOTAL_LIMIT', '域名注册额度已用完');
   }
 
   const fqdnUnicode = `${prefix.unicode}.${suffix.suffix}`;
   const fqdnAscii = `${prefix.ascii}.${suffix.suffixAscii}`;
-  const recordType = normalizeRecordType(body.recordType || suffix.defaultType, suffix.allowedTypes);
-  const recordContent = normalizeDnsTarget(recordType, body.target, fqdnAscii);
+  // 用户申请页不再填写 DNS 记录类型和目标地址；
+  // 先使用后缀默认类型，并把目标地址留空，后续在“域名管理”中配置。
+  const recordType = normalizeRecordType(suffix.defaultType, suffix.allowedTypes);
+  const recordContent = '';
+  const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
   const id = crypto.randomUUID();
   try {
     await env.DB.prepare(`
       INSERT INTO domain_applications (
         id,user_id,prefix_unicode,prefix_ascii,suffix_unicode,suffix_ascii,fqdn_unicode,fqdn_ascii,
-        record_type,record_content,proxied,ttl,status
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'pending')
+        record_type,record_content,proxied,ttl,status,expires_at
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'pending', ?)
     `).bind(
       id, user.id, prefix.unicode, prefix.ascii, suffix.suffix, suffix.suffixAscii,
-      fqdnUnicode, fqdnAscii, recordType, recordContent, suffix.proxied ? 1 : 0, suffix.ttl,
+      fqdnUnicode, fqdnAscii, recordType, recordContent, suffix.proxied ? 1 : 0, suffix.ttl, expiresAt,
     ).run();
   } catch (error) {
     if (String(error).toLowerCase().includes('unique')) throw new HttpError(409, 'DOMAIN_ALREADY_APPLIED', '该域名已有待审或生效申请');
@@ -313,6 +336,69 @@ async function createApplication(request: Request, env: Env): Promise<Response> 
   }
   await audit(env, request, user.id, 'application.create', 'domain_application', id, { fqdnUnicode, fqdnAscii, recordType, recordContent });
   return ok({ application: { id, fqdnUnicode, fqdnAscii, status: 'pending' } });
+}
+
+
+async function updateApplicationDns(request: Request, env: Env, id: string): Promise<Response> {
+  const user = await requireUser(env, request);
+  const body = await readJson<Record<string, unknown>>(request);
+  const app = await env.DB.prepare('SELECT * FROM domain_applications WHERE id=? AND user_id=?')
+    .bind(id, user.id).first<ApplicationRow>();
+  if (!app) throw new HttpError(404, 'APPLICATION_NOT_FOUND', '域名不存在');
+  if (!['pending'].includes(app.status)) {
+    throw new HttpError(409, 'INVALID_APPLICATION_STATE', '只有待审核域名可以修改 DNS 配置');
+  }
+  const settings = await loadSettings(env);
+  const suffix = settings.dns.suffixes.find(x => x.enabled && x.suffixAscii === app.suffix_ascii);
+  if (!suffix) throw new HttpError(409, 'SUFFIX_CONFIG_MISSING', '该域名后缀配置已不存在');
+  const recordType = normalizeRecordType(body.recordType || suffix.defaultType, suffix.allowedTypes);
+  const recordContent = normalizeDnsTarget(recordType, body.target, app.fqdn_ascii);
+  await env.DB.prepare(`
+    UPDATE domain_applications
+    SET record_type=?,record_content=?,updated_at=datetime('now')
+    WHERE id=? AND user_id=?
+  `).bind(recordType, recordContent, id, user.id).run();
+  await audit(env, request, user.id, 'application.dns_update', 'domain_application', id, { recordType, recordContent });
+  return ok({ updated: true, recordType, recordContent });
+}
+
+async function renewApplication(request: Request, env: Env): Promise<Response> {
+  const user = await requireUser(env, request);
+  const body = await readJson<Record<string, unknown>>(request);
+  const id = String(body.id || '').trim();
+  if (!id) throw new HttpError(400, 'MISSING_ID', '缺少域名 ID');
+  const app = await env.DB.prepare('SELECT * FROM domain_applications WHERE id=? AND user_id=?')
+    .bind(id, user.id).first<ApplicationRow>();
+  if (!app) throw new HttpError(404, 'APPLICATION_NOT_FOUND', '域名不存在');
+  if (app.status !== 'approved') throw new HttpError(409, 'INVALID_APPLICATION_STATE', '只有正常状态的域名可以续期');
+  if (!app.expires_at) throw new HttpError(400, 'EXPIRY_MISSING', '该域名缺少到期时间，无法续期');
+
+  const expiresAtMs = new Date(app.expires_at).getTime();
+  if (!Number.isFinite(expiresAtMs)) throw new HttpError(400, 'INVALID_EXPIRY', '该域名到期时间无效');
+  const remainingMs = expiresAtMs - Date.now();
+  const sixtyDaysMs = 60 * 24 * 60 * 60 * 1000;
+  if (remainingMs > sixtyDaysMs) throw new HttpError(403, 'RENEW_TOO_EARLY', '仅剩余60天内可以申请续期');
+
+  const base = Math.max(expiresAtMs, Date.now());
+  const newExpiresAt = new Date(base + 365 * 24 * 60 * 60 * 1000).toISOString();
+  await env.DB.prepare(`
+    UPDATE domain_applications
+    SET expires_at=?,renewed_at=datetime('now'),renew_count=COALESCE(renew_count,0)+1,updated_at=datetime('now')
+    WHERE id=? AND user_id=?
+  `).bind(newExpiresAt, id, user.id).run();
+  await audit(env, request, user.id, 'application.renew', 'domain_application', id, { expiresAt: newExpiresAt });
+  return ok({ renewed: true, expiresAt: newExpiresAt });
+}
+
+async function getUserQuota(env: Env, userId: string): Promise<number> {
+  try {
+    const row = await env.DB.prepare('SELECT COALESCE(domain_quota,3) AS domain_quota FROM users WHERE id=?')
+      .bind(userId).first<{ domain_quota: number }>();
+    const quota = Number(row?.domain_quota || 3);
+    return Number.isFinite(quota) && quota >= 0 ? quota : 3;
+  } catch {
+    return 3;
+  }
 }
 
 async function adminOverview(request: Request, env: Env): Promise<Response> {
@@ -372,6 +458,11 @@ async function reviewApplication(request: Request, env: Env, id: string, action:
       WHERE id=? AND status='pending'`).bind(id).run();
     if (!lock.meta.changes) throw new HttpError(409, 'INVALID_APPLICATION_STATE', '只有待审核申请可以批准');
     try {
+      if (!app.record_content || !String(app.record_content).trim()) {
+        await env.DB.prepare(`UPDATE domain_applications SET status='pending',error_message=?,updated_at=datetime('now') WHERE id=?`)
+          .bind('请先在域名管理中配置 DNS 目标地址', id).run();
+        throw new HttpError(409, 'DNS_TARGET_REQUIRED', '请先在域名管理中配置 DNS 目标地址');
+      }
       const record = await createDnsRecord(token, {
         zoneId: suffix.zoneId,
         type: app.record_type as 'A' | 'AAAA' | 'CNAME',
@@ -624,7 +715,45 @@ function serializeApplication(app: ApplicationRow) {
     createdAt: app.created_at,
     reviewedAt: app.reviewed_at,
     reviewedBy: app.reviewed_by,
+    expiresAt: app.expires_at,
+    renewedAt: app.renewed_at,
+    renewCount: Number(app.renew_count || 0),
+    remainingDays: remainingDays(app.expires_at),
+    canRenew: canRenew(app.expires_at, app.status),
+    statusText: domainStatusText(app.status, app.expires_at),
+    dnsConfigured: Boolean(app.record_content && String(app.record_content).trim()),
   };
+}
+
+
+function remainingDays(expiresAt: string | null): number | null {
+  if (!expiresAt) return null;
+  const ms = new Date(expiresAt).getTime() - Date.now();
+  if (!Number.isFinite(ms)) return null;
+  return Math.max(0, Math.ceil(ms / (24 * 60 * 60 * 1000)));
+}
+
+function canRenew(expiresAt: string | null, status: string): boolean {
+  if (status !== 'approved' || !expiresAt) return false;
+  const ms = new Date(expiresAt).getTime() - Date.now();
+  return Number.isFinite(ms) && ms <= 60 * 24 * 60 * 60 * 1000;
+}
+
+function domainStatusText(status: string, expiresAt: string | null): string {
+  if (status === 'approved' && expiresAt) {
+    const ms = new Date(expiresAt).getTime() - Date.now();
+    if (Number.isFinite(ms) && ms <= 0) return '已过期';
+    return '正常';
+  }
+  const map: Record<string, string> = {
+    pending: '待审核',
+    processing: '处理中',
+    approved: '正常',
+    rejected: '已拒绝',
+    revoked: '已撤销',
+    revoking: '撤销中',
+  };
+  return map[status] || status;
 }
 
 function safeJson(value: string): unknown {
