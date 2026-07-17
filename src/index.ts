@@ -383,7 +383,7 @@ async function ensureSchema(env: Env): Promise<void> {
     UPDATE domain_applications
     SET expires_at = datetime(COALESCE(reviewed_at, created_at), '+' || ? || ' days')
     WHERE (expires_at IS NULL OR expires_at='')
-      AND status NOT IN ('rejected','revoked')
+      AND status='approved'
       AND (deleted_at IS NULL OR deleted_at='')
   `).bind(settings.domain.validDays).run();
 }
@@ -700,17 +700,15 @@ async function createApplication(request: Request, env: Env): Promise<Response> 
   }
 
   const id = crypto.randomUUID();
-  const now = new Date();
-  const expires = new Date(now.getTime() + settings.domain.validDays * DAY).toISOString();
 
   await env.DB.prepare(`
     INSERT INTO domain_applications (
       id,user_id,prefix_unicode,prefix_ascii,suffix_unicode,suffix_ascii,fqdn_unicode,fqdn_ascii,
       record_type,record_content,proxied,ttl,status,expires_at
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,NULL)
   `).bind(
     id, user.id, prefix.unicode, prefix.ascii, suffix.suffix, suffix.suffixAscii, fqdnUnicode, fqdnAscii,
-    suffix.defaultType, '', suffix.proxied ? 1 : 0, suffix.ttl, 'pending', expires,
+    suffix.defaultType, '', suffix.proxied ? 1 : 0, suffix.ttl, 'pending',
   ).run();
 
   await audit(env, request, user.id, 'application.create', 'domain_application', id, { fqdnAscii });
@@ -726,7 +724,7 @@ async function updateOwnDns(request: Request, env: Env, id: string): Promise<Res
     SELECT * FROM domain_applications WHERE id=? AND user_id=? AND (deleted_at IS NULL OR deleted_at='')
   `).bind(id, user.id).first<ApplicationRow>();
   if (!app) throw new HttpError(404, 'NOT_FOUND', '域名不存在');
-  if (['rejected', 'revoked'].includes(app.status)) throw new HttpError(409, 'INVALID_STATE', '无效域名不能修改解析');
+  if (app.status !== 'approved') throw new HttpError(409, 'DOMAIN_NOT_APPROVED', '域名审核通过后才能设置解析');
 
   const suffix = settings.dns.suffixes.find(x => x.suffixAscii === app.suffix_ascii);
   if (!suffix) throw new HttpError(409, 'SUFFIX_MISSING', '根域名配置不存在');
@@ -808,7 +806,7 @@ async function createOwnDnsRecord(request: Request, env: Env, applicationId: str
     SELECT * FROM domain_applications WHERE id=? AND user_id=? AND (deleted_at IS NULL OR deleted_at='')
   `).bind(applicationId, user.id).first<ApplicationRow>();
   if (!app) throw new HttpError(404, 'NOT_FOUND', '域名不存在');
-  if (!['pending', 'approved', 'processing'].includes(app.status)) throw new HttpError(409, 'INVALID_STATE', '当前域名状态不能添加解析');
+  if (app.status !== 'approved') throw new HttpError(409, 'DOMAIN_NOT_APPROVED', '域名审核通过后才能添加解析');
   if (app.delete_requested_at) throw new HttpError(409, 'DELETE_REQUESTED', '该域名正在等待删除审核，不能添加解析');
 
   const suffix = settings.dns.suffixes.find(x => x.suffixAscii === app.suffix_ascii);
@@ -831,20 +829,17 @@ async function createOwnDnsRecord(request: Request, env: Env, applicationId: str
 
   const id = crypto.randomUUID();
   let cfRecordId = '';
-  let status = app.status === 'approved' ? 'active' : 'pending';
+  let status = 'active';
   let errorMessage = '';
 
-  if (app.status === 'approved') {
-    const token = resolveDnsToken(env);
-    if (!token) throw new HttpError(503, 'DNS_TOKEN_MISSING', '尚未配置 Cloudflare DNS API Token');
-    try {
-      const record = await createDnsRecord(token, suffix.zoneId, dnsPayload({ type, name, content, ttl, proxied, priority }, `Created by storage portal dns record ${id}`));
-      cfRecordId = record.id || '';
-      status = 'active';
-    } catch (error) {
-      errorMessage = error instanceof Error ? error.message.slice(0, 1000) : 'DNS 创建失败';
-      throw new HttpError(502, 'DNS_CREATE_FAILED', errorMessage);
-    }
+  const token = resolveDnsToken(env);
+  if (!token) throw new HttpError(503, 'DNS_TOKEN_MISSING', '尚未配置 Cloudflare DNS API Token');
+  try {
+    const record = await createDnsRecord(token, suffix.zoneId, dnsPayload({ type, name, content, ttl, proxied, priority }, `Created by storage portal dns record ${id}`));
+    cfRecordId = record.id || '';
+  } catch (error) {
+    errorMessage = error instanceof Error ? error.message.slice(0, 1000) : 'DNS 创建失败';
+    throw new HttpError(502, 'DNS_CREATE_FAILED', errorMessage);
   }
 
   await env.DB.prepare(`
@@ -1223,7 +1218,7 @@ async function adminReviewApplication(request: Request, env: Env, id: string, ac
 
   if (action === 'approve') {
     if (app.status !== 'pending') throw new HttpError(409, 'INVALID_STATE', '只有待审核申请可以批准');
-    const expires = app.expires_at || new Date(Date.now() + settings.domain.validDays * DAY).toISOString();
+    const expires = new Date(Date.now() + settings.domain.validDays * DAY).toISOString();
 
     await env.DB.prepare(`
       UPDATE domain_applications
@@ -1479,10 +1474,11 @@ function serializeUser(user: UserRow) {
 
 function serializeApplication(app: ApplicationRow, settings: AppSettings) {
   const created = parseDate(app.created_at);
-  const expires = parseDate(app.expires_at);
+  const approved = app.status === 'approved';
+  const expires = approved ? parseDate(app.expires_at) : null;
   const remainingMs = expires ? expires.getTime() - Date.now() : null;
   const remainingDays = remainingMs === null ? null : Math.max(0, Math.ceil(remainingMs / DAY));
-  const canRenew = app.status === 'approved' && remainingDays !== null && remainingDays <= settings.domain.renewWindowDays;
+  const canRenew = approved && remainingDays !== null && remainingDays <= settings.domain.renewWindowDays;
   const deleteRequested = Boolean(app.delete_requested_at);
 
   return {
@@ -1513,7 +1509,7 @@ function serializeApplication(app: ApplicationRow, settings: AppSettings) {
     deleteRequestedAt: app.delete_requested_at || null,
     renewCount: Number(app.renew_count || 0),
     remainingDays,
-    remainingText: expires ? (remainingDays === 0 ? '今天到期' : `${remainingDays} 天`) : '未设置到期时间',
+    remainingText: expires ? (remainingDays === 0 ? '今天到期' : `${remainingDays} 天`) : '',
     canRenew: canRenew && !deleteRequested,
     canDelete: ['rejected', 'revoked'].includes(app.status) && !app.deleted_at,
     canRequestDelete: app.status === 'approved' && !deleteRequested && !app.deleted_at,
