@@ -1281,13 +1281,17 @@ async function adminReviewApplication(request: Request, env: Env, id: string, ac
       throw new HttpError(502, 'DNS_DELETE_FAILED', message);
     }
 
+    // D1 旧表的 status 字段有 CHECK 约束：只允许 pending / processing / approved / rejected / revoking / revoked / error。
+    // 所以这里不能写入 status='disabled'，否则会触发 SQLITE_CONSTRAINT_CHECK。
+    // 用 status='revoked' 保存数据库兼容状态，同时用 review_note 前缀标记为“禁用”，前端显示为“已禁用”。
+    const disableNote = `【已禁用】${note || '管理员已禁用该域名，DNS 记录已移除。'}`;
     await env.DB.prepare(`
       UPDATE domain_applications
-      SET status='disabled',review_note=?,reviewed_at=datetime('now'),reviewed_by=?,dns_record_id=NULL,error_message=NULL,updated_at=datetime('now')
+      SET status='revoked',review_note=?,reviewed_at=datetime('now'),reviewed_by=?,dns_record_id=NULL,error_message=NULL,updated_at=datetime('now')
       WHERE id=?
-    `).bind(note, admin.id, id).run();
+    `).bind(disableNote, admin.id, id).run();
     await audit(env, request, admin.id, 'application.disable', 'domain_application', id, { note });
-    return ok({ status: 'disabled' });
+    return ok({ status: 'revoked', statusText: '已禁用' });
   }
 
   if (action === 'revoke') {
@@ -1534,6 +1538,7 @@ function serializeApplication(app: ApplicationRow, settings: AppSettings) {
   const deleteRequestedAtDate = deleteRequested ? parseDate(app.delete_requested_at || '') : null;
   const deleteCancelDeadline = deleteRequestedAtDate ? new Date(deleteRequestedAtDate.getTime() + 12 * 60 * 60 * 1000) : null;
   const canCancelDeleteRequest = Boolean(deleteCancelDeadline && Date.now() <= deleteCancelDeadline.getTime());
+  const disabledByAdmin = app.status === 'revoked' && String(app.review_note || '').startsWith('【已禁用】');
 
   return {
     id: app.id,
@@ -1550,8 +1555,8 @@ function serializeApplication(app: ApplicationRow, settings: AppSettings) {
     proxied: Boolean(app.proxied),
     ttl: Number(app.ttl || 1),
     status: app.status,
-    statusText: deleteRequested && app.status === 'approved' ? '待删除审核' : statusLabel(app.status),
-    reviewNote: app.review_note || '',
+    statusText: disabledByAdmin ? '已禁用' : (deleteRequested && app.status === 'approved' ? '待删除审核' : statusLabel(app.status)),
+    reviewNote: disabledByAdmin ? String(app.review_note || '').replace(/^【已禁用】/, '') : (app.review_note || ''),
     errorMessage: app.error_message || '',
     dnsRecordId: app.dns_record_id || '',
     dnsConfigured: Boolean(app.record_content),
