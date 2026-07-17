@@ -1016,3 +1016,155 @@ th { font-size: 12px; }
   .help-edit-item summary { padding:13px 14px; }
   .help-edit-fields { padding:0 14px 14px; }
 }
+
+
+/* v41 login: keep split auth landing, compact login card mimics modern login inputs */
+.login-split-wrap{
+  min-height:100vh;
+  grid-template-columns:1.05fr .95fr;
+  max-width:1120px;
+  padding:48px;
+}
+.login-split-brand .auth-logo{
+  width:72px;
+  height:72px;
+  border-radius:24px;
+  font-size:27px;
+  text-transform:none;
+}
+.login-split-brand h1{
+  font-size:46px;
+  line-height:1.12;
+}
+.login-split-brand p{
+  font-size:18px;
+  line-height:1.6;
+}
+.login-compact-card{
+  max-width:420px;
+  width:100%;
+  justify-self:center;
+  padding:30px 30px 28px;
+  border-radius:26px;
+  background:rgba(255,255,255,.9);
+  box-shadow:0 24px 70px rgba(15,23,42,.08);
+}
+.login-compact-head{
+  text-align:center;
+  margin-bottom:18px;
+}
+.login-compact-head .login-lock{
+  width:56px;
+  height:56px;
+  margin:0 auto 14px;
+  font-size:24px;
+}
+.login-compact-head h2{
+  margin:0;
+  font-size:30px;
+  letter-spacing:-.3px;
+}
+.login-compact-head p{
+  margin:9px 0 0;
+  color:#64748b;
+  font-weight:800;
+  font-size:15px;
+}
+.login-compact-form{
+  display:grid;
+  gap:14px;
+}
+.login-compact-card .login-field{
+  gap:7px;
+  font-size:13px;
+}
+.login-compact-card .login-input-wrap{
+  min-height:52px;
+  padding:0 13px;
+  border-radius:14px;
+}
+.login-compact-card .login-input-wrap input{
+  font-size:16px;
+}
+.login-compact-card .login-input-icon{
+  font-size:18px;
+  width:22px;
+}
+.login-compact-card .password-eye{
+  font-size:19px;
+}
+.login-compact-card .login-row{
+  font-size:13px;
+  margin:0;
+}
+.login-compact-card .login-check input{
+  width:20px;
+  height:20px;
+}
+.login-compact-card .turnstile-holder{
+  overflow:hidden;
+}
+.login-compact-card .login-submit{
+  min-height:54px;
+  font-size:17px;
+  border-radius:14px;
+  margin-top:4px;
+}
+.login-compact-card .login-divider{
+  margin:20px 0 16px;
+}
+.login-compact-card .login-register-row{
+  margin:0;
+  font-size:15px;
+}
+.login-compact-card .login-register-row a{
+  padding:7px 14px;
+  border-radius:12px;
+}
+@media(max-width:900px){
+  .login-split-wrap{
+    grid-template-columns:1fr;
+    max-width:520px;
+    padding:36px 18px;
+    gap:22px;
+  }
+  .login-split-brand{
+    text-align:center;
+  }
+  .login-split-brand .auth-logo{
+    margin-left:auto;
+    margin-right:auto;
+  }
+  .login-split-brand h1{
+    font-size:34px;
+  }
+  .login-split-brand p{
+    font-size:15px;
+  }
+  .login-compact-card{
+    max-width:440px;
+    padding:24px 18px 22px;
+    border-radius:22px;
+  }
+}
+@media(max-width:520px){
+  .login-split-wrap{
+    padding:26px 14px;
+    align-items:start;
+  }
+  .login-split-brand h1{
+    font-size:28px;
+  }
+  .login-split-brand .auth-logo{
+    width:58px;
+    height:58px;
+    border-radius:20px;
+    font-size:22px;
+  }
+  .login-compact-head h2{
+    font-size:25px;
+  }
+  .login-compact-head p{
+    font-size:13px;
+  }
+}
