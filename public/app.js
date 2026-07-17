@@ -1310,34 +1310,39 @@ async function renderAdminUsers() {
     });
   } catch (error) { toast(error.message, 'error'); }
 }
-function showCreateUserModal() {
+async function showCreateUserModal() {
   const defaultQuota = domainConfig().defaultQuota || 3;
-  openModal('添加用户', '管理员手动创建用户账号', `
+  const turn = state.config.turnstile || {};
+  const useTurnstile = !!turn.siteKey;
+  openModal(tr('添加用户'), tr('管理员手动创建用户账号'), `
     <form id="create-user-form" class="modal-form">
       <div class="form-grid">
-        <label class="field"><span>账号</span><input name="username" required minlength="3" maxlength="32" placeholder="例如：user001"></label>
-        <label class="field"><span>邮箱</span><input name="email" type="email" placeholder="user@example.com"></label>
-        <label class="field wide"><span>初始密码</span><input name="password" type="password" required minlength="10" placeholder="至少 10 位，包含字母和数字"><em>创建后用户可自行修改密码。</em></label>
-        <label class="field"><span>角色</span><select name="role"><option value="user">用户</option><option value="admin">管理员</option></select></label>
-        <label class="field"><span>状态</span><select name="status"><option value="active">启用</option><option value="disabled">禁用</option></select></label>
-        <label class="field wide"><span>域名额度</span><input name="domainQuota" type="number" min="0" max="9999" value="${attr(defaultQuota)}"></label>
-        <label class="check wide"><input name="humanCheck" type="checkbox" required> 人机验证：确认由管理员人工创建此账号</label>
+        <label class="field"><span>${tr('账号')}</span><input name="username" required minlength="3" maxlength="32" placeholder="${tr('例如：user001')}"></label>
+        <label class="field"><span>${tr('邮箱')}</span><input name="email" type="email" placeholder="user@example.com"></label>
+        <label class="field wide"><span>${tr('初始密码')}</span><input name="password" type="password" required minlength="10" placeholder="${tr('至少 10 位，包含字母和数字')}"><em>${tr('创建后用户可自行修改密码。')}</em></label>
+        <label class="field"><span>${tr('角色')}</span><select name="role"><option value="user">${tr('用户')}</option><option value="admin">${tr('管理员')}</option></select></label>
+        <label class="field"><span>${tr('状态')}</span><select name="status"><option value="active">${tr('启用')}</option><option value="disabled">${tr('禁用')}</option></select></label>
+        <label class="field wide"><span>${tr('域名额度')}</span><input name="domainQuota" type="number" min="0" max="9999" value="${attr(defaultQuota)}"></label>
+        ${useTurnstile ? '<div class="wide"><div id="admin-create-user-turnstile"></div></div>' : `<div class="notice wide">${tr('Turnstile 未配置，无法显示人机验证。')}</div>`}
       </div>
-      <div class="modal-actions"><button class="btn secondary" type="button" data-cancel>取消</button><button class="btn primary" type="submit">创建用户</button></div>
+      <div class="modal-actions"><button class="btn secondary" type="button" data-cancel>${tr('取消')}</button><button class="btn primary" type="submit">${tr('创建用户')}</button></div>
     </form>`, 'wide');
   document.querySelector('[data-cancel]').addEventListener('click', closeModal);
+  if (useTurnstile) await mountTurnstile('#admin-create-user-turnstile', turn.actionRegister || 'register');
   document.querySelector('#create-user-form').addEventListener('submit', async e => {
     e.preventDefault();
     const btn = e.submitter;
     btn.disabled = true;
     const body = Object.fromEntries(new FormData(e.currentTarget));
+    body.turnstileToken = turnstileToken();
     try {
       await api('/api/admin/users', { method:'POST', body });
       closeModal();
-      toast('用户已创建', 'success');
+      toast(tr('用户已创建'), 'success');
       renderAdminUsers();
     } catch (error) {
       toast(error.message, 'error');
+      resetTurnstile();
       btn.disabled = false;
     }
   });
