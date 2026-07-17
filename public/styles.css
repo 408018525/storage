@@ -268,3 +268,8 @@ th,td{padding:13px}table{min-width:700px}.stats{gap:14px}.stat{padding:20px}.sta
   margin: 8px 0 18px;
   line-height: 1.7;
 }
+
+
+/* v15 DNS editor */
+.dns-editor-form .preview-box strong { word-break: break-all; }
+.dns-editor-form select { cursor: pointer; }
