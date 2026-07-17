@@ -612,6 +612,8 @@ th { font-size: 12px; }
   .lang-toggle{padding:7px 9px;min-width:44px;font-size:12px}
 }
 
+
+/* v24 sidebar scroll */
 /* v24 mobile sidebar scroll fix */
 @media (max-width: 1000px) {
   .sidebar {
@@ -657,4 +659,115 @@ th { font-size: 12px; }
   .side-user {
     margin-top: 16px;
   }
+}
+
+/* v31 login redesign + help center */
+.login-modern-wrap{
+  min-height:100vh;
+  display:grid;
+  place-items:center;
+  padding:28px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(59,130,246,.12), transparent 35%),
+    linear-gradient(180deg, rgba(255,255,255,.88), rgba(245,249,255,.96));
+}
+.login-modern-card{
+  width:min(860px,100%);
+  padding:54px 58px 46px;
+  border-radius:30px;
+  background:rgba(255,255,255,.78);
+  border:1px solid rgba(203,213,225,.65);
+  box-shadow:0 28px 90px rgba(37,99,235,.12);
+  backdrop-filter:blur(12px);
+}
+.login-lock{
+  width:70px;
+  height:70px;
+  margin:0 auto 20px;
+  border-radius:50%;
+  display:grid;
+  place-items:center;
+  background:#dbeafe;
+  border:1px solid #bfdbfe;
+  color:#2563eb;
+  font-size:32px;
+}
+.login-modern-card h1{
+  margin:0;
+  text-align:center;
+  font-size:38px;
+  letter-spacing:-.5px;
+}
+.login-subtitle{
+  margin:14px 0 30px;
+  text-align:center;
+  color:#64748b;
+  font-size:20px;
+  font-weight:700;
+}
+.login-modern-form{display:grid;gap:20px}
+.login-field{display:grid;gap:9px;font-weight:900;color:#111827}
+.login-input-wrap{
+  display:flex;
+  align-items:center;
+  gap:14px;
+  min-height:62px;
+  padding:0 18px;
+  border:1px solid #cfe0f6;
+  border-radius:16px;
+  background:rgba(255,255,255,.9);
+}
+.login-input-wrap:focus-within{border-color:#60a5fa;box-shadow:0 0 0 5px rgba(96,165,250,.22)}
+.login-input-wrap input{border:0;outline:0;background:transparent;flex:1;min-width:0;font-size:20px}
+.login-input-icon{font-size:24px;color:#818cf8;width:28px;text-align:center}
+.password-eye,.login-link-btn{border:0;background:transparent;color:#ef4444;font-weight:900;font-size:17px;cursor:pointer}
+.password-eye{color:#64748b;font-size:24px}
+.login-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.login-check{display:flex;align-items:center;gap:10px;font-weight:900}
+.login-check input{width:24px;height:24px}
+.login-submit{width:100%;min-height:66px;font-size:22px;border-radius:16px;margin-top:8px}
+.login-divider{height:1px;background:#dbe4f0;margin:34px 0}
+.login-register-row{text-align:center;font-size:22px;font-weight:900;color:#111827}
+.login-register-row a{color:#2563eb;background:#e8f0ff;border-radius:14px;padding:8px 18px;margin-left:8px}
+.help-hero{display:flex;align-items:center;gap:16px}
+.help-search-row{display:flex;gap:12px;margin-bottom:18px}
+.help-search{flex:1;border:1px solid #d7e1ef;border-radius:18px;padding:14px 18px;font-weight:800;background:#fff;outline:0}
+.help-search:focus{border-color:var(--accent);box-shadow:0 0 0 4px rgba(79,99,246,.12)}
+.help-tabs{display:grid;gap:12px;margin-top:18px}
+.help-tabs a,.help-item summary{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:16px 18px;
+  border:1px solid #e0e7f2;
+  border-radius:14px;
+  background:#fff;
+  font-weight:900;
+  cursor:pointer;
+}
+.help-item{margin-bottom:12px}
+.help-item summary::-webkit-details-marker{display:none}
+.help-item summary::after{content:'⌄';font-size:22px;color:#111827}
+.help-item[open] summary::after{content:'⌃'}
+.help-detail{padding:14px 18px 18px;color:#475569;line-height:1.75;font-weight:650}
+.help-detail p{margin:8px 0}
+.help-detail b{color:#0f172a}
+.guide-box{display:grid;gap:18px}
+.guide-alert{display:flex;gap:14px;padding:18px;border:1px solid #bfdbfe;background:#eff6ff;border-radius:18px;color:#1e40af}
+.guide-alert>span{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:#1d4ed8;color:#fff;font-weight:900;flex:none}
+.guide-alert ul{margin:10px 0 0 22px;color:#475569;line-height:1.7}
+@media(max-width:760px){
+  .login-modern-wrap{padding:14px;align-items:start}
+  .login-modern-card{padding:34px 20px 30px;border-radius:24px;box-shadow:0 18px 50px rgba(37,99,235,.1)}
+  .login-lock{width:54px;height:54px;font-size:24px;margin-bottom:14px}
+  .login-modern-card h1{font-size:29px}
+  .login-subtitle{font-size:15px;margin:10px 0 24px}
+  .login-input-wrap{min-height:52px;border-radius:14px;padding:0 13px}
+  .login-input-wrap input{font-size:16px}
+  .login-row{font-size:14px}
+  .login-submit{min-height:54px;font-size:18px}
+  .login-register-row{font-size:16px}
+  .help-search-row{display:grid}
+  .guide-alert{align-items:flex-start}
 }
