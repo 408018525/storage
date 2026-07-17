@@ -362,6 +362,44 @@ Object.assign(I18N_EN, {
   '注销确认':'Account Cancellation Confirmation'
 });
 
+
+
+Object.assign(I18N_EN, {
+  '欢迎登录':'Welcome Back',
+  '登录到您的 STORAGE 账户':'Sign in to your STORAGE account',
+  '用户名或账户邮箱':'Username or Account Email',
+  '用户名或账户邮箱/手机号':'Username / Email / Phone',
+  '请输入密码':'Enter your password',
+  '记住我':'Remember me',
+  '忘记密码？':'Forgot password?',
+  '登录账户':'Sign In',
+  '还没有账号？':'No account yet?',
+  '立即注册':'Register Now',
+  '当前系统暂未开放自助找回密码，请联系管理员重置密码。':'Password recovery is not enabled yet. Please contact the admin to reset your password.',
+  '帮助中心':'Help Center',
+  '查看使用提示与支持入口':'View usage tips and support entry points',
+  '搜索关键词，例如：DNS 生效、解析报错':'Search keywords, e.g. DNS propagation, record error',
+  '搜索/问答':'Search / Ask',
+  '域名知识小贴士':'Domain Knowledge Tips',
+  '常见问题':'FAQ',
+  '域名规则与管理':'Domain Rules & Management',
+  'DNS 记录说明':'DNS Record Guide',
+  '域名管理问题':'Domain Management Issues',
+  '需要帮助？':'Need help?',
+  '如果您在使用过程中遇到问题，或者需要技术支持，请点击下方按钮提交。':'If you encounter problems or need technical support, click the button below to submit a request.',
+  '提交问题反馈':'Submit Feedback',
+  '注册成功后，您需要手动设置DNS解析':'After registration, you need to configure DNS records manually',
+  '可以设置A记录、CNAME记录等多种类型':'You can add A, CNAME, TXT, MX, and other record types.',
+  '注册的域名严禁用于违法违规行为':'Registered domains must not be used for illegal or abusive activity.',
+  '如需删除,可点击“查看详情”查看您的域名是否支持删除。':'To delete a domain, open Domain Details and check whether deletion is available.',
+  '完整说明':'Full Guide',
+  '申请流程说明':'Application Process',
+  'DNS 配置说明':'DNS Configuration Guide',
+  '删除与续期说明':'Deletion & Renewal Guide',
+  '查看详情':'View Details',
+  '关闭':'Close'
+});
+
 function lang() { return localStorage.getItem('ui_lang') || 'zh'; }
 function setLang(value) {
   localStorage.setItem('ui_lang', value === 'en' ? 'en' : 'zh');
@@ -623,6 +661,7 @@ async function route() {
   if (hash === '#/apply') return renderApply();
   if (hash === '#/domains' || hash === '#/applications') return renderDomains();
   if (hash === '#/account') return renderAccount();
+  if (hash === '#/help') return renderHelpCenter();
   if (hash === '#/admin') return renderAdminOverview();
   if (hash === '#/admin/applications') return renderAdminApplications();
   if (hash === '#/admin/users') return renderAdminUsers();
@@ -675,16 +714,39 @@ async function renderSetup() {
 
 async function renderLogin() {
   const turn = state.config.turnstile || {};
-  app.innerHTML = authTemplate('登录', '进入域名注册与管理中心。', `
-    <form id="login-form" class="form-grid">
-      <label class="field wide"><span>账号或邮箱/手机号</span><input name="identity" required autocomplete="username"></label>
-      <label class="field wide"><span>密码</span><input name="password" type="password" required autocomplete="current-password"></label>
-      <label class="check wide"><input name="remember" type="checkbox"> 30 天内保持登录</label>
-      ${turn.enabledLogin ? '<div class="wide"><div id="turnstile-box"></div></div>' : ''}
-      <button class="btn primary wide" type="submit">登录</button>
-    </form>
-    <p class="auth-link">没有账户？ <a href="#/register">注册</a></p>`);
+  const site = state.config?.site || {};
+  app.innerHTML = `${langButton()}
+    <main class="login-modern-wrap">
+      <section class="login-modern-card">
+        <div class="login-lock">🔒</div>
+        <h1>欢迎登录</h1>
+        <p class="login-subtitle">登录到您的 STORAGE 账户</p>
+        <form id="login-form" class="login-modern-form">
+          <label class="login-field">
+            <span>用户名或账户邮箱/手机号</span>
+            <div class="login-input-wrap"><span class="login-input-icon">♙</span><input name="identity" placeholder="用户名或账户邮箱/手机号" required autocomplete="username"></div>
+          </label>
+          <label class="login-field">
+            <span>密码</span>
+            <div class="login-input-wrap"><span class="login-input-icon">🔒</span><input id="login-password" name="password" placeholder="请输入密码" type="password" required autocomplete="current-password"><button type="button" class="password-eye" id="toggle-password">◉</button></div>
+          </label>
+          <div class="login-row">
+            <label class="login-check"><input name="remember" type="checkbox"> <span>记住我</span></label>
+            <button type="button" id="forgot-password" class="login-link-btn">忘记密码？</button>
+          </div>
+          ${turn.enabledLogin ? '<div class="turnstile-holder"><div id="turnstile-box"></div></div>' : ''}
+          <button class="btn primary login-submit" type="submit">登录账户</button>
+        </form>
+        <div class="login-divider"></div>
+        <p class="login-register-row"><span>还没有账号？</span> <a href="#/register">立即注册</a></p>
+      </section>
+    </main>`;
   if (turn.enabledLogin) await mountTurnstile('#turnstile-box', turn.actionLogin);
+  document.querySelector('#toggle-password')?.addEventListener('click', () => {
+    const input = document.querySelector('#login-password');
+    input.type = input.type === 'password' ? 'text' : 'password';
+  });
+  document.querySelector('#forgot-password')?.addEventListener('click', () => toast('当前系统暂未开放自助找回密码，请联系管理员重置密码。', 'error'));
   document.querySelector('#login-form').addEventListener('submit', async e => {
     e.preventDefault();
     const btn = e.submitter;
@@ -703,6 +765,7 @@ async function renderLogin() {
       btn.disabled = false;
     }
   });
+  afterRender();
 }
 
 async function renderRegister() {
@@ -754,6 +817,7 @@ function shell(title, content) {
         ${nav('#/apply','＋','域名注册')}
         ${nav('#/domains','🌐','域名管理')}
         ${nav('#/account','⚙','账户设置')}
+        ${nav('#/help','☸','帮助中心')}
         ${isAdmin ? `<hr>${nav('#/admin','▦','管理概览')}${nav('#/admin/applications','✓','域名审核')}${nav('#/admin/users','♟','用户管理')}${nav('#/admin/settings','⚙','管理员设置')}` : ''}
       </nav>
       <div class="side-user"><strong>${esc(state.me.username)}</strong><small>${isAdmin ? '管理员' : '普通用户'}</small><button id="logout" class="btn ghost">退出登录</button></div>
@@ -881,7 +945,7 @@ function showRegisterDomainModal() {
   suffix.addEventListener('change', refresh);
   prefix.addEventListener('input', refresh);
   document.querySelector('[data-cancel]').addEventListener('click', closeModal);
-  document.querySelector('#dns-help').addEventListener('click', () => toast('管理员审核通过后，进入“域名管理”点击“管理域名”，再添加 DNS 解析。', 'success'));
+  document.querySelector('#dns-help').addEventListener('click', showRegisterGuideModal);
   if (state.config.turnstile.enabledApply) mountTurnstile('#turnstile-box', state.config.turnstile.actionApply);
   document.querySelector('#domain-register-form').addEventListener('submit', async e => {
     e.preventDefault();
@@ -897,6 +961,72 @@ function showRegisterDomainModal() {
       submit.disabled = false;
     }
   });
+}
+
+function showRegisterGuideModal() {
+  openModal('完整说明', '注册成功后，您需要手动设置DNS解析', `
+    <div class="guide-box">
+      <div class="guide-alert"><span>ℹ</span><div><strong>注册成功后，您需要手动设置DNS解析</strong><ul><li>可以设置A记录、CNAME记录等多种类型</li><li>注册的域名严禁用于违法违规行为</li><li>如需删除,可点击“查看详情”查看您的域名是否支持删除。</li></ul></div></div>
+      <div class="help-accordion">
+        <details open><summary>申请流程说明</summary><div class="help-detail"><p>1. 先在注册页面选择根域名并填写前缀，例如 <b>blog</b>，系统会生成 <b>blog.flore.top</b>。</p><p>2. 提交后状态为“待审核”，此时不能配置 DNS，也不会开始计算有效期。</p><p>3. 管理员审核通过后，状态变为“正常”，有效期从批准当天开始计算。</p><p>4. 审核通过后进入“域名管理”，点击“管理域名”，再添加 DNS 解析记录。</p></div></details>
+        <details><summary>DNS 配置说明</summary><div class="help-detail"><p>A 记录用于指向 IPv4 地址，例如 <b>1.2.3.4</b>。</p><p>AAAA 记录用于指向 IPv6 地址。</p><p>CNAME 记录用于指向另一个域名，例如 Pages、Vercel、动态域名服务地址。</p><p>TXT 记录常用于验证所有权、邮件验证或第三方平台校验。</p><p>MX 记录用于邮箱服务，通常需要填写优先级。</p><p>A / AAAA / CNAME 可以选择是否开启代理；TXT / MX 必须保持“仅 DNS”。</p></div></details>
+        <details><summary>删除与续期说明</summary><div class="help-detail"><p>正常域名申请删除后需要管理员审核。12 小时内可以撤销删除申请。</p><p>无效域名或已拒绝域名可以按规则直接删除。</p><p>续期按钮只会在进入续期窗口后显示。默认最后 60 天可续期，具体以管理员设置为准。</p><p>如果域名被管理员禁用，用户界面会显示管理员留言，DNS 记录会被移除。</p></div></details>
+      </div>
+    </div>
+    <div class="modal-actions"><button class="btn primary" data-close-modal type="button">关闭</button></div>
+  `, 'wide');
+}
+
+function helpItem(title, body) {
+  return `<details class="help-item"><summary>${esc(title)}</summary><div class="help-detail">${body}</div></details>`;
+}
+function renderHelpCenter() {
+  const faq = [
+    helpItem('域名申请后为什么不能马上设置 DNS？', '<p>域名必须先通过管理员审核。待审核阶段只代表系统收到申请，还没有正式分配给用户，不能添加解析，也不会开始计算有效期。</p><p>解决方法：等待管理员批准。批准后进入“域名管理 → 管理域名 → DNS 解析”，再点击“添加解析”。</p>'),
+    helpItem('为什么我的域名显示待审核？', '<p>说明申请已经提交，但管理员还没有处理。期间不要重复申请相同前缀。</p><p>管理员可以批准、拒绝、撤销或禁用域名。被拒绝后可以根据提示重新申请。</p>'),
+    helpItem('为什么登录显示服务器内部错误？', '<p>通常是登录会话表、D1 字段或旧版本前端缓存导致。</p><p>解决顺序：先按 Ctrl + F5 强制刷新；手机端清浏览器缓存；仍异常时联系管理员检查 D1 sessions 表和 Worker 日志。</p>'),
+    helpItem('删除域名为什么要输入完整域名？', '<p>这是防误删设计，类似 GitHub 删除仓库。必须输入完整域名，例如 user.flore.top，按钮才会允许提交。</p><p>正常域名提交删除申请后，12 小时内可以撤销；超过 12 小时只能等待管理员审核。</p>'),
+    helpItem('为什么到期时间和剩余时间不显示？', '<p>只有审核通过的域名才显示到期时间和剩余时间。待审核、已拒绝、已撤销、已删除、已禁用状态不会显示有效期。</p>')
+  ].join('');
+  const dns = [
+    helpItem('A 记录是什么？', '<p>A 记录把域名指向 IPv4 地址，例如 1.2.3.4。适合服务器、公网 IP、VPS。</p><p>填写方法：主机记录填 @、www、api 等；类型选 A；目标地址填 IPv4；TTL 默认 1 即自动。</p>'),
+    helpItem('AAAA 记录是什么？', '<p>AAAA 记录把域名指向 IPv6 地址。只有目标服务提供 IPv6 时才使用。</p><p>如果你不确定是否需要 IPv6，通常先使用 A 或 CNAME。</p>'),
+    helpItem('CNAME 记录是什么？', '<p>CNAME 把一个域名别名指向另一个域名，例如 xxx.pages.dev、xxx.vercel.app、cnboxs.ddns.org。</p><p>注意：CNAME 目标应填写域名，不要加 http:// 或 https://，末尾通常不需要斜杠。</p>'),
+    helpItem('TXT 记录是什么？', '<p>TXT 常用于平台验证、SSL 验证、邮箱 SPF/DKIM/DMARC 配置。TXT 不支持 Cloudflare 代理，系统会自动使用仅 DNS。</p>'),
+    helpItem('MX 记录是什么？', '<p>MX 用于邮箱收信服务。需要填写邮件服务器地址和优先级，数字越小优先级越高。</p><p>MX 也必须保持仅 DNS，不能开启代理。</p>'),
+    helpItem('什么是 @、www、api、api.v1？', '<p>@ 表示当前申请的二级域名本身，例如 user.flore.top。</p><p>www 表示 www.user.flore.top；api 表示 api.user.flore.top；api.v1 表示 api.v1.user.flore.top。</p>'),
+    helpItem('仅 DNS 和开启代理有什么区别？', '<p>仅 DNS：只解析域名，不经过 Cloudflare 代理，适合大多数验证、邮箱、动态 DNS。</p><p>开启代理：流量经过 Cloudflare，可隐藏源站 IP、使用缓存和防护。只适用于 A / AAAA / CNAME，TXT / MX 不支持。</p>'),
+    helpItem('DNS 多久生效？', '<p>通常几分钟内生效，但不同网络运营商缓存不同，最长可能需要数小时。</p><p>刚添加后不要频繁删除重建，先等待一段时间再测试。</p>')
+  ].join('');
+  const manage = [
+    helpItem('如何添加三级域名？', '<p>进入“域名管理 → 管理域名 → DNS 解析 → 添加解析”。主机记录填 www、api、cdn 等。</p><p>例如你的域名是 user.flore.top，主机记录填 api，最终就是 api.user.flore.top。</p>'),
+    helpItem('如何添加多级子域名？', '<p>主机记录可以填 api.v1、dev.test、cdn.img 等，系统会生成 api.v1.user.flore.top 这样的多级解析。</p><p>不要在主机记录里重复填写完整根域名。</p>'),
+    helpItem('为什么添加 DNS 失败？', '<p>常见原因：目标地址格式错误、CNAME 填了 URL、A 记录不是 IPv4、AAAA 不是 IPv6、TXT 内容为空、MX 没填优先级、Cloudflare API Token 权限不足。</p><p>解决方法：检查类型和目标值是否匹配；管理员检查 CF_API_TOKEN、DNS_ZONE_ID、DNS_ALLOWED_TYPES。</p>'),
+    helpItem('域名被禁用后怎么办？', '<p>禁用通常由管理员执行，系统会删除该域名的 DNS 记录。用户界面会显示管理员留言。</p><p>如需恢复，请根据留言修改用途后联系管理员重新处理。</p>'),
+    helpItem('额度不够怎么办？', '<p>额度由管理员设置。用户可联系管理员增加额度。管理员可以在“用户管理”里编辑每个用户的域名额度，也可以给自己的管理员账号设置额度。</p>'),
+    helpItem('如何续期？', '<p>域名进入续期窗口后会显示续期按钮。默认最后 60 天可续期，具体以管理员设置为准。</p><p>续期成功后会更新到期时间。</p>'),
+    helpItem('为什么域名列表只显示状态，不能编辑？', '<p>“域名注册”页面只用于快速查看最近域名，不显示编辑操作。真正的解析管理入口在“域名管理”。</p>')
+  ].join('');
+  shell('帮助中心', `
+    <section class="help-hero card"><div><h2>帮助中心</h2><p>查看使用提示与支持入口</p></div></section>
+    <section class="help-search-row"><input id="help-search" class="help-search" placeholder="搜索关键词，例如：DNS 生效、解析报错"><button class="btn primary" id="help-search-btn">搜索/问答</button></section>
+    <section class="card help-card"><h2>域名知识小贴士</h2><div class="help-tabs"><a href="#faq">常见问题</a><a href="#dns-guide">DNS 记录说明</a><a href="#domain-manage">域名管理问题</a></div></section>
+    <section id="faq" class="card help-card"><h2>常见问题</h2><div class="help-accordion">${faq}</div></section>
+    <section id="dns-guide" class="card help-card"><h2>DNS 记录说明</h2><div class="help-accordion">${dns}</div></section>
+    <section id="domain-manage" class="card help-card"><h2>域名管理问题</h2><div class="help-accordion">${manage}</div></section>
+    <section class="card help-card"><h2>需要帮助？</h2><p>如果您在使用过程中遇到问题，或者需要技术支持，请点击下方按钮提交。</p><a class="btn primary" href="https://mailform.flore.top" target="_blank" rel="noopener">提交问题反馈</a></section>
+  `);
+  const search = document.querySelector('#help-search');
+  const runFilter = () => {
+    const q = search.value.trim().toLowerCase();
+    document.querySelectorAll('.help-item').forEach(item => {
+      const hit = !q || item.textContent.toLowerCase().includes(q);
+      item.style.display = hit ? '' : 'none';
+      if (hit && q) item.open = true;
+    });
+  };
+  search?.addEventListener('input', runFilter);
+  document.querySelector('#help-search-btn')?.addEventListener('click', runFilter);
 }
 
 async function renderDomains() {
