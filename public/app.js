@@ -342,6 +342,26 @@ Object.assign(I18N_EN, {
   '帮助':'Help'
 });
 
+
+Object.assign(I18N_EN, {
+  '12 小时内可以撤销删除申请。':'You can cancel the deletion request within 12 hours.',
+  '撤销删除申请':'Cancel Deletion Request',
+  '确认撤销删除申请？':'Cancel this deletion request?',
+  '删除申请已撤销':'Deletion request cancelled',
+  '删除申请已提交，12 小时内可以撤销。':'Deletion request submitted. You can cancel it within 12 hours.',
+  '请输入完整域名确认':'Enter the full domain to confirm',
+  '输入完整域名确认':'Enter full domain to confirm',
+  '完整域名必须完全一致。':'The full domain must match exactly.',
+  '输入当前账号确认':'Enter current account to confirm',
+  '当前账号必须完全一致。':'The current account must match exactly.',
+  '只有输入正确后才能继续。':'You can continue only after entering it exactly.',
+  '12 小时撤销窗口已过，请等待管理员审核。':'The 12-hour cancellation window has expired. Please wait for admin review.',
+  '删除申请已提交':'Deletion request submitted',
+  '可以撤销':'Can cancel',
+  '删除确认':'Deletion Confirmation',
+  '注销确认':'Account Cancellation Confirmation'
+});
+
 function lang() { return localStorage.getItem('ui_lang') || 'zh'; }
 function setLang(value) {
   localStorage.setItem('ui_lang', value === 'en' ? 'en' : 'zh');
@@ -910,11 +930,13 @@ function domainCard(a, options = {}) {
     </div>
     ${a.errorMessage ? `<p class="error-line">${esc(a.errorMessage)}</p>` : ''}
     ${a.reviewNote ? `<p class="note-line"><b>管理员留言：</b>${esc(a.reviewNote)}</p>` : ''}
+    ${a.deleteRequested ? `<p class="note-line"><b>删除申请：</b>${a.canCancelDeleteRequest ? '12 小时内可以撤销删除申请。' : '12 小时撤销窗口已过，请等待管理员审核。'}</p>` : ''}
     ${options.readonly ? '' : `<div class="card-actions">
       <button class="btn soft" data-manage="${attr(a.id)}">管理域名</button>
       ${a.canRenew ? `<button class="btn success" data-renew="${attr(a.id)}">续期</button>` : ''}
       ${a.canRequestDelete ? `<button class="btn danger-soft" data-request-delete="${attr(a.id)}">申请删除域名</button>` : ''}
-      ${a.deleteRequested ? `<button class="btn secondary" disabled>删除待审核</button>` : ''}
+      ${a.deleteRequested && a.canCancelDeleteRequest ? `<button class="btn soft" data-cancel-delete-request="${attr(a.id)}">撤销删除申请</button>` : ''}
+      ${a.deleteRequested && !a.canCancelDeleteRequest ? `<button class="btn secondary" disabled>删除待审核</button>` : ''}
       ${a.canDelete ? `<button class="btn danger-soft" data-delete="${attr(a.id)}">删除无效域名</button>` : ''}
     </div>`}
   </article>`;
@@ -925,6 +947,7 @@ function bindDomainCardActions() {
   document.querySelectorAll('[data-renew]').forEach(btn => btn.addEventListener('click', () => renewDomain(btn.dataset.renew)));
   document.querySelectorAll('[data-delete]').forEach(btn => btn.addEventListener('click', () => showDeleteDomainModal(btn.dataset.delete)));
   document.querySelectorAll('[data-request-delete]').forEach(btn => btn.addEventListener('click', () => showRequestDeleteDomainModal(btn.dataset.requestDelete)));
+  document.querySelectorAll('[data-cancel-delete-request]').forEach(btn => btn.addEventListener('click', () => showCancelDeleteRequestModal(btn.dataset.cancelDeleteRequest)));
 }
 
 async function renderDomainDetail(id) {
@@ -954,7 +977,8 @@ async function renderDomainDetail(id) {
             ${addDnsButton}
             ${a.canRenew ? `<button class="btn success" id="renew-domain">▣ 续期</button>` : ''}
             ${a.canRequestDelete ? `<button class="btn danger-soft" id="request-delete-domain">申请删除</button>` : ''}
-            ${a.deleteRequested ? `<button class="btn secondary" disabled>删除待审核</button>` : ''}
+            ${a.deleteRequested && a.canCancelDeleteRequest ? `<button class="btn soft" id="cancel-delete-request">撤销删除申请</button>` : ''}
+            ${a.deleteRequested && !a.canCancelDeleteRequest ? `<button class="btn secondary" disabled>删除待审核</button>` : ''}
           </div>
         </div>
       </section>
@@ -981,7 +1005,8 @@ async function renderDomainDetail(id) {
                 ${openDnsButton}
                 ${a.canRenew ? `<button class="btn success" data-renew-one>▣ 续期</button>` : '<button class="btn secondary" disabled>未到续期时间</button>'}
                 ${a.canRequestDelete ? `<button class="btn danger-soft" data-request-delete-one>申请删除域名</button>` : ''}
-                ${a.deleteRequested ? `<button class="btn secondary" disabled>删除待审核</button>` : ''}
+                ${a.deleteRequested && a.canCancelDeleteRequest ? `<button class="btn soft" data-cancel-delete-request-one>撤销删除申请</button>` : ''}
+                ${a.deleteRequested && !a.canCancelDeleteRequest ? `<button class="btn secondary" disabled>删除待审核</button>` : ''}
                 ${a.canDelete ? `<button class="btn danger-soft" data-delete-one>删除无效域名</button>` : ''}
               </div>
             </div>
@@ -1023,6 +1048,8 @@ async function renderDomainDetail(id) {
     document.querySelector('[data-delete-one]')?.addEventListener('click', () => showDeleteDomainModal(a.id));
     document.querySelector('#request-delete-domain')?.addEventListener('click', () => showRequestDeleteDomainModal(a.id));
     document.querySelector('[data-request-delete-one]')?.addEventListener('click', () => showRequestDeleteDomainModal(a.id));
+    document.querySelector('#cancel-delete-request')?.addEventListener('click', () => showCancelDeleteRequestModal(a.id));
+    document.querySelector('[data-cancel-delete-request-one]')?.addEventListener('click', () => showCancelDeleteRequestModal(a.id));
   } catch (error) {
     toast(error.message, 'error');
     go('#/domains');
@@ -1120,22 +1147,41 @@ async function deleteDnsRecord(applicationId, recordId) {
   }
 }
 
+function bindExactConfirmInput(form, inputSelector, buttonSelector, expectedValues) {
+  const input = form.querySelector(inputSelector);
+  const button = form.querySelector(buttonSelector);
+  const values = expectedValues.filter(Boolean).map(String);
+  const sync = () => {
+    const value = input.value.trim();
+    button.disabled = !values.includes(value);
+  };
+  input.addEventListener('input', sync);
+  sync();
+}
+
 function showDeleteDomainModal(id) {
   const a = state.applications.find(x => x.id === id);
+  const displayDomain = a?.fqdnUnicode || a?.fqdnAscii || id;
   openModal('删除无效域名', '此操作只删除已拒绝或已撤销的无效域名记录，不影响正常域名。', `
-    <div class="delete-box">
-      <p>确认删除：</p>
-      <strong>${esc(a?.fqdnUnicode || id)}</strong>
-      <p class="danger-text">删除后该记录将从用户列表中隐藏。</p>
-    </div>
-    <div class="modal-actions"><button type="button" class="btn secondary" data-cancel>取消</button><button class="btn danger" id="confirm-delete">确认删除</button></div>
-  `);
+    <form id="delete-domain-form" class="modal-form">
+      <div class="delete-box">
+        <p>确认删除：</p>
+        <strong>${esc(displayDomain)}</strong>
+        <p class="danger-text">删除后该记录将从用户列表中隐藏。</p>
+      </div>
+      <label class="field wide"><span>输入完整域名确认</span><input name="confirmDomain" placeholder="${attr(displayDomain)}" autocomplete="off" required><em>完整域名必须完全一致。</em></label>
+      <div class="modal-actions"><button type="button" class="btn secondary" data-cancel>取消</button><button class="btn danger" id="confirm-delete" type="submit" disabled>确认删除</button></div>
+    </form>
+  `, 'wide');
+  const form = document.querySelector('#delete-domain-form');
   document.querySelector('[data-cancel]').addEventListener('click', closeModal);
-  document.querySelector('#confirm-delete').addEventListener('click', async e => {
-    const btn = e.currentTarget;
+  bindExactConfirmInput(form, 'input[name="confirmDomain"]', '#confirm-delete', [a?.fqdnUnicode, a?.fqdnAscii, id]);
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = e.submitter;
     btn.disabled = true;
     try {
-      await api(`/api/applications/${encodeURIComponent(id)}`, { method:'DELETE' });
+      await api(`/api/applications/${encodeURIComponent(id)}`, { method:'DELETE', body:Object.fromEntries(new FormData(form)) });
       closeModal();
       toast('无效域名已删除', 'success');
       await renderDomains();
@@ -1143,25 +1189,51 @@ function showDeleteDomainModal(id) {
   });
 }
 
-
 function showRequestDeleteDomainModal(id) {
   const a = state.applications.find(x => x.id === id) || {};
+  const displayDomain = a.fqdnUnicode || a.fqdnAscii || id;
   openModal('申请删除域名', '正常域名需要管理员审核后才会删除。管理员通过后，系统会自动删除 Cloudflare DNS 记录并从列表隐藏。', `
-    <div class="delete-box">
-      <p>确认提交删除申请：</p>
-      <strong>${esc(a.fqdnUnicode || id)}</strong>
-      <p class="danger-text">提交后域名会显示“待删除审核”，审核期间仍占用额度。</p>
-    </div>
-    <div class="modal-actions"><button type="button" class="btn secondary" data-cancel>取消</button><button class="btn danger" id="confirm-request-delete">确认申请删除</button></div>
+    <form id="request-delete-domain-form" class="modal-form">
+      <div class="delete-box">
+        <p>确认提交删除申请：</p>
+        <strong>${esc(displayDomain)}</strong>
+        <p class="danger-text">提交后域名会显示“待删除审核”，审核期间仍占用额度。12 小时内可以撤销删除申请。</p>
+      </div>
+      <label class="field wide"><span>输入完整域名确认</span><input name="confirmDomain" placeholder="${attr(displayDomain)}" autocomplete="off" required><em>完整域名必须完全一致。</em></label>
+      <div class="modal-actions"><button type="button" class="btn secondary" data-cancel>取消</button><button class="btn danger" id="confirm-request-delete" type="submit" disabled>确认申请删除</button></div>
+    </form>
+  `, 'wide');
+  const form = document.querySelector('#request-delete-domain-form');
+  document.querySelector('[data-cancel]').addEventListener('click', closeModal);
+  bindExactConfirmInput(form, 'input[name="confirmDomain"]', '#confirm-request-delete', [a.fqdnUnicode, a.fqdnAscii, id]);
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = e.submitter;
+    btn.disabled = true;
+    try {
+      await api(`/api/applications/${encodeURIComponent(id)}/delete-request`, { method:'POST', body:Object.fromEntries(new FormData(form)) });
+      closeModal();
+      toast('删除申请已提交，12 小时内可以撤销。', 'success');
+      if (location.hash.startsWith('#/domain/')) await renderDomainDetail(id);
+      else await renderDomains();
+    } catch (error) { toast(error.message, 'error'); btn.disabled = false; }
+  });
+}
+
+function showCancelDeleteRequestModal(id) {
+  const a = state.applications.find(x => x.id === id) || {};
+  openModal('撤销删除申请', '删除申请提交后 12 小时内可以撤销。', `
+    <div class="delete-box"><p>确认撤销删除申请？</p><strong>${esc(a.fqdnUnicode || a.fqdnAscii || id)}</strong></div>
+    <div class="modal-actions"><button type="button" class="btn secondary" data-cancel>取消</button><button class="btn primary" id="confirm-cancel-delete-request" type="button">撤销删除申请</button></div>
   `);
   document.querySelector('[data-cancel]').addEventListener('click', closeModal);
-  document.querySelector('#confirm-request-delete').addEventListener('click', async e => {
+  document.querySelector('#confirm-cancel-delete-request').addEventListener('click', async e => {
     const btn = e.currentTarget;
     btn.disabled = true;
     try {
-      await api(`/api/applications/${encodeURIComponent(id)}/delete-request`, { method:'POST', body:{} });
+      await api(`/api/applications/${encodeURIComponent(id)}/delete-request/cancel`, { method:'POST', body:{} });
       closeModal();
-      toast('删除申请已提交，等待管理员审核', 'success');
+      toast('删除申请已撤销', 'success');
       if (location.hash.startsWith('#/domain/')) await renderDomainDetail(id);
       else await renderDomains();
     } catch (error) { toast(error.message, 'error'); btn.disabled = false; }
@@ -1207,17 +1279,19 @@ function showDeleteAccountModal() {
     <form id="delete-account-form" class="modal-form">
       <div class="delete-box"><p>当前账号：</p><strong>${esc(state.me.username)}</strong><p class="danger-text">注销后将退出登录，账号状态变为已删除。</p></div>
       <label class="field wide"><span>当前密码</span><input name="currentPassword" type="password" required></label>
-      <label class="field wide"><span>输入用户名确认</span><input name="confirmUsername" placeholder="${attr(state.me.username)}" required></label>
-      <div class="modal-actions"><button type="button" class="btn secondary" data-cancel>取消</button><button class="btn danger" type="submit">确认注销</button></div>
+      <label class="field wide"><span>输入当前账号确认</span><input name="confirmAccount" placeholder="${attr(state.me.username)}" autocomplete="off" required><em>当前账号必须完全一致。</em></label>
+      <div class="modal-actions"><button type="button" class="btn secondary" data-cancel>取消</button><button class="btn danger" id="confirm-delete-account" type="submit" disabled>确认注销</button></div>
     </form>
   `, 'wide');
+  const form = document.querySelector('#delete-account-form');
   document.querySelector('[data-cancel]').addEventListener('click', closeModal);
-  document.querySelector('#delete-account-form').addEventListener('submit', async e => {
+  bindExactConfirmInput(form, 'input[name="confirmAccount"]', '#confirm-delete-account', [state.me.username]);
+  form.addEventListener('submit', async e => {
     e.preventDefault();
     const btn = e.submitter;
     btn.disabled = true;
     try {
-      await api('/api/account/delete', { method:'POST', body:Object.fromEntries(new FormData(e.currentTarget)) });
+      await api('/api/account/delete', { method:'POST', body:Object.fromEntries(new FormData(form)) });
       closeModal();
       toast('账号已注销', 'success');
       state.me = null;
