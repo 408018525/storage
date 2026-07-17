@@ -1194,3 +1194,57 @@ th { font-size: 12px; }
 .message-readers b{color:#0f172a;margin-right:4px}
 .message-card.read .message-check{opacity:.65}
 @media(max-width:760px){.message-toolbar{width:100%;justify-content:flex-start}.message-select{position:absolute;right:14px;top:14px}.message-card{padding-right:48px}.nav .nav-badge{right:14px;top:9px}}
+
+/* v46: help contact form */
+.help-contact-card .section-head {
+  align-items: flex-start;
+  gap: 16px;
+}
+.help-contact-card .section-head .btn {
+  white-space: nowrap;
+}
+.help-contact-methods {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin: 16px 0 18px;
+}
+.help-contact-methods > div {
+  border: 1px solid rgba(114, 132, 167, 0.22);
+  border-radius: 18px;
+  background: rgba(248, 251, 255, 0.88);
+  padding: 16px 18px;
+}
+.help-contact-methods strong {
+  display: block;
+  font-size: 16px;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+.help-contact-methods p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+.help-contact-form textarea {
+  min-height: 180px;
+  resize: vertical;
+}
+.help-contact-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+@media (max-width: 760px) {
+  .help-contact-card .section-head {
+    flex-direction: column;
+  }
+  .help-contact-card .section-head .btn {
+    width: 100%;
+  }
+  .help-contact-methods {
+    grid-template-columns: 1fr;
+  }
+  .help-contact-actions .btn {
+    width: 100%;
+  }
+}
