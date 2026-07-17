@@ -199,8 +199,7 @@ async function renderLogin() {
       ${turn.enabledLogin ? '<div class="wide"><div id="turnstile-box"></div></div>' : ''}
       <button class="btn primary wide" type="submit">登录</button>
     </form>
-    <p class="auth-link">没有账户？ <a href="#/register">注册</a></p>
-    <a class="btn secondary wide" href="#/register" style="margin-top:12px;text-align:center">创建新账户</a>`);
+    <p class="auth-link">没有账户？ <a href="#/register">注册</a></p>`);
   if (turn.enabledLogin) await mountTurnstile('#turnstile-box', turn.actionLogin);
   document.querySelector('#login-form').addEventListener('submit', async e => {
     e.preventDefault();
@@ -320,12 +319,12 @@ async function renderApply() {
 
       <section class="card">
         <h2>域名注册</h2>
-        <p>申请时只需要填写前缀和根域名。DNS 记录类型与目标地址在“域名管理”中填写，管理员审核通过后写入 Cloudflare DNS。</p>
+        <p>申请时只需要填写前缀和根域名。管理员批准后，再在“域名管理”中添加或管理多条 DNS 解析记录。</p>
         <div class="steps">
           <div><b>1</b><strong>填写前缀</strong></div>
           <div><b>2</b><strong>提交审核</strong></div>
-          <div><b>3</b><strong>配置 DNS</strong></div>
-          <div><b>4</b><strong>管理员批准</strong></div>
+          <div><b>3</b><strong>管理员批准</strong></div>
+          <div><b>4</b><strong>配置 DNS</strong></div>
         </div>
       </section>
 
@@ -767,7 +766,8 @@ async function renderAdminUsers() {
       <td>${u.applicationCount} / ${u.approvedCount}</td>
       <td><button class="btn soft small" data-edit-user="${u.id}">编辑</button></td>
     </tr>`).join('');
-    shell('用户管理', `<section class="card"><h2>用户管理</h2><div class="table-wrap"><table><thead><tr><th>用户</th><th>角色</th><th>状态</th><th>额度</th><th>申请/正常</th><th>操作</th></tr></thead><tbody>${rows}</tbody></table></div></section>`);
+    shell('用户管理', `<section class="card"><div class="section-head"><div><h2>用户管理</h2><p>管理员可直接添加用户，并设置初始密码、角色、状态和额度。</p></div><button class="btn primary" id="add-user">＋ 添加用户</button></div><div class="table-wrap"><table><thead><tr><th>用户</th><th>角色</th><th>状态</th><th>额度</th><th>申请/正常</th><th>操作</th></tr></thead><tbody>${rows || '<tr><td colspan="6">暂无用户</td></tr>'}</tbody></table></div></section>`);
+    document.querySelector('#add-user')?.addEventListener('click', showCreateUserModal);
     document.querySelectorAll('[data-edit-user]').forEach(btn => {
       btn.addEventListener('click', () => {
         const u = users.find(x => x.id === btn.dataset.editUser);
@@ -776,6 +776,39 @@ async function renderAdminUsers() {
     });
   } catch (error) { toast(error.message, 'error'); }
 }
+function showCreateUserModal() {
+  const defaultQuota = domainConfig().defaultQuota || 3;
+  openModal('添加用户', '管理员手动创建用户账号', `
+    <form id="create-user-form" class="modal-form">
+      <div class="form-grid">
+        <label class="field"><span>账号</span><input name="username" required minlength="3" maxlength="32" placeholder="例如：user001"></label>
+        <label class="field"><span>邮箱</span><input name="email" type="email" placeholder="user@example.com"></label>
+        <label class="field wide"><span>初始密码</span><input name="password" type="password" required minlength="10" placeholder="至少 10 位，包含字母和数字"><em>创建后用户可自行修改密码。</em></label>
+        <label class="field"><span>角色</span><select name="role"><option value="user">用户</option><option value="admin">管理员</option></select></label>
+        <label class="field"><span>状态</span><select name="status"><option value="active">启用</option><option value="disabled">禁用</option></select></label>
+        <label class="field wide"><span>域名额度</span><input name="domainQuota" type="number" min="0" max="9999" value="${attr(defaultQuota)}"></label>
+        <label class="check wide"><input name="humanCheck" type="checkbox" required> 人机验证：确认由管理员人工创建此账号</label>
+      </div>
+      <div class="modal-actions"><button class="btn secondary" type="button" data-cancel>取消</button><button class="btn primary" type="submit">创建用户</button></div>
+    </form>`, 'wide');
+  document.querySelector('[data-cancel]').addEventListener('click', closeModal);
+  document.querySelector('#create-user-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = e.submitter;
+    btn.disabled = true;
+    const body = Object.fromEntries(new FormData(e.currentTarget));
+    try {
+      await api('/api/admin/users', { method:'POST', body });
+      closeModal();
+      toast('用户已创建', 'success');
+      renderAdminUsers();
+    } catch (error) {
+      toast(error.message, 'error');
+      btn.disabled = false;
+    }
+  });
+}
+
 function showUserModal(u) {
   openModal('编辑用户', u.username, `
     <form id="user-form" class="modal-form">
