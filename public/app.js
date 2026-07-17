@@ -508,7 +508,7 @@ async function renderDomainDetail(id) {
         </div>
 
         <div class="tab-page" data-page="dns">
-          <div class="section-head"><div><h2>DNS 解析</h2><p>支持多条记录：A / AAAA / CNAME / TXT / MX。主机填 @ 表示当前域名，填 www 表示 www.${esc(a.fqdnUnicode)}。</p></div><button class="btn primary" data-open-dns>＋ 添加解析</button></div>
+          <div class="section-head"><div><h2>DNS 解析</h2><p>用户可自由添加解析记录，支持三级/多级子域名。主机填 @ 表示当前域名，填 www 表示 www.${esc(a.fqdnUnicode)}，填 api.v1 表示 api.v1.${esc(a.fqdnUnicode)}。</p></div><button class="btn primary" data-open-dns>＋ 添加解析</button></div>
           <div class="table-wrap"><table><thead><tr><th>主机</th><th>类型</th><th>目标/内容</th><th>优先级</th><th>TTL</th><th>状态</th><th>操作</th></tr></thead><tbody>${dnsRows || '<tr><td colspan="7">暂无 DNS 解析，请点击“添加解析”。</td></tr>'}</tbody></table></div>
         </div>
 
@@ -563,22 +563,39 @@ function showDnsModal(a, record = null) {
   const baseTypes = suffix.allowedTypes?.length ? suffix.allowedTypes : ['A', 'AAAA', 'CNAME', 'TXT', 'MX'];
   const types = Array.from(new Set([...baseTypes, 'A', 'AAAA', 'CNAME', 'TXT', 'MX']));
   const title = record ? '编辑解析' : '添加解析';
-  openModal(title, `为 ${a.fqdnUnicode} 管理 DNS 解析`, `
-    <form id="dns-form" class="modal-form">
-      <label class="field wide"><span>主机记录</span><input name="host" value="${attr(record?.host || '@')}" placeholder="@ / www / api" required><em>@ 表示 ${esc(a.fqdnUnicode)}；www 表示 www.${esc(a.fqdnUnicode)}</em></label>
-      <label class="field wide"><span>DNS 记录类型</span><select name="type" id="dns-type">${types.map(t => `<option value="${attr(t)}" ${record?.type === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
-      <label class="field wide"><span>目标地址 / 内容</span><input name="content" value="${attr(record?.content || '')}" placeholder="CNAME填主机名；A填IPv4；TXT填文本；MX填邮件服务器" required></label>
+  const selectedProxy = record?.proxied ? 'true' : 'false';
+  openModal(title, `为 ${a.fqdnUnicode} 设置子域解析`, `
+    <form id="dns-form" class="modal-form dns-editor-form">
+      <label class="field wide">
+        <span>子域名前缀</span>
+        <input name="host" value="${attr(record?.host || '@')}" placeholder="@ / www / api / api.v1" required>
+        <em>@ = ${esc(a.fqdnUnicode)}；www = www.${esc(a.fqdnUnicode)}；api.v1 = api.v1.${esc(a.fqdnUnicode)}</em>
+      </label>
+      <label class="field wide"><span>记录类型</span><select name="type" id="dns-type">${types.map(t => `<option value="${attr(t)}" ${record?.type === t ? 'selected' : ''}>${esc(t)}${t === 'A' ? ' 记录（IPv4）' : t === 'AAAA' ? ' 记录（IPv6）' : t === 'CNAME' ? ' 记录（别名）' : t === 'TXT' ? ' 记录（文本验证）' : t === 'MX' ? ' 记录（邮箱）' : ''}</option>`).join('')}</select></label>
+      <label class="field wide"><span>目标地址 / 记录值</span><input name="content" value="${attr(record?.content || '')}" placeholder="CNAME填域名；A填IPv4；AAAA填IPv6；TXT填文本；MX填邮件服务器" required></label>
       <label class="field wide" id="priority-field"><span>MX 优先级</span><input name="priority" type="number" min="0" max="65535" value="${attr(record?.priority ?? 10)}"></label>
-      <label class="field"><span>TTL</span><input name="ttl" type="number" min="1" max="86400" value="${attr(record?.ttl || 1)}"><em>1 表示 Cloudflare 自动</em></label>
-      <label class="check"><input name="proxied" type="checkbox" ${record?.proxied ? 'checked' : ''}> 开启 Cloudflare 代理</label>
-      <div class="preview-box"><span>说明</span><strong>A/AAAA/CNAME 可代理；TXT/MX 不代理。MX 需要填写优先级。</strong></div>
-      <div class="modal-actions"><button type="button" class="btn secondary" data-cancel>取消</button><button class="btn primary" type="submit">保存解析</button></div>
+      <label class="field"><span>TTL</span><input name="ttl" type="number" min="1" max="86400" value="${attr(record?.ttl || 1)}"><em>1 表示自动</em></label>
+      <label class="field" id="proxy-field"><span>代理状态</span><select name="proxied" id="dns-proxied"><option value="false" ${selectedProxy === 'false' ? 'selected' : ''}>仅 DNS</option><option value="true" ${selectedProxy === 'true' ? 'selected' : ''}>开启代理</option></select><em>A / AAAA / CNAME 可开启代理，TXT / MX 会自动使用仅 DNS</em></label>
+      <div class="preview-box"><span>完整解析名</span><strong id="dns-name-preview">${esc(record?.name || a.fqdnUnicode)}</strong></div>
+      <div class="modal-actions"><button type="button" class="btn secondary" data-cancel>取消</button><button class="btn primary" type="submit">提交解析</button></div>
     </form>
   `, 'wide');
   const typeSelect = document.querySelector('#dns-type');
   const priorityField = document.querySelector('#priority-field');
-  const refresh = () => { priorityField.style.display = typeSelect.value === 'MX' ? '' : 'none'; };
+  const proxyField = document.querySelector('#proxy-field');
+  const proxySelect = document.querySelector('#dns-proxied');
+  const hostInput = document.querySelector('[name="host"]');
+  const preview = document.querySelector('#dns-name-preview');
+  const refresh = () => {
+    const type = typeSelect.value;
+    const host = hostInput.value.trim().replace(/^\.+|\.+$/g, '') || '@';
+    priorityField.style.display = type === 'MX' ? '' : 'none';
+    proxyField.style.display = ['A','AAAA','CNAME'].includes(type) ? '' : 'none';
+    if (!['A','AAAA','CNAME'].includes(type)) proxySelect.value = 'false';
+    preview.textContent = host === '@' ? a.fqdnUnicode : `${host}.${a.fqdnUnicode}`;
+  };
   typeSelect.addEventListener('change', refresh);
+  hostInput.addEventListener('input', refresh);
   refresh();
   document.querySelector('[data-cancel]').addEventListener('click', closeModal);
   document.querySelector('#dns-form').addEventListener('submit', async e => {
@@ -586,19 +603,20 @@ function showDnsModal(a, record = null) {
     const btn = e.submitter;
     btn.disabled = true;
     const f = new FormData(e.currentTarget);
+    const type = String(f.get('type') || 'CNAME');
     const body = {
       host: f.get('host'),
-      type: f.get('type'),
+      type,
       content: f.get('content'),
       priority: f.get('priority'),
       ttl: f.get('ttl'),
-      proxied: f.get('proxied') === 'on',
+      proxied: ['A','AAAA','CNAME'].includes(type) && f.get('proxied') === 'true',
     };
     try {
       if (record) await api(`/api/dns-records/${encodeURIComponent(record.id)}`, { method:'PATCH', body });
       else await api(`/api/applications/${encodeURIComponent(a.id)}/dns-records`, { method:'POST', body });
       closeModal();
-      toast('DNS 解析已保存', 'success');
+      toast('解析已提交', 'success');
       await renderDomainDetail(a.id);
     } catch (error) {
       toast(error.message, 'error');
