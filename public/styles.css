@@ -1268,3 +1268,6 @@ th { font-size: 12px; }
   .reply-original-box { padding: 12px; border-radius: 14px; }
   .message-actions .btn[data-reply-message] { margin-left: 0; }
 }
+
+/* v48 登录设备管理 */
+.device-card-list{display:grid;gap:12px;margin-top:14px}.device-card{display:flex;justify-content:space-between;gap:16px;padding:16px;border:1px solid var(--line,#dbe4f3);border-radius:18px;background:rgba(255,255,255,.72)}.device-card strong{display:block;font-size:16px;color:var(--text,#111827)}.device-card span{display:block;color:var(--muted,#667085);font-size:13px;margin-top:4px}.device-times{text-align:right;min-width:240px}.device-table-wrap{margin-top:8px}.device-table th,.device-table td{white-space:nowrap}.message-level-important{background:#fff1f2;color:#be123c}.message-level-system{background:#eef4ff;color:#155eef}@media(max-width:760px){.device-card{display:block}.device-times{text-align:left;min-width:0;margin-top:10px}.device-table th,.device-table td{font-size:12px}}
