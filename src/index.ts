@@ -114,6 +114,25 @@ interface DnsRecordRow {
   username?: string | null;
 }
 
+interface MessageRow {
+  id: string;
+  sender_user_id?: string | null;
+  sender_username?: string | null;
+  target_type: string;
+  target_user_id?: string | null;
+  target_username?: string | null;
+  target_role?: string | null;
+  title: string;
+  body: string;
+  level: string;
+  status: string;
+  created_at: string;
+  updated_at?: string | null;
+  sent_at?: string | null;
+  deleted_at?: string | null;
+  read_at?: string | null;
+}
+
 interface AppSettings {
   site: {
     title: string;
@@ -229,11 +248,24 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   match = pathname.match(/^\/api\/applications\/([^/]+)\/delete-request\/cancel$/);
   if (match && method === 'POST') return cancelDeleteOwnApplication(request, env, decodeURIComponent(match[1]));
 
+  if (method === 'GET' && pathname === '/api/messages') return listOwnMessages(request, env);
+  match = pathname.match(/^\/api\/messages\/([^/]+)\/read$/);
+  if (match && method === 'POST') return markOwnMessageRead(request, env, decodeURIComponent(match[1]));
+
   if (method === 'GET' && pathname === '/api/admin/overview') return adminOverview(request, env);
   if (method === 'GET' && pathname === '/api/admin/applications') return adminApplications(request, env, url);
   if (method === 'GET' && pathname === '/api/admin/users') return adminUsers(request, env);
   if (method === 'POST' && pathname === '/api/admin/users') return adminCreateUser(request, env);
+  if (method === 'GET' && pathname === '/api/admin/messages') return adminListMessages(request, env, url);
+  if (method === 'POST' && pathname === '/api/admin/messages') return adminCreateMessage(request, env);
   if (method === 'GET' && pathname === '/api/admin/settings') return adminSettings(request, env);
+
+  match = pathname.match(/^\/api\/admin\/messages\/([^/]+)$/);
+  if (match && method === 'PATCH') return adminUpdateMessage(request, env, decodeURIComponent(match[1]));
+  if (match && method === 'DELETE') return adminDeleteMessage(request, env, decodeURIComponent(match[1]));
+
+  match = pathname.match(/^\/api\/admin\/messages\/([^/]+)\/send$/);
+  if (match && method === 'POST') return adminSendMessage(request, env, decodeURIComponent(match[1]));
 
   match = pathname.match(/^\/api\/admin\/settings\/(site|registration|domain)$/);
   if (match && method === 'PUT') return adminUpdateSettings(request, env, match[1] as 'site' | 'registration' | 'domain');
@@ -331,6 +363,35 @@ async function ensureSchema(env: Env): Promise<void> {
       )
     `),
     env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS system_messages (
+        id TEXT PRIMARY KEY,
+        sender_user_id TEXT,
+        target_type TEXT NOT NULL DEFAULT 'all',
+        target_user_id TEXT,
+        target_role TEXT,
+        title TEXT NOT NULL,
+        body TEXT NOT NULL,
+        level TEXT NOT NULL DEFAULT 'info',
+        status TEXT NOT NULL DEFAULT 'sent',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT,
+        sent_at TEXT,
+        deleted_at TEXT,
+        FOREIGN KEY(sender_user_id) REFERENCES users(id),
+        FOREIGN KEY(target_user_id) REFERENCES users(id)
+      )
+    `),
+    env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS message_reads (
+        message_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        read_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY(message_id, user_id),
+        FOREIGN KEY(message_id) REFERENCES system_messages(id),
+        FOREIGN KEY(user_id) REFERENCES users(id)
+      )
+    `),
+    env.DB.prepare(`
       CREATE TABLE IF NOT EXISTS audit_logs (
         id TEXT PRIMARY KEY,
         actor_user_id TEXT,
@@ -347,6 +408,9 @@ async function ensureSchema(env: Env): Promise<void> {
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_apps_fqdn ON domain_applications(fqdn_ascii)'),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_dns_records_app ON dns_records(application_id, deleted_at)'),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_dns_records_cf ON dns_records(cf_record_id)'),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_messages_status ON system_messages(status, sent_at)'),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_messages_target_user ON system_messages(target_type, target_user_id, status)'),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_messages_target_role ON system_messages(target_type, target_role, status)'),
   ]);
 
   const alters = [
@@ -1140,6 +1204,188 @@ async function deleteOwnApplication(request: Request, env: Env, id: string): Pro
   `).bind(id, user.id).run();
 
   await audit(env, request, user.id, 'application.delete_invalid', 'domain_application', id);
+  return ok({ deleted: true });
+}
+
+
+function messageTargetLabel(row: MessageRow): string {
+  if (row.target_type === 'all') return '全部用户';
+  if (row.target_type === 'role') return row.target_role === 'admin' ? '管理员' : '普通用户';
+  if (row.target_type === 'user') return row.target_username || row.target_user_id || '指定用户';
+  return row.target_type || '未知目标';
+}
+
+function serializeMessage(row: MessageRow) {
+  return {
+    id: row.id,
+    senderUserId: row.sender_user_id || null,
+    senderUsername: row.sender_username || '系统管理员',
+    targetType: row.target_type,
+    targetUserId: row.target_user_id || null,
+    targetUsername: row.target_username || null,
+    targetRole: row.target_role || null,
+    targetLabel: messageTargetLabel(row),
+    title: row.title,
+    body: row.body,
+    level: row.level || 'info',
+    status: row.status || 'sent',
+    createdAt: row.created_at,
+    updatedAt: row.updated_at || null,
+    sentAt: row.sent_at || null,
+    readAt: row.read_at || null,
+    isRead: Boolean(row.read_at),
+  };
+}
+
+function normalizeMessageLevel(value: unknown): string {
+  const level = String(value || 'info').toLowerCase();
+  return ['info', 'success', 'warning', 'danger'].includes(level) ? level : 'info';
+}
+
+function normalizeMessageStatus(value: unknown): string {
+  const status = String(value || 'sent').toLowerCase();
+  return ['sent', 'draft', 'template'].includes(status) ? status : 'sent';
+}
+
+function normalizeTargetType(value: unknown): string {
+  const type = String(value || 'all').toLowerCase();
+  return ['all', 'user', 'role'].includes(type) ? type : 'all';
+}
+
+async function listOwnMessages(request: Request, env: Env): Promise<Response> {
+  const user = await requireUser(env, request);
+  const rows = await env.DB.prepare(`
+    SELECT m.*, sender.username AS sender_username, target.username AS target_username, r.read_at
+    FROM system_messages m
+    LEFT JOIN users sender ON sender.id=m.sender_user_id
+    LEFT JOIN users target ON target.id=m.target_user_id
+    LEFT JOIN message_reads r ON r.message_id=m.id AND r.user_id=?
+    WHERE m.status='sent'
+      AND (m.deleted_at IS NULL OR m.deleted_at='')
+      AND (
+        m.target_type='all'
+        OR (m.target_type='user' AND m.target_user_id=?)
+        OR (m.target_type='role' AND m.target_role=?)
+      )
+    ORDER BY COALESCE(m.sent_at, m.created_at) DESC
+    LIMIT 300
+  `).bind(user.id, user.id, user.role).all<MessageRow>();
+  const messages = (rows.results || []).map(serializeMessage);
+  return ok({ messages, unread: messages.filter(m => !m.isRead).length });
+}
+
+async function markOwnMessageRead(request: Request, env: Env, id: string): Promise<Response> {
+  const user = await requireUser(env, request);
+  const message = await env.DB.prepare(`
+    SELECT id FROM system_messages
+    WHERE id=? AND status='sent' AND (deleted_at IS NULL OR deleted_at='')
+      AND (target_type='all' OR (target_type='user' AND target_user_id=?) OR (target_type='role' AND target_role=?))
+  `).bind(id, user.id, user.role).first<{ id: string }>();
+  if (!message) throw new HttpError(404, 'MESSAGE_NOT_FOUND', '消息不存在或无权查看');
+  await env.DB.prepare(`
+    INSERT OR REPLACE INTO message_reads (message_id, user_id, read_at)
+    VALUES (?, ?, datetime('now'))
+  `).bind(id, user.id).run();
+  return ok({ read: true });
+}
+
+async function adminListMessages(request: Request, env: Env, url: URL): Promise<Response> {
+  await requireAdmin(env, request);
+  const status = String(url.searchParams.get('status') || '').toLowerCase();
+  const where = status && ['sent','draft','template'].includes(status) ? `AND m.status='${status}'` : '';
+  const rows = await env.DB.prepare(`
+    SELECT m.*, sender.username AS sender_username, target.username AS target_username,
+      (SELECT COUNT(*) FROM message_reads r WHERE r.message_id=m.id) AS read_count
+    FROM system_messages m
+    LEFT JOIN users sender ON sender.id=m.sender_user_id
+    LEFT JOIN users target ON target.id=m.target_user_id
+    WHERE (m.deleted_at IS NULL OR m.deleted_at='') ${where}
+    ORDER BY COALESCE(m.updated_at, m.sent_at, m.created_at) DESC
+    LIMIT 500
+  `).all<any>();
+  return ok({ messages: (rows.results || []).map((row: any) => ({ ...serializeMessage(row), readCount: Number(row.read_count || 0) })) });
+}
+
+async function buildMessagePayload(env: Env, body: Record<string, unknown>) {
+  const title = cleanText(body.title, 120);
+  const text = cleanText(body.body ?? body.content, 5000);
+  if (!title) throw new HttpError(400, 'TITLE_REQUIRED', '请填写消息标题');
+  if (!text) throw new HttpError(400, 'BODY_REQUIRED', '请填写消息内容');
+  const targetType = normalizeTargetType(body.targetType ?? body.target_type);
+  let targetUserId = cleanText(body.targetUserId ?? body.target_user_id, 80) || null;
+  let targetRole = cleanText(body.targetRole ?? body.target_role, 20) || null;
+  if (targetType === 'all') {
+    targetUserId = null;
+    targetRole = null;
+  } else if (targetType === 'role') {
+    targetUserId = null;
+    targetRole = targetRole === 'admin' ? 'admin' : 'user';
+  } else if (targetType === 'user') {
+    targetRole = null;
+    if (!targetUserId) throw new HttpError(400, 'TARGET_USER_REQUIRED', '请选择接收用户');
+    const user = await env.DB.prepare(`SELECT id FROM users WHERE id=? AND status!='deleted'`).bind(targetUserId).first<{ id: string }>();
+    if (!user) throw new HttpError(404, 'TARGET_USER_NOT_FOUND', '接收用户不存在');
+  }
+  return {
+    title,
+    body: text,
+    targetType,
+    targetUserId,
+    targetRole,
+    level: normalizeMessageLevel(body.level),
+    status: normalizeMessageStatus(body.status),
+  };
+}
+
+async function adminCreateMessage(request: Request, env: Env): Promise<Response> {
+  const admin = await requireAdmin(env, request);
+  const body = await readJson<Record<string, unknown>>(request, 128 * 1024);
+  const payload = await buildMessagePayload(env, body);
+  const id = crypto.randomUUID();
+  const sentAtSql = payload.status === 'sent' ? `datetime('now')` : `NULL`;
+  await env.DB.prepare(`
+    INSERT INTO system_messages (id, sender_user_id, target_type, target_user_id, target_role, title, body, level, status, sent_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ${sentAtSql})
+  `).bind(id, admin.id, payload.targetType, payload.targetUserId, payload.targetRole, payload.title, payload.body, payload.level, payload.status).run();
+  await audit(env, request, admin.id, `admin.message_${payload.status}`, 'message', id, payload);
+  const row = await env.DB.prepare(`SELECT m.*, u.username AS sender_username FROM system_messages m LEFT JOIN users u ON u.id=m.sender_user_id WHERE m.id=?`).bind(id).first<MessageRow>();
+  return ok({ message: serializeMessage(row!) });
+}
+
+async function adminUpdateMessage(request: Request, env: Env, id: string): Promise<Response> {
+  const admin = await requireAdmin(env, request);
+  const existing = await env.DB.prepare(`SELECT * FROM system_messages WHERE id=? AND (deleted_at IS NULL OR deleted_at='')`).bind(id).first<MessageRow>();
+  if (!existing) throw new HttpError(404, 'MESSAGE_NOT_FOUND', '消息不存在');
+  if (existing.status === 'sent') throw new HttpError(409, 'SENT_MESSAGE_LOCKED', '已发送消息不能编辑，可删除后重新发送');
+  const body = await readJson<Record<string, unknown>>(request, 128 * 1024);
+  const payload = await buildMessagePayload(env, body);
+  const status = payload.status === 'sent' ? existing.status : payload.status;
+  await env.DB.prepare(`
+    UPDATE system_messages
+    SET target_type=?, target_user_id=?, target_role=?, title=?, body=?, level=?, status=?, updated_at=datetime('now')
+    WHERE id=?
+  `).bind(payload.targetType, payload.targetUserId, payload.targetRole, payload.title, payload.body, payload.level, status, id).run();
+  await audit(env, request, admin.id, 'admin.message_update', 'message', id, payload);
+  return ok({ updated: true });
+}
+
+async function adminSendMessage(request: Request, env: Env, id: string): Promise<Response> {
+  const admin = await requireAdmin(env, request);
+  const existing = await env.DB.prepare(`SELECT * FROM system_messages WHERE id=? AND (deleted_at IS NULL OR deleted_at='')`).bind(id).first<MessageRow>();
+  if (!existing) throw new HttpError(404, 'MESSAGE_NOT_FOUND', '消息不存在');
+  await env.DB.prepare(`
+    UPDATE system_messages
+    SET status='sent', sent_at=COALESCE(sent_at, datetime('now')), updated_at=datetime('now')
+    WHERE id=?
+  `).bind(id).run();
+  await audit(env, request, admin.id, 'admin.message_send', 'message', id, {});
+  return ok({ sent: true });
+}
+
+async function adminDeleteMessage(request: Request, env: Env, id: string): Promise<Response> {
+  const admin = await requireAdmin(env, request);
+  await env.DB.prepare(`UPDATE system_messages SET deleted_at=datetime('now'), updated_at=datetime('now') WHERE id=?`).bind(id).run();
+  await audit(env, request, admin.id, 'admin.message_delete', 'message', id, {});
   return ok({ deleted: true });
 }
 
