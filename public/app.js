@@ -456,10 +456,12 @@ function bindDomainCardActions() {
 async function renderDomainDetail(id) {
   shell('域名管理', `<div class="loading-card">正在读取域名详情…</div>`);
   try {
-    const { application: a } = await api(`/api/applications/${encodeURIComponent(id)}`);
-    const dnsRows = a.dnsConfigured ? `
-      <tr><td>@</td><td>${esc(a.recordType)}</td><td class="mono">${esc(a.recordContent)}</td><td>${a.ttl === 1 ? '自动' : esc(a.ttl)}</td><td>${a.proxied ? '代理' : 'DNS Only'}</td></tr>
-    ` : '';
+    const [{ application: a }, dnsResult] = await Promise.all([
+      api(`/api/applications/${encodeURIComponent(id)}`),
+      api(`/api/applications/${encodeURIComponent(id)}/dns-records`).catch(() => ({ records: [] })),
+    ]);
+    const records = dnsResult.records || [];
+    const dnsRows = records.map(dnsRecordRow).join('');
 
     shell('域名管理', `
       <section class="detail-hero">
@@ -489,8 +491,8 @@ async function renderDomainDetail(id) {
             <div class="info-card"><h2>域名状态</h2>
               <dl>
                 <dt>域名状态</dt><dd>${statusBadge(a.status, a.statusText)}</dd>
-                <dt>DNS 状态</dt><dd>${a.dnsConfigured ? statusBadge('approved','已配置') : statusBadge('pending','未配置')}</dd>
-                <dt>DNS 记录</dt><dd>${a.dnsConfigured ? 1 : 0}</dd>
+                <dt>DNS 状态</dt><dd>${records.length ? statusBadge('approved', `${records.length} 条解析`) : statusBadge('pending','未配置')}</dd>
+                <dt>DNS 记录</dt><dd>${records.length}</dd>
                 <dt>到期时间</dt><dd>${a.expiresAt ? fmtDate(a.expiresAt, true) : '未设置'}</dd>
               </dl>
             </div>
@@ -507,8 +509,8 @@ async function renderDomainDetail(id) {
         </div>
 
         <div class="tab-page" data-page="dns">
-          <div class="section-head"><div><h2>DNS 解析</h2><p>只管理 DNS 记录类型与目标地址，不显示外部 DNS 服务器。</p></div><button class="btn primary" data-open-dns>＋ 添加解析</button></div>
-          <div class="table-wrap"><table><thead><tr><th>主机</th><th>类型</th><th>目标地址</th><th>TTL</th><th>代理</th></tr></thead><tbody>${dnsRows || '<tr><td colspan="5">暂无 DNS 解析，请点击“添加解析”。</td></tr>'}</tbody></table></div>
+          <div class="section-head"><div><h2>DNS 解析</h2><p>支持多条记录：A / AAAA / CNAME / TXT / MX。主机填 @ 表示当前域名，填 www 表示 www.${esc(a.fqdnUnicode)}。</p></div><button class="btn primary" data-open-dns>＋ 添加解析</button></div>
+          <div class="table-wrap"><table><thead><tr><th>主机</th><th>类型</th><th>目标/内容</th><th>优先级</th><th>TTL</th><th>状态</th><th>操作</th></tr></thead><tbody>${dnsRows || '<tr><td colspan="7">暂无 DNS 解析，请点击“添加解析”。</td></tr>'}</tbody></table></div>
         </div>
 
         <div class="tab-page" data-page="renew">
@@ -530,6 +532,11 @@ async function renderDomainDetail(id) {
       document.querySelector(`[data-page="${btn.dataset.tab}"]`)?.classList.add('active');
     }));
     document.querySelectorAll('#add-dns,[data-open-dns]').forEach(btn => btn.addEventListener('click', () => showDnsModal(a)));
+    document.querySelectorAll('[data-edit-dns]').forEach(btn => btn.addEventListener('click', () => {
+      const record = records.find(x => x.id === btn.dataset.editDns);
+      if (record) showDnsModal(a, record);
+    }));
+    document.querySelectorAll('[data-delete-dns]').forEach(btn => btn.addEventListener('click', () => deleteDnsRecord(a.id, btn.dataset.deleteDns)));
     document.querySelectorAll('#renew-domain,[data-renew-one]').forEach(btn => btn.addEventListener('click', () => renewDomain(a.id)));
     document.querySelector('[data-delete-one]')?.addEventListener('click', () => showDeleteDomainModal(a.id));
     document.querySelector('#request-delete-domain')?.addEventListener('click', () => showRequestDeleteDomainModal(a.id));
@@ -540,25 +547,57 @@ async function renderDomainDetail(id) {
   }
 }
 
-function showDnsModal(a) {
+function dnsRecordRow(r) {
+  return `<tr>
+    <td><code>${esc(r.host || '@')}</code><br><small>${esc(r.name || '')}</small></td>
+    <td><b>${esc(r.type)}</b></td>
+    <td class="mono">${esc(r.content)}</td>
+    <td>${r.type === 'MX' ? esc(r.priority ?? 10) : '—'}</td>
+    <td>${Number(r.ttl || 1) === 1 ? '自动' : esc(r.ttl)}</td>
+    <td>${statusBadge(r.status || 'pending', r.statusText || r.status || '待写入')}${r.errorMessage ? `<br><small class="danger-text">${esc(r.errorMessage)}</small>` : ''}</td>
+    <td class="actions-cell"><button class="btn soft small" data-edit-dns="${attr(r.id)}">编辑</button><button class="btn danger-soft small" data-delete-dns="${attr(r.id)}">删除</button></td>
+  </tr>`;
+}
+
+function showDnsModal(a, record = null) {
   const suffix = (suffixList()).find(s => s.suffix === a.suffixUnicode) || (suffixList())[0] || {};
-  const types = suffix.allowedTypes?.length ? suffix.allowedTypes : ['CNAME'];
-  openModal('添加解析', `为 ${a.fqdnUnicode} 设置 DNS 解析`, `
+  const baseTypes = suffix.allowedTypes?.length ? suffix.allowedTypes : ['A', 'AAAA', 'CNAME', 'TXT', 'MX'];
+  const types = Array.from(new Set([...baseTypes, 'A', 'AAAA', 'CNAME', 'TXT', 'MX']));
+  const title = record ? '编辑解析' : '添加解析';
+  openModal(title, `为 ${a.fqdnUnicode} 管理 DNS 解析`, `
     <form id="dns-form" class="modal-form">
-      <label class="field wide"><span>DNS 记录类型</span><select name="recordType">${types.map(t => `<option value="${attr(t)}" ${a.recordType === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
-      <label class="field wide"><span>目标地址</span><input name="target" value="${attr(a.recordContent || '')}" placeholder="例如：your-project.pages.dev" required></label>
-      <div class="preview-box"><span>说明</span><strong>CNAME 填完整主机名；A 填 IPv4；AAAA 填 IPv6。不要填写 https:// 或路径。</strong></div>
+      <label class="field wide"><span>主机记录</span><input name="host" value="${attr(record?.host || '@')}" placeholder="@ / www / api" required><em>@ 表示 ${esc(a.fqdnUnicode)}；www 表示 www.${esc(a.fqdnUnicode)}</em></label>
+      <label class="field wide"><span>DNS 记录类型</span><select name="type" id="dns-type">${types.map(t => `<option value="${attr(t)}" ${record?.type === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
+      <label class="field wide"><span>目标地址 / 内容</span><input name="content" value="${attr(record?.content || '')}" placeholder="CNAME填主机名；A填IPv4；TXT填文本；MX填邮件服务器" required></label>
+      <label class="field wide" id="priority-field"><span>MX 优先级</span><input name="priority" type="number" min="0" max="65535" value="${attr(record?.priority ?? 10)}"></label>
+      <label class="field"><span>TTL</span><input name="ttl" type="number" min="1" max="86400" value="${attr(record?.ttl || 1)}"><em>1 表示 Cloudflare 自动</em></label>
+      <label class="check"><input name="proxied" type="checkbox" ${record?.proxied ? 'checked' : ''}> 开启 Cloudflare 代理</label>
+      <div class="preview-box"><span>说明</span><strong>A/AAAA/CNAME 可代理；TXT/MX 不代理。MX 需要填写优先级。</strong></div>
       <div class="modal-actions"><button type="button" class="btn secondary" data-cancel>取消</button><button class="btn primary" type="submit">保存解析</button></div>
     </form>
   `, 'wide');
+  const typeSelect = document.querySelector('#dns-type');
+  const priorityField = document.querySelector('#priority-field');
+  const refresh = () => { priorityField.style.display = typeSelect.value === 'MX' ? '' : 'none'; };
+  typeSelect.addEventListener('change', refresh);
+  refresh();
   document.querySelector('[data-cancel]').addEventListener('click', closeModal);
   document.querySelector('#dns-form').addEventListener('submit', async e => {
     e.preventDefault();
     const btn = e.submitter;
     btn.disabled = true;
     const f = new FormData(e.currentTarget);
+    const body = {
+      host: f.get('host'),
+      type: f.get('type'),
+      content: f.get('content'),
+      priority: f.get('priority'),
+      ttl: f.get('ttl'),
+      proxied: f.get('proxied') === 'on',
+    };
     try {
-      await api(`/api/applications/${encodeURIComponent(a.id)}/dns`, { method:'PATCH', body:{ recordType:f.get('recordType'), target:f.get('target') } });
+      if (record) await api(`/api/dns-records/${encodeURIComponent(record.id)}`, { method:'PATCH', body });
+      else await api(`/api/applications/${encodeURIComponent(a.id)}/dns-records`, { method:'POST', body });
       closeModal();
       toast('DNS 解析已保存', 'success');
       await renderDomainDetail(a.id);
@@ -567,6 +606,17 @@ function showDnsModal(a) {
       btn.disabled = false;
     }
   });
+}
+
+async function deleteDnsRecord(applicationId, recordId) {
+  if (!confirm('确认删除这条 DNS 解析？')) return;
+  try {
+    await api(`/api/dns-records/${encodeURIComponent(recordId)}`, { method:'DELETE' });
+    toast('DNS 解析已删除', 'success');
+    await renderDomainDetail(applicationId);
+  } catch (error) {
+    toast(error.message, 'error');
+  }
 }
 
 function showDeleteDomainModal(id) {
