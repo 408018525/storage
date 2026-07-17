@@ -179,6 +179,59 @@ Object.assign(I18N_EN, {
 });
 
 
+
+Object.assign(I18N_EN, {
+  '注册新域名':'Register New Domain',
+  '选择根域名并输入前缀，快速注册一个专属您的免费域名':'Choose a root domain and enter a prefix to register your free domain.',
+  '选择根域名':'Select Root Domain',
+  '请选择根域名':'Select a root domain',
+  '域名前缀':'Domain Prefix',
+  '输入前缀，如: myblog':'Enter a prefix, e.g. myblog',
+  '2-36 位，仅支持字母、数字和连字符 -':'2–36 characters. Letters, numbers, and hyphens only.',
+  '完整域名预览':'Full Domain Preview',
+  '请选择根域名并输入前缀':'Select a root domain and enter a prefix',
+  '管理员审核通过后，您才可以设置 DNS 解析':'You can set DNS records only after admin approval.',
+  '查看完整说明 ›':'View Full Guide ›',
+  '确认注册':'Confirm Registration',
+  '正在验证...':'Verifying...',
+  '正在验证…':'Verifying…',
+  '隐私':'Privacy',
+  '帮助':'Help',
+  '已注册':'Registered',
+  '剩余':'Remaining',
+  '最近域名':'Recent Domains',
+  '暂无域名，点击右上方注册新域名。':'No domains yet. Click Register Domain to start.',
+  '全部域名':'All Domains',
+  '域名列表':'Domain List',
+  '这里只显示域名状态，不显示编辑操作；进入“域名管理”后再管理解析。':'This page only shows domain status. Go to Domain Management to edit records.',
+  '管理员审核通过后，进入“域名管理”点击“管理域名”，再添加 DNS 解析。':'After admin approval, go to Domain Management and click Manage Domain to add DNS records.',
+  '域名通过审核后才开始计算有效期。':'Validity starts only after the domain is approved.',
+  '请勿申请违法、侵权、仿冒或误导性域名。':'Do not apply for illegal, infringing, impersonating, or misleading domains.',
+  '申请时只需要填写前缀和根域名。管理员批准后，再在“域名管理”中添加或管理多条 DNS 解析记录。':'Enter only the prefix and root domain. After admin approval, add or manage DNS records in Domain Management.',
+  '填写前缀':'Enter Prefix',
+  '提交审核':'Submit Review',
+  '管理员批准':'Admin Approval',
+  '配置 DNS':'Configure DNS',
+  '待审核':'Pending Review',
+  '正常':'Active',
+  '已拒绝':'Rejected',
+  '已撤销':'Revoked',
+  '已删除':'Deleted',
+  '禁用':'Disabled',
+  '启用':'Active',
+  '处理中':'Processing',
+  '撤销中':'Revoking',
+  '域名审核':'Domain Review',
+  '管理概览':'Dashboard',
+  '用户管理':'User Management',
+  '管理员设置':'Admin Settings',
+  '账户设置':'Account Settings',
+  '退出登录':'Logout',
+  '语言':'Language',
+  '中文':'中文',
+  'EN':'EN'
+});
+
 function lang() { return localStorage.getItem('ui_lang') || 'zh'; }
 function setLang(value) {
   localStorage.setItem('ui_lang', value === 'en' ? 'en' : 'zh');
@@ -213,7 +266,12 @@ function translateTextValue(value) {
     .replace(/^还有\s*(\d+)\s*天$/, '$1 days left')
     .replace(/^已过期\s*(\d+)\s*天$/, 'Expired $1 days ago')
     .replace(/^2-36 位，仅支持字母、数字和连字符 -$/, '2-36 characters. Letters, numbers, and hyphens only.')
-    .replace(/^管理员审核通过后，您才可以设置 DNS 解析$/, 'DNS records are available only after admin approval.')
+    .replace(/^管理员审核通过后，您才可以设置 DNS 解析$/, 'You can set DNS records only after admin approval.')
+    .replace(/^选择根域名并输入前缀，快速注册一个专属您的免费域名$/, 'Choose a root domain and enter a prefix to register your free domain.')
+    .replace(/^请选择根域名并输入前缀$/, 'Select a root domain and enter a prefix')
+    .replace(/^\.请选择根域名$/, '.Select a root domain')
+    .replace(/^请选择根域名$/, 'Select a root domain')
+    .replace(/^输入前缀，如:\s*myblog$/, 'Enter a prefix, e.g. myblog')
     .replace(/^管理员审核通过后，进入“域名管理”点击“管理域名”，再添加 DNS 解析。$/, 'After admin approval, go to Domain Management → Manage Domain to add DNS records.')
     .replace(/^当前域名还未通过审核，暂时不能设置 DNS 解析。$/, 'This domain is not approved yet. DNS records are temporarily unavailable.')
     .replace(/^用户可自由添加解析记录，支持三级\/多级子域名。.*$/, 'Users can freely add DNS records, including third-level and multi-level subdomains.')
@@ -1255,7 +1313,7 @@ async function mountTurnstile(selector, action) {
   if (!window.turnstile || !config.siteKey) return;
   const el = document.querySelector(selector);
   if (!el) return;
-  state.widgetId = window.turnstile.render(el, { sitekey: config.siteKey, action });
+  state.widgetId = window.turnstile.render(el, { sitekey: config.siteKey, action, language: lang() === 'en' ? 'en' : 'zh-cn' });
 }
 function turnstileToken() {
   if (window.turnstile && state.widgetId !== null) return window.turnstile.getResponse(state.widgetId);
@@ -1265,4 +1323,24 @@ function resetTurnstile() {
   if (window.turnstile && state.widgetId !== null) window.turnstile.reset(state.widgetId);
 }
 
-init();
+
+function startLiveI18nObserver() {
+  if (window.__storageI18nObserverStarted) return;
+  window.__storageI18nObserverStarted = true;
+  let timer = null;
+  const run = () => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => {
+      try {
+        applyI18n(document.body);
+        bindLanguageControls();
+      } catch (e) {}
+    }, 20);
+  };
+  const observer = new MutationObserver(run);
+  observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['placeholder','title','aria-label'] });
+  run();
+}
+
+startLiveI18nObserver();
+init().then?.(() => { try { afterRender(); } catch(e) {} });
