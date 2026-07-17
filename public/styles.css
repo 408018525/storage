@@ -230,3 +230,26 @@ th{color:#64748b;font-size:14px}
 
 .status-delete-requested,.status-delete_requested{background:#fff7ed;color:#9a3412}
 .delete-box .danger-text{color:#b91c1c;font-weight:700}
+
+
+/* v13 compact UI tuning */
+body{font-size:14px}
+.btn{padding:10px 15px;border-radius:12px}
+.btn.small{padding:7px 9px;font-size:12px}
+.auth-wrap{max-width:1040px;padding:36px;gap:30px}
+.auth-logo{width:64px;height:64px;border-radius:22px;font-size:30px;margin-bottom:18px}
+.auth-brand h1{font-size:42px}.auth-brand p{font-size:18px}
+.auth-card{border-radius:28px;padding:30px}.auth-card h2{font-size:28px}
+.app-shell{grid-template-columns:250px 1fr}
+.sidebar{padding:20px;gap:18px}.brand div{width:38px;height:38px;border-radius:14px}.nav{padding:11px 12px;border-radius:12px}
+.topbar{padding:18px 28px}.topbar h1{font-size:26px}
+.content{max-width:1160px;padding:22px 28px 44px}
+.notice{padding:13px 16px;border-radius:16px;margin-bottom:14px}
+.quota-hero{padding:22px;border-radius:24px;gap:18px;margin-bottom:20px}.quota-icon{width:58px;height:58px;border-radius:20px;font-size:24px}.quota-hero strong{font-size:34px}.quota-left{padding:10px 18px;border-radius:16px}.quota-left strong{font-size:26px}
+.card{padding:22px;margin-bottom:20px;border-radius:24px}.card h2,.info-card h2{font-size:23px}.card p{line-height:1.65}
+.section-head{margin-bottom:14px}.steps{gap:12px;margin-top:18px}.steps div{padding:14px;border-radius:16px}.steps b{width:32px;height:32px;margin-bottom:10px}.steps strong{font-size:17px}
+.domain-card{padding:20px;border-radius:22px}.domain-title h3{font-size:23px}.globe{width:46px;height:46px;border-radius:16px;font-size:20px}.globe.big{width:56px;height:56px;font-size:26px}
+.domain-metrics{gap:12px}.domain-metrics div,.preview-box{padding:13px;border-radius:15px}.domain-metrics strong{font-size:16px}.card-actions{margin-top:14px}
+.modal{border-radius:24px}.modal-titlebar{padding:22px 26px}.modal-icon{width:48px;height:48px;font-size:24px}.modal-titlebar h2{font-size:25px}.modal-x{font-size:44px}.modal-body{padding:24px}.modal-form{gap:18px}.modal-actions{padding-top:18px}
+.detail-hero{padding:22px;border-radius:24px}.detail-main h1{font-size:34px}.tabs{padding:16px 22px;gap:14px}.tab{font-size:16px}.tab-page{padding:22px}.info-card{padding:22px;border-radius:24px}
+th,td{padding:13px}table{min-width:700px}.stats{gap:14px}.stat{padding:20px}.stat strong{font-size:30px}
