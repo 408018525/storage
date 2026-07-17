@@ -362,7 +362,7 @@ function showRegisterDomainModal() {
         <span>完整域名预览</span>
         <strong id="full-preview">请选择根域名并输入前缀</strong>
       </div>
-      <div class="dns-note"><span>ℹ</span><strong>注册成功后，您需要手动设置 DNS 解析</strong><button type="button" id="dns-help">查看完整说明 ›</button></div>
+      <div class="dns-note"><span>ℹ</span><strong>管理员审核通过后，您才可以设置 DNS 解析</strong><button type="button" id="dns-help">查看完整说明 ›</button></div>
       ${state.config.turnstile.enabledApply ? '<div id="turnstile-box" class="turnstile-holder"></div>' : ''}
       <div class="modal-actions"><button type="button" class="btn secondary" data-cancel>取消</button><button id="confirm-register" class="btn primary" type="submit" disabled>确认注册</button></div>
     </form>
@@ -380,7 +380,7 @@ function showRegisterDomainModal() {
   suffix.addEventListener('change', refresh);
   prefix.addEventListener('input', refresh);
   document.querySelector('[data-cancel]').addEventListener('click', closeModal);
-  document.querySelector('#dns-help').addEventListener('click', () => toast('注册后进入“域名管理”点击“管理域名”，在 DNS 解析中添加 CNAME/A/AAAA。', 'success'));
+  document.querySelector('#dns-help').addEventListener('click', () => toast('管理员审核通过后，进入“域名管理”点击“管理域名”，再添加 DNS 解析。', 'success'));
   if (state.config.turnstile.enabledApply) mountTurnstile('#turnstile-box', state.config.turnstile.actionApply);
   document.querySelector('#domain-register-form').addEventListener('submit', async e => {
     e.preventDefault();
@@ -388,7 +388,7 @@ function showRegisterDomainModal() {
     try {
       await api('/api/applications', { method:'POST', body:{ prefix:prefix.value, suffix:suffix.value, turnstileToken:turnstileToken() } });
       closeModal();
-      toast('域名已提交，请继续配置 DNS 解析', 'success');
+      toast('域名已提交，请等待管理员审核通过后再配置 DNS 解析', 'success');
       await renderApply();
     } catch (error) {
       toast(error.message, 'error');
@@ -420,8 +420,12 @@ async function renderDomains() {
 }
 
 function domainCard(a) {
-  const dns = a.dnsConfigured ? `${a.recordType} → ${a.recordContent}` : '未配置';
+  const approved = a.status === 'approved';
+  const dns = approved ? (a.dnsConfigured ? `${a.recordType} → ${a.recordContent}` : '未配置') : '审核通过后可配置';
   const status = a.statusText || statusText[a.status] || a.status;
+  const expiryMetrics = approved ? `
+      <div><span>到期时间</span><strong>${a.expiresAt ? fmtDate(a.expiresAt) : '—'}</strong></div>
+      <div><span>剩余时间</span><strong>${esc(a.remainingText || '')}</strong></div>` : '';
   return `<article class="domain-card" data-id="${attr(a.id)}">
     <div class="domain-head">
       <div class="globe">🌐</div>
@@ -429,9 +433,7 @@ function domainCard(a) {
       ${statusBadge(a.status, status)}
     </div>
     <div class="domain-metrics">
-      <div><span>注册时间</span><strong>${fmtDate(a.createdAt)}</strong></div>
-      <div><span>到期时间</span><strong>${a.expiresAt ? fmtDate(a.expiresAt) : '—'}</strong></div>
-      <div><span>剩余时间</span><strong>${esc(a.remainingText || '未设置到期时间')}</strong></div>
+      <div><span>注册时间</span><strong>${fmtDate(a.createdAt)}</strong></div>${expiryMetrics}
       <div><span>DNS</span><strong class="mono">${esc(dns)}</strong></div>
     </div>
     ${a.errorMessage ? `<p class="error-line">${esc(a.errorMessage)}</p>` : ''}
@@ -460,7 +462,13 @@ async function renderDomainDetail(id) {
       api(`/api/applications/${encodeURIComponent(id)}/dns-records`).catch(() => ({ records: [] })),
     ]);
     const records = dnsResult.records || [];
-    const dnsRows = records.map(dnsRecordRow).join('');
+    const dnsRows = records.map(r => dnsRecordRow(r, approved)).join('');
+    const approved = a.status === 'approved';
+    const expiryLine = approved && a.expiresAt ? fmtDate(a.expiresAt, true) : '—';
+    const remainingLine = approved ? esc(a.remainingText || '') : '—';
+    const addDnsButton = approved ? '<button class="btn primary" id="add-dns">＋ 添加解析</button>' : '<button class="btn secondary" disabled>审核通过后可配置 DNS</button>';
+    const openDnsButton = approved ? '<button class="btn primary" data-open-dns>＋ 添加解析</button>' : '<button class="btn secondary" disabled>审核通过后可添加解析</button>';
+    const emptyDnsText = approved ? '暂无 DNS 解析，请点击“添加解析”。' : '域名审核通过后才能添加解析。';
 
     shell('域名管理', `
       <section class="detail-hero">
@@ -470,7 +478,7 @@ async function renderDomainDetail(id) {
           <div><h1>${esc(a.fqdnUnicode)}</h1><code>${esc(a.fqdnAscii)}</code></div>
           ${statusBadge(a.status, a.statusText)}
           <div class="detail-actions">
-            <button class="btn primary" id="add-dns">＋ 添加解析</button>
+            ${addDnsButton}
             ${a.canRenew ? `<button class="btn success" id="renew-domain">▣ 续期</button>` : ''}
             ${a.canRequestDelete ? `<button class="btn danger-soft" id="request-delete-domain">申请删除</button>` : ''}
             ${a.deleteRequested ? `<button class="btn secondary" disabled>删除待审核</button>` : ''}
@@ -492,12 +500,12 @@ async function renderDomainDetail(id) {
                 <dt>域名状态</dt><dd>${statusBadge(a.status, a.statusText)}</dd>
                 <dt>DNS 状态</dt><dd>${records.length ? statusBadge('approved', `${records.length} 条解析`) : statusBadge('pending','未配置')}</dd>
                 <dt>DNS 记录</dt><dd>${records.length}</dd>
-                <dt>到期时间</dt><dd>${a.expiresAt ? fmtDate(a.expiresAt, true) : '未设置'}</dd>
+                <dt>到期时间</dt><dd>${expiryLine}</dd>
               </dl>
             </div>
             <div class="info-card"><h2>快捷操作</h2>
               <div class="quick-actions">
-                <button class="btn primary" data-open-dns>＋ 添加解析</button>
+                ${openDnsButton}
                 ${a.canRenew ? `<button class="btn success" data-renew-one>▣ 续期</button>` : '<button class="btn secondary" disabled>未到续期时间</button>'}
                 ${a.canRequestDelete ? `<button class="btn danger-soft" data-request-delete-one>申请删除域名</button>` : ''}
                 ${a.deleteRequested ? `<button class="btn secondary" disabled>删除待审核</button>` : ''}
@@ -508,19 +516,19 @@ async function renderDomainDetail(id) {
         </div>
 
         <div class="tab-page" data-page="dns">
-          <div class="section-head"><div><h2>DNS 解析</h2><p>用户可自由添加解析记录，支持三级/多级子域名。主机填 @ 表示当前域名，填 www 表示 www.${esc(a.fqdnUnicode)}，填 api.v1 表示 api.v1.${esc(a.fqdnUnicode)}。</p></div><button class="btn primary" data-open-dns>＋ 添加解析</button></div>
-          <div class="table-wrap"><table><thead><tr><th>主机</th><th>类型</th><th>目标/内容</th><th>优先级</th><th>TTL</th><th>状态</th><th>操作</th></tr></thead><tbody>${dnsRows || '<tr><td colspan="7">暂无 DNS 解析，请点击“添加解析”。</td></tr>'}</tbody></table></div>
+          <div class="section-head"><div><h2>DNS 解析</h2><p>${approved ? `用户可自由添加解析记录，支持三级/多级子域名。主机填 @ 表示当前域名，填 www 表示 www.${esc(a.fqdnUnicode)}，填 api.v1 表示 api.v1.${esc(a.fqdnUnicode)}。` : '当前域名还未通过审核，暂时不能设置 DNS 解析。'}</p></div>${openDnsButton}</div>
+          <div class="table-wrap"><table><thead><tr><th>主机</th><th>类型</th><th>目标/内容</th><th>优先级</th><th>TTL</th><th>状态</th><th>操作</th></tr></thead><tbody>${dnsRows || `<tr><td colspan="7">${emptyDnsText}</td></tr>`}</tbody></table></div>
         </div>
 
         <div class="tab-page" data-page="renew">
           <div class="detail-grid">
             <div class="info-card"><h2>续期信息</h2><dl>
               <dt>注册时间</dt><dd>${fmtDate(a.createdAt, true)}</dd>
-              <dt>到期时间</dt><dd>${a.expiresAt ? fmtDate(a.expiresAt, true) : '未设置'}</dd>
-              <dt>剩余时间</dt><dd>${esc(a.remainingText)}</dd>
+              <dt>到期时间</dt><dd>${expiryLine}</dd>
+              <dt>剩余时间</dt><dd>${remainingLine}</dd>
               <dt>续期次数</dt><dd>${esc(a.renewCount || 0)}</dd>
             </dl></div>
-            <div class="info-card"><h2>操作</h2><p>默认有效期 ${domainConfig().validDays} 天，最后 ${domainConfig().renewWindowDays} 天可续期。</p>${a.canRenew ? `<button class="btn success" data-renew-one>立即续期</button>` : `<button class="btn secondary" disabled>暂不可续期</button>`}</div>
+            <div class="info-card"><h2>操作</h2><p>${approved ? `默认有效期 ${domainConfig().validDays} 天，最后 ${domainConfig().renewWindowDays} 天可续期。` : '域名通过审核后才开始计算有效期。'}</p>${a.canRenew ? `<button class="btn success" data-renew-one>立即续期</button>` : `<button class="btn secondary" disabled>暂不可续期</button>`}</div>
           </div>
         </div>
       </section>`);
@@ -530,12 +538,14 @@ async function renderDomainDetail(id) {
       btn.classList.add('active');
       document.querySelector(`[data-page="${btn.dataset.tab}"]`)?.classList.add('active');
     }));
-    document.querySelectorAll('#add-dns,[data-open-dns]').forEach(btn => btn.addEventListener('click', () => showDnsModal(a)));
-    document.querySelectorAll('[data-edit-dns]').forEach(btn => btn.addEventListener('click', () => {
-      const record = records.find(x => x.id === btn.dataset.editDns);
-      if (record) showDnsModal(a, record);
-    }));
-    document.querySelectorAll('[data-delete-dns]').forEach(btn => btn.addEventListener('click', () => deleteDnsRecord(a.id, btn.dataset.deleteDns)));
+    if (approved) document.querySelectorAll('#add-dns,[data-open-dns]').forEach(btn => btn.addEventListener('click', () => showDnsModal(a)));
+    if (approved) {
+      document.querySelectorAll('[data-edit-dns]').forEach(btn => btn.addEventListener('click', () => {
+        const record = records.find(x => x.id === btn.dataset.editDns);
+        if (record) showDnsModal(a, record);
+      }));
+      document.querySelectorAll('[data-delete-dns]').forEach(btn => btn.addEventListener('click', () => deleteDnsRecord(a.id, btn.dataset.deleteDns)));
+    }
     document.querySelectorAll('#renew-domain,[data-renew-one]').forEach(btn => btn.addEventListener('click', () => renewDomain(a.id)));
     document.querySelector('[data-delete-one]')?.addEventListener('click', () => showDeleteDomainModal(a.id));
     document.querySelector('#request-delete-domain')?.addEventListener('click', () => showRequestDeleteDomainModal(a.id));
@@ -546,7 +556,8 @@ async function renderDomainDetail(id) {
   }
 }
 
-function dnsRecordRow(r) {
+function dnsRecordRow(r, approved = true) {
+  const actions = approved ? `<button class="btn soft small" data-edit-dns="${attr(r.id)}">编辑</button><button class="btn danger-soft small" data-delete-dns="${attr(r.id)}">删除</button>` : '<span class="muted">审核通过后可操作</span>';
   return `<tr>
     <td><code>${esc(r.host || '@')}</code><br><small>${esc(r.name || '')}</small></td>
     <td><b>${esc(r.type)}</b></td>
@@ -554,7 +565,7 @@ function dnsRecordRow(r) {
     <td>${r.type === 'MX' ? esc(r.priority ?? 10) : '—'}</td>
     <td>${Number(r.ttl || 1) === 1 ? '自动' : esc(r.ttl)}</td>
     <td>${statusBadge(r.status || 'pending', r.statusText || r.status || '待写入')}${r.errorMessage ? `<br><small class="danger-text">${esc(r.errorMessage)}</small>` : ''}</td>
-    <td class="actions-cell"><button class="btn soft small" data-edit-dns="${attr(r.id)}">编辑</button><button class="btn danger-soft small" data-delete-dns="${attr(r.id)}">删除</button></td>
+    <td class="actions-cell">${actions}</td>
   </tr>`;
 }
 
@@ -772,9 +783,9 @@ async function renderAdminApplications() {
     const rows = applications.map(a => `<tr>
       <td><strong>${esc(a.fqdnUnicode)}</strong><br><code>${esc(a.fqdnAscii)}</code></td>
       <td>${esc(a.username || '—')}</td>
-      <td>${a.dnsConfigured ? `<b>${esc(a.recordType)}</b> → <code>${esc(a.recordContent)}</code>` : '<span class="muted">未配置 DNS，可先批准</span>'}</td>
+      <td>${a.dnsConfigured ? `<b>${esc(a.recordType)}</b> → <code>${esc(a.recordContent)}</code>` : '<span class="muted">未配置 DNS</span>'}</td>
       <td>${statusBadge(a.status, a.statusText)}</td>
-      <td>${a.expiresAt ? fmtDate(a.expiresAt) : '—'}<br><small>${esc(a.remainingText || '')}</small></td>
+      <td>${a.status === 'approved' && a.expiresAt ? fmtDate(a.expiresAt) : '—'}<br><small>${a.status === 'approved' ? esc(a.remainingText || '') : ''}</small></td>
       <td class="actions-cell">
         ${a.status === 'pending' ? `<button class="btn success small" data-review="approve" data-id="${a.id}">批准</button><button class="btn danger-soft small" data-review="reject" data-id="${a.id}">拒绝</button>` : ''}
         ${a.deleteRequested ? `<button class="btn danger small" data-review="approve-delete" data-id="${a.id}">批准删除</button><button class="btn soft small" data-review="reject-delete" data-id="${a.id}">拒绝删除</button>` : ''}
@@ -782,7 +793,7 @@ async function renderAdminApplications() {
         ${['rejected','revoked'].includes(a.status) ? `<button class="btn danger-soft small" data-review="delete" data-id="${a.id}">删除</button>` : ''}
       </td>
     </tr>`).join('');
-    shell('域名审核', `<section class="card"><div class="section-head"><div><h2>域名审核</h2><p>未配置 DNS 也可以先批准；用户后续在域名管理中添加解析后会写入 Cloudflare DNS。</p></div></div><div class="table-wrap"><table><thead><tr><th>域名</th><th>用户</th><th>DNS</th><th>状态</th><th>到期</th><th>操作</th></tr></thead><tbody>${rows || '<tr><td colspan="6">暂无申请</td></tr>'}</tbody></table></div></section>`);
+    shell('域名审核', `<section class="card"><div class="section-head"><div><h2>域名审核</h2><p>先审核域名；审核通过后，用户才能进入域名管理添加 DNS 解析。</p></div></div><div class="table-wrap"><table><thead><tr><th>域名</th><th>用户</th><th>DNS</th><th>状态</th><th>到期</th><th>操作</th></tr></thead><tbody>${rows || '<tr><td colspan="6">暂无申请</td></tr>'}</tbody></table></div></section>`);
     document.querySelectorAll('[data-review]').forEach(btn => btn.addEventListener('click', async () => {
       const action = btn.dataset.review;
       const label = { approve:'批准', reject:'拒绝', revoke:'撤销', delete:'删除', 'approve-delete':'批准删除', 'reject-delete':'拒绝删除' }[action];
