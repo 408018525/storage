@@ -1248,3 +1248,23 @@ th { font-size: 12px; }
     width: 100%;
   }
 }
+
+/* v47 message reply modal */
+.reply-message-form textarea { min-height: 140px; resize: vertical; }
+.reply-original-box {
+  border: 1px solid rgba(148, 163, 184, .32);
+  background: rgba(248, 250, 252, .88);
+  border-radius: 18px;
+  padding: 16px 18px;
+  color: #0f172a;
+  line-height: 1.7;
+}
+.reply-original-box strong { display: block; font-size: 16px; margin-bottom: 8px; }
+.reply-original-box h4 { margin: 8px 0; font-size: 18px; }
+.reply-original-box p { margin: 0; color: #475569; white-space: normal; word-break: break-word; }
+.reply-original-meta { color: #64748b; font-size: 13px; }
+.message-actions .btn[data-reply-message] { margin-left: 6px; }
+@media (max-width: 720px) {
+  .reply-original-box { padding: 12px; border-radius: 14px; }
+  .message-actions .btn[data-reply-message] { margin-left: 0; }
+}
