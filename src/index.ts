@@ -272,6 +272,8 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   if (method === 'POST' && pathname === '/api/messages/read-batch') return markOwnMessagesReadBatch(request, env);
   match = pathname.match(/^\/api\/messages\/([^/]+)\/reply$/);
   if (match && method === 'POST') return replyOwnMessage(request, env, decodeURIComponent(match[1]));
+  match = pathname.match(/^\/api\/messages\/([^/]+)\/withdraw$/);
+  if (match && method === 'POST') return withdrawOwnMessage(request, env, decodeURIComponent(match[1]));
   match = pathname.match(/^\/api\/messages\/([^/]+)\/read$/);
   if (match && method === 'POST') return markOwnMessageRead(request, env, decodeURIComponent(match[1]));
 
@@ -1416,7 +1418,7 @@ function serializeMessage(row: MessageRow) {
 
 function normalizeMessageLevel(value: unknown): string {
   const level = String(value || 'info').toLowerCase();
-  return ['info', 'success', 'warning', 'danger', 'important', 'system', 'feedback'].includes(level) ? level : 'info';
+  return ['info', 'success', 'warning', 'danger', 'important', 'system', 'feedback', 'support_reply'].includes(level) ? level : 'info';
 }
 
 function normalizeMessageStatus(value: unknown): string {
@@ -1665,6 +1667,10 @@ async function listOwnMessages(request: Request, env: Env): Promise<Response> {
     msg.recipientRead = recipientReadCount > 0;
     if (sentByMe) {
       msg.isRead = true;
+      const sentTime = Date.parse(String(row.sent_at || row.created_at || '').replace(' ', 'T') + 'Z');
+      const canWithdraw = Number.isFinite(sentTime) && Date.now() - sentTime <= 15 * 60 * 1000;
+      msg.canWithdraw = canWithdraw;
+      msg.withdrawUntil = Number.isFinite(sentTime) ? new Date(sentTime + 15 * 60 * 1000).toISOString() : null;
       if (row.target_type === 'role' && row.target_role === 'admin') msg.recipientReadText = recipientReadCount > 0 ? '管理员已读' : '管理员未读';
       else if (row.target_type === 'role' && row.target_role === 'user') msg.recipientReadText = recipientReadCount > 0 ? '用户已读' : '用户未读';
       else if (row.target_type === 'all') msg.recipientReadText = recipientReadCount > 0 ? `已有 ${recipientReadCount} 人已读` : '全部未读';
@@ -1730,7 +1736,7 @@ async function replyOwnMessage(request: Request, env: Env, id: string): Promise<
   const replyId = crypto.randomUUID();
   await env.DB.prepare(`
     INSERT INTO system_messages (id, sender_user_id, target_type, target_user_id, target_role, title, body, level, status, sent_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'info', 'sent', datetime('now'))
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sent', datetime('now'))
   `).bind(
     replyId,
     user.id,
@@ -1738,7 +1744,8 @@ async function replyOwnMessage(request: Request, env: Env, id: string): Promise<
     targetUserId,
     targetRole,
     cleanText(`回复：${original.title || '消息'}`, 120),
-    cleanText(quotedBody, 5000)
+    cleanText(quotedBody, 5000),
+    user.role === 'admin' ? 'support_reply' : 'feedback'
   ).run();
   await env.DB.prepare(`
     INSERT OR REPLACE INTO message_reads (message_id, user_id, read_at)
@@ -1754,6 +1761,29 @@ async function replyOwnMessage(request: Request, env: Env, id: string): Promise<
     WHERE m.id=?
   `).bind(user.id, replyId).first<MessageRow>();
   return ok({ replied: true, message: serializeMessage(row!) });
+}
+
+async function withdrawOwnMessage(request: Request, env: Env, id: string): Promise<Response> {
+  const user = await requireUser(env, request);
+  const message = await env.DB.prepare(`
+    SELECT id, sender_user_id, sent_at, created_at
+    FROM system_messages
+    WHERE id=? AND sender_user_id=? AND status='sent' AND (deleted_at IS NULL OR deleted_at='')
+  `).bind(id, user.id).first<MessageRow>();
+  if (!message) throw new HttpError(404, 'MESSAGE_NOT_FOUND', '消息不存在或无权撤销');
+
+  const allowed = await env.DB.prepare(`
+    SELECT id FROM system_messages
+    WHERE id=? AND sender_user_id=? AND status='sent' AND (deleted_at IS NULL OR deleted_at='')
+      AND datetime(COALESCE(sent_at, created_at)) >= datetime('now','-15 minutes')
+  `).bind(id, user.id).first<{ id: string }>();
+  if (!allowed) throw new HttpError(400, 'WITHDRAW_EXPIRED', '已超过 15 分钟，不能撤销');
+
+  await env.DB.batch([
+    env.DB.prepare(`DELETE FROM message_reads WHERE message_id=?`).bind(id),
+    env.DB.prepare(`DELETE FROM system_messages WHERE id=? AND sender_user_id=?`).bind(id, user.id),
+  ]);
+  return ok({ withdrawn: true });
 }
 
 async function markOwnMessageRead(request: Request, env: Env, id: string): Promise<Response> {
