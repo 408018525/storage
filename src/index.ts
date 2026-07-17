@@ -269,6 +269,8 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   if (method === 'GET' && pathname === '/api/messages') return listOwnMessages(request, env);
   if (method === 'POST' && pathname === '/api/messages/contact-admin') return contactAdminMessage(request, env);
   if (method === 'POST' && pathname === '/api/messages/read-batch') return markOwnMessagesReadBatch(request, env);
+  match = pathname.match(/^\/api\/messages\/([^/]+)\/reply$/);
+  if (match && method === 'POST') return replyOwnMessage(request, env, decodeURIComponent(match[1]));
   match = pathname.match(/^\/api\/messages\/([^/]+)\/read$/);
   if (match && method === 'POST') return markOwnMessageRead(request, env, decodeURIComponent(match[1]));
 
@@ -1510,6 +1512,8 @@ function operationActionText(action: string): string {
     'admin.message_update': '编辑消息',
     'admin.message_send': '发送草稿消息',
     'admin.message_delete': '删除消息',
+    'message.contact_admin': '联系管理员',
+    'message.reply': '回复消息',
   };
   return map[action] || action;
 }
@@ -1552,9 +1556,13 @@ async function contactAdminMessage(request: Request, env: Env): Promise<Response
     INSERT INTO system_messages (id, sender_user_id, target_type, target_user_id, target_role, title, body, level, status, sent_at)
     VALUES (?, ?, 'role', NULL, 'admin', ?, ?, 'info', 'sent', datetime('now'))
   `).bind(id, user.id, title, text).run();
+  await env.DB.prepare(`
+    INSERT OR REPLACE INTO message_reads (message_id, user_id, read_at)
+    VALUES (?, ?, datetime('now'))
+  `).bind(id, user.id).run();
   await audit(env, request, user.id, 'message.contact_admin', 'message', id, { title });
   const row = await env.DB.prepare(`SELECT m.*, sender.username AS sender_username FROM system_messages m LEFT JOIN users sender ON sender.id=m.sender_user_id WHERE m.id=?`).bind(id).first<MessageRow>();
-  return ok({ sent: true, message: serializeMessage(row!) });
+  return ok({ sent: true, movedToMessageCenter: true, message: serializeMessage(row!) });
 }
 
 async function listOwnMessages(request: Request, env: Env): Promise<Response> {
@@ -1571,12 +1579,94 @@ async function listOwnMessages(request: Request, env: Env): Promise<Response> {
         m.target_type='all'
         OR (m.target_type='user' AND m.target_user_id=?)
         OR (m.target_type='role' AND m.target_role=?)
+        OR m.sender_user_id=?
       )
     ORDER BY COALESCE(m.sent_at, m.created_at) DESC
     LIMIT 300
-  `).bind(user.id, user.id, user.role).all<MessageRow>();
+  `).bind(user.id, user.id, user.role, user.id).all<MessageRow>();
   const messages = (rows.results || []).map(serializeMessage);
   return ok({ messages, unread: messages.filter(m => !m.isRead).length });
+}
+
+async function replyOwnMessage(request: Request, env: Env, id: string): Promise<Response> {
+  const user = await requireUser(env, request);
+  const body = await readJson<Record<string, unknown>>(request, 128 * 1024);
+  const text = cleanText(body.body ?? body.content ?? body.reply, 5000);
+  if (!text) throw new HttpError(400, 'REPLY_REQUIRED', '请填写回复内容');
+
+  const original = await env.DB.prepare(`
+    SELECT m.*, sender.username AS sender_username, target.username AS target_username, r.read_at
+    FROM system_messages m
+    LEFT JOIN users sender ON sender.id=m.sender_user_id
+    LEFT JOIN users target ON target.id=m.target_user_id
+    LEFT JOIN message_reads r ON r.message_id=m.id AND r.user_id=?
+    WHERE m.id=? AND m.status='sent' AND (m.deleted_at IS NULL OR m.deleted_at='')
+      AND (
+        m.target_type='all'
+        OR (m.target_type='user' AND m.target_user_id=?)
+        OR (m.target_type='role' AND m.target_role=?)
+        OR m.sender_user_id=?
+      )
+  `).bind(user.id, id, user.id, user.role, user.id).first<MessageRow>();
+  if (!original) throw new HttpError(404, 'MESSAGE_NOT_FOUND', '消息不存在或无权回复');
+
+  let targetType = 'user';
+  let targetUserId: string | null = null;
+  let targetRole: string | null = null;
+
+  if (original.sender_user_id && original.sender_user_id !== user.id) {
+    targetType = 'user';
+    targetUserId = original.sender_user_id;
+  } else if (original.target_type === 'user' && original.target_user_id && original.target_user_id !== user.id) {
+    targetType = 'user';
+    targetUserId = original.target_user_id;
+  } else if (original.target_type === 'role' && original.target_role) {
+    targetType = 'role';
+    targetRole = original.target_role;
+  } else {
+    throw new HttpError(400, 'MESSAGE_CANNOT_REPLY', '这条消息无法直接回复');
+  }
+
+  const originalSender = original.sender_username || '系统管理员';
+  const originalTime = original.sent_at || original.created_at || '';
+  const quotedBody = [
+    text,
+    '',
+    '---------- 原信息 ----------',
+    `发送人：${originalSender}`,
+    originalTime ? `时间：${originalTime}` : '',
+    `标题：${original.title}`,
+    '',
+    original.body || ''
+  ].filter(line => line !== '').join('\n');
+
+  const replyId = crypto.randomUUID();
+  await env.DB.prepare(`
+    INSERT INTO system_messages (id, sender_user_id, target_type, target_user_id, target_role, title, body, level, status, sent_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'info', 'sent', datetime('now'))
+  `).bind(
+    replyId,
+    user.id,
+    targetType,
+    targetUserId,
+    targetRole,
+    cleanText(`回复：${original.title || '消息'}`, 120),
+    cleanText(quotedBody, 5000)
+  ).run();
+  await env.DB.prepare(`
+    INSERT OR REPLACE INTO message_reads (message_id, user_id, read_at)
+    VALUES (?, ?, datetime('now'))
+  `).bind(replyId, user.id).run();
+  await audit(env, request, user.id, 'message.reply', 'message', replyId, { originalMessageId: id, targetType, targetUserId, targetRole });
+  const row = await env.DB.prepare(`
+    SELECT m.*, sender.username AS sender_username, target.username AS target_username, r.read_at
+    FROM system_messages m
+    LEFT JOIN users sender ON sender.id=m.sender_user_id
+    LEFT JOIN users target ON target.id=m.target_user_id
+    LEFT JOIN message_reads r ON r.message_id=m.id AND r.user_id=?
+    WHERE m.id=?
+  `).bind(user.id, replyId).first<MessageRow>();
+  return ok({ replied: true, message: serializeMessage(row!) });
 }
 
 async function markOwnMessageRead(request: Request, env: Env, id: string): Promise<Response> {
