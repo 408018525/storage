@@ -8,6 +8,7 @@ const state = {
   applications: [],
   quota: { used: 0, total: 3, remaining: 3 },
   widgetId: null,
+  operationLogFilters: { dateMode: 'all', day: '', hour: '', sort: 'desc', type: 'all', actor: 'all' },
 };
 
 
@@ -626,6 +627,10 @@ Object.assign(I18N_EN, {
   '操作日志':'Operation Logs','最近操作记录':'Recent Operation Logs','仅显示最近 7 天内的账号注册域名、解析等部分操作记录。':'Only account, domain, DNS and related operations from the last 7 days are shown.','管理员可查看近 7 天内未注销账号的操作记录；普通用户仅查看自己的记录。':'Admins can view logs for non-deleted accounts from the last 7 days. Regular users can only view their own logs.','暂无操作记录。':'No operation logs.','操作类型':'Action','操作人':'Operator','操作说明':'Description','目标对象':'Target','IP 地址':'IP Address','保留时间':'Retention','7 天':'7 days','日志会自动清理：超过 7 天、或账号注销后的记录会从 D1 中删除。':'Logs are automatically cleaned from D1 after 7 days or when the account is cancelled.','正在读取操作日志…':'Loading operation logs…','系统':'System','未知用户':'Unknown User'
 });
 
+Object.assign(I18N_EN, {
+  '筛选':'Filter','应用筛选':'Apply Filter','重置筛选':'Reset','筛选条件':'Filters','日期':'Date','日期精度':'Date Precision','全部日期':'All Dates','按日筛选':'By Day','按小时筛选':'By Hour','选择日期':'Select Date','选择小时':'Select Hour','排列方式':'Sort Order','时间倒序':'Newest First','时间正序':'Oldest First','类型':'Type','全部类型':'All Types','账号':'Account','DNS':'DNS','域名':'Domain','消息':'Message','设置':'Settings','认证':'Auth','其它':'Other','全部操作人':'All Operators','已筛选':'Filtered','共':'Total','条':'items','操作人：':'Operator:','目标对象：':'Target:','IP 地址：':'IP Address:','类型：':'Type:'
+});
+
 window.addEventListener('error', event => {
   if (event?.message) toast(event.message, 'error');
 });
@@ -1127,27 +1132,162 @@ function logTargetLabel(log) {
   const type = typeMap[log.targetType] || log.targetType || '—';
   return log.targetId ? `${type} / ${String(log.targetId).slice(0, 10)}` : type;
 }
+function operationLogCategory(log) {
+  const text = `${log.action || ''} ${log.targetType || ''} ${log.description || ''}`.toLowerCase();
+  if (text.includes('dns') || text.includes('解析') || log.targetType === 'dns_record') return { value: 'dns', label: 'DNS' };
+  if (text.includes('domain') || text.includes('域名') || text.includes('续期') || log.targetType === 'domain_application') return { value: 'domain', label: '域名' };
+  if (text.includes('login') || text.includes('logout') || text.includes('auth') || text.includes('登录') || text.includes('退出')) return { value: 'auth', label: '认证' };
+  if (text.includes('user') || text.includes('account') || text.includes('用户') || text.includes('账号') || log.targetType === 'user') return { value: 'account', label: '账号' };
+  if (text.includes('message') || text.includes('消息') || log.targetType === 'message') return { value: 'message', label: '消息' };
+  if (text.includes('setting') || text.includes('设置') || log.targetType === 'setting') return { value: 'setting', label: '设置' };
+  return { value: 'other', label: '其它' };
+}
+function operationLogCategoryLabel(value) {
+  const map = { dns: 'DNS', domain: '域名', account: '账号', message: '消息', setting: '设置', auth: '认证', other: '其它' };
+  return map[value] || value || '其它';
+}
+function localDayKey(value) {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+function localHourKey(value) {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${localDayKey(value)}T${String(d.getHours()).padStart(2, '0')}`;
+}
+function operationSelected(current, value) {
+  return String(current ?? '') === String(value ?? '') ? 'selected' : '';
+}
+function operationActorValue(log) {
+  return String(log.actorUsername || '系统');
+}
+function filterOperationLogs(logs) {
+  const f = state.operationLogFilters || {};
+  let output = [...logs];
+  if (f.dateMode === 'day' && f.day) output = output.filter(log => localDayKey(log.createdAt) === f.day);
+  if (f.dateMode === 'hour' && f.hour) output = output.filter(log => localHourKey(log.createdAt) === String(f.hour).slice(0, 13));
+  if (f.type && f.type !== 'all') output = output.filter(log => operationLogCategory(log).value === f.type);
+  if (f.actor && f.actor !== 'all') output = output.filter(log => operationActorValue(log) === f.actor);
+  output.sort((a, b) => {
+    const av = new Date(a.createdAt).getTime() || 0;
+    const bv = new Date(b.createdAt).getTime() || 0;
+    return f.sort === 'asc' ? av - bv : bv - av;
+  });
+  return output;
+}
+function operationFilterSummary(logs, filtered) {
+  const f = state.operationLogFilters || {};
+  const parts = [];
+  if (f.dateMode === 'day' && f.day) parts.push(`日期：${f.day}`);
+  if (f.dateMode === 'hour' && f.hour) parts.push(`日期：${String(f.hour).replace('T', ' ')}`);
+  if (f.type && f.type !== 'all') parts.push(`类型：${operationLogCategoryLabel(f.type)}`);
+  if (f.actor && f.actor !== 'all') parts.push(`操作人：${f.actor}`);
+  parts.push(f.sort === 'asc' ? '时间正序' : '时间倒序');
+  return `${parts.join(' / ')} · 共 ${filtered.length} 条`;
+}
+function operationLogFilterPanelHtml(logs, filtered) {
+  const f = state.operationLogFilters || { dateMode:'all', sort:'desc', type:'all', actor:'all' };
+  const categories = [...new Map(logs.map(log => {
+    const c = operationLogCategory(log);
+    return [c.value, c.label];
+  })).entries()].sort((a, b) => a[1].localeCompare(b[1], 'zh-CN'));
+  const actors = [...new Set(logs.map(operationActorValue).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-CN'));
+  return `<div class="operation-filter-wrap">
+    <div class="operation-toolbar">
+      <button class="btn soft" id="toggle-log-filter" type="button">筛选</button>
+      <span class="operation-filter-summary">${esc(operationFilterSummary(logs, filtered))}</span>
+    </div>
+    <form id="operation-filter-panel" class="operation-filter-panel hidden">
+      <div class="operation-filter-grid">
+        <label class="field"><span>日期精度</span><select name="dateMode" id="log-date-mode">
+          <option value="all" ${operationSelected(f.dateMode, 'all')}>全部日期</option>
+          <option value="day" ${operationSelected(f.dateMode, 'day')}>按日筛选</option>
+          <option value="hour" ${operationSelected(f.dateMode, 'hour')}>按小时筛选</option>
+        </select></label>
+        <label class="field log-day-field"><span>选择日期</span><input name="day" type="date" value="${attr(f.day || '')}"></label>
+        <label class="field log-hour-field"><span>选择小时</span><input name="hour" type="datetime-local" step="3600" value="${attr(f.hour || '')}"></label>
+        <label class="field"><span>排列方式</span><select name="sort">
+          <option value="desc" ${operationSelected(f.sort, 'desc')}>时间倒序</option>
+          <option value="asc" ${operationSelected(f.sort, 'asc')}>时间正序</option>
+        </select></label>
+        <label class="field"><span>类型</span><select name="type">
+          <option value="all" ${operationSelected(f.type, 'all')}>全部类型</option>
+          ${categories.map(([value, label]) => `<option value="${attr(value)}" ${operationSelected(f.type, value)}>${esc(label)}</option>`).join('')}
+        </select></label>
+        <label class="field"><span>操作人</span><select name="actor">
+          <option value="all" ${operationSelected(f.actor, 'all')}>全部操作人</option>
+          ${actors.map(actor => `<option value="${attr(actor)}" ${operationSelected(f.actor, actor)}>${esc(actor)}</option>`).join('')}
+        </select></label>
+      </div>
+      <div class="operation-filter-actions">
+        <button class="btn primary" type="submit">应用筛选</button>
+        <button class="btn ghost" id="reset-log-filter" type="button">重置筛选</button>
+      </div>
+    </form>
+  </div>`;
+}
+function refreshOperationDateFields() {
+  const panel = document.querySelector('#operation-filter-panel');
+  const mode = panel?.querySelector('#log-date-mode')?.value || 'all';
+  panel?.querySelector('.log-day-field')?.classList.toggle('hidden', mode !== 'day');
+  panel?.querySelector('.log-hour-field')?.classList.toggle('hidden', mode !== 'hour');
+}
+function bindOperationLogFilters() {
+  const toggle = document.querySelector('#toggle-log-filter');
+  const panel = document.querySelector('#operation-filter-panel');
+  toggle?.addEventListener('click', () => {
+    panel?.classList.toggle('hidden');
+    refreshOperationDateFields();
+  });
+  panel?.querySelector('#log-date-mode')?.addEventListener('change', refreshOperationDateFields);
+  panel?.addEventListener('submit', async e => {
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(panel));
+    state.operationLogFilters = {
+      dateMode: data.dateMode || 'all',
+      day: data.day || '',
+      hour: data.hour || '',
+      sort: data.sort || 'desc',
+      type: data.type || 'all',
+      actor: data.actor || 'all',
+    };
+    await renderOperationLogs();
+  });
+  document.querySelector('#reset-log-filter')?.addEventListener('click', async () => {
+    state.operationLogFilters = { dateMode: 'all', day: '', hour: '', sort: 'desc', type: 'all', actor: 'all' };
+    await renderOperationLogs();
+  });
+  refreshOperationDateFields();
+}
 function operationLogListHtml(logs) {
   if (!logs.length) return '<div class="operation-empty">暂无操作记录。</div>';
-  return `<div class="operation-log-list">${logs.map(log => `
-    <article class="operation-log-item">
+  return `<div class="operation-log-list">${logs.map(log => {
+    const category = operationLogCategory(log);
+    return `<article class="operation-log-item">
       <div class="operation-log-icon">↩</div>
       <div class="operation-log-main">
         <div class="operation-log-head"><strong>${esc(log.actionText || log.action)}</strong><span>${fmtDate(log.createdAt, true)}</span></div>
         <p>${esc(log.description || '')}</p>
         <div class="operation-log-meta">
+          <span>类型：${esc(category.label)}</span>
           <span>操作人：${esc(log.actorUsername || '系统')}</span>
           <span>目标对象：${esc(logTargetLabel(log))}</span>
           ${log.ip ? `<span>IP 地址：${esc(log.ip)}</span>` : ''}
         </div>
       </div>
-    </article>`).join('')}</div>`;
+    </article>`;
+  }).join('')}</div>`;
 }
 async function renderOperationLogs() {
   shell('操作日志', `<div class="loading-card">正在读取操作日志…</div>`);
   try {
     const result = await api('/api/operation-logs');
     const logs = result.logs || [];
+    const filteredLogs = filterOperationLogs(logs);
     shell('操作日志', `
       <section class="card operation-log-card">
         <div class="operation-log-title">
@@ -1155,9 +1295,11 @@ async function renderOperationLogs() {
           <span class="status-pill status-active">7 天</span>
         </div>
         <div class="operation-log-note">管理员可查看近 7 天内未注销账号的操作记录；普通用户仅查看自己的记录。</div>
-        ${operationLogListHtml(logs)}
+        ${operationLogFilterPanelHtml(logs, filteredLogs)}
+        ${operationLogListHtml(filteredLogs)}
         <p class="operation-retention">日志会自动清理：超过 7 天、或账号注销后的记录会从 D1 中删除。</p>
       </section>`);
+    bindOperationLogFilters();
   } catch (error) {
     toast(error.message, 'error');
   }
