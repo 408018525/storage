@@ -14,6 +14,7 @@ interface D1Database {
 interface KVNamespace {
   get(key: string): Promise<string | null>;
   put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
+  delete(key: string): Promise<void>;
 }
 interface Fetcher {
   fetch(request: Request): Promise<Response>;
@@ -479,6 +480,7 @@ async function ensureSchema(env: Env): Promise<void> {
   `).bind(settings.domain.validDays).run();
 
   await cleanupOperationLogs(env);
+  await cleanupHardDeletedRows(env);
 }
 
 async function cleanupOperationLogs(env: Env): Promise<void> {
@@ -491,8 +493,95 @@ async function cleanupOperationLogs(env: Env): Promise<void> {
       DELETE FROM audit_logs
       WHERE actor_user_id IN (SELECT id FROM users WHERE status='deleted')
          OR (target_type='user' AND target_id IN (SELECT id FROM users WHERE status='deleted'))
+         OR (actor_user_id IS NOT NULL AND actor_user_id NOT IN (SELECT id FROM users))
+         OR (target_type='user' AND target_id IS NOT NULL AND target_id NOT IN (SELECT id FROM users))
     `).run();
   } catch (error) { console.error('cleanup deleted-user audit logs failed', error); }
+}
+
+
+async function cleanupHardDeletedRows(env: Env): Promise<void> {
+  // v43：历史软删除数据自动转为硬删除，避免 D1 里长期残留 deleted_at/status=deleted 的脏数据。
+  const statements = [
+    `DELETE FROM dns_records WHERE deleted_at IS NOT NULL AND deleted_at!=''`,
+    `DELETE FROM message_reads WHERE message_id NOT IN (SELECT id FROM system_messages)`,
+    `DELETE FROM message_reads WHERE user_id NOT IN (SELECT id FROM users)`,
+    `DELETE FROM system_messages WHERE deleted_at IS NOT NULL AND deleted_at!=''`,
+    `DELETE FROM dns_records WHERE user_id IN (SELECT id FROM users WHERE status='deleted')`,
+    `DELETE FROM domain_applications WHERE user_id IN (SELECT id FROM users WHERE status='deleted')`,
+    `DELETE FROM message_reads WHERE user_id IN (SELECT id FROM users WHERE status='deleted')`,
+    `DELETE FROM system_messages WHERE sender_user_id IN (SELECT id FROM users WHERE status='deleted') OR target_user_id IN (SELECT id FROM users WHERE status='deleted')`,
+    `DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE status='deleted')`,
+    `DELETE FROM audit_logs WHERE actor_user_id IN (SELECT id FROM users WHERE status='deleted') OR (target_type='user' AND target_id IN (SELECT id FROM users WHERE status='deleted'))`,
+    `DELETE FROM users WHERE status='deleted'`,
+    `DELETE FROM domain_applications WHERE deleted_at IS NOT NULL AND deleted_at!=''`,
+    `DELETE FROM sessions WHERE user_id NOT IN (SELECT id FROM users)`,
+    `DELETE FROM audit_logs WHERE datetime(created_at) < datetime('now','-7 days')`,
+  ];
+  for (const sql of statements) {
+    try { await env.DB.prepare(sql).run(); } catch (error) { console.error('cleanup hard deleted rows failed', sql, error); }
+  }
+}
+
+async function deleteKnownKvKeys(env: Env, keys: string[]): Promise<void> {
+  for (const key of keys.filter(Boolean)) {
+    try { await env.APP_KV.delete(key); } catch {}
+  }
+}
+
+async function purgeAuditForTarget(env: Env, targetType: string, targetId: string): Promise<void> {
+  try {
+    await env.DB.prepare(`DELETE FROM audit_logs WHERE target_type=? AND target_id=?`).bind(targetType, targetId).run();
+  } catch {}
+}
+
+async function hardDeleteDnsRecordRow(env: Env, recordId: string): Promise<void> {
+  await env.DB.batch([
+    env.DB.prepare(`DELETE FROM dns_records WHERE id=?`).bind(recordId),
+    env.DB.prepare(`DELETE FROM audit_logs WHERE target_type='dns_record' AND target_id=?`).bind(recordId),
+  ]);
+  await deleteKnownKvKeys(env, [`dns_record:${recordId}`, `dns:${recordId}`]);
+}
+
+async function hardDeleteDomainApplication(env: Env, appId: string): Promise<void> {
+  const records = await env.DB.prepare(`SELECT id FROM dns_records WHERE application_id=?`).bind(appId).all<{ id: string }>();
+  const recordIds = (records.results || []).map(r => r.id);
+  const batch = [
+    env.DB.prepare(`DELETE FROM dns_records WHERE application_id=?`).bind(appId),
+    env.DB.prepare(`DELETE FROM domain_applications WHERE id=?`).bind(appId),
+    env.DB.prepare(`DELETE FROM audit_logs WHERE target_type='domain_application' AND target_id=?`).bind(appId),
+  ];
+  for (const recordId of recordIds) {
+    batch.push(env.DB.prepare(`DELETE FROM audit_logs WHERE target_type='dns_record' AND target_id=?`).bind(recordId));
+  }
+  await env.DB.batch(batch);
+  await deleteKnownKvKeys(env, [`domain_application:${appId}`, `application:${appId}`, `domain:${appId}`, ...recordIds.flatMap(id => [`dns_record:${id}`, `dns:${id}`])]);
+}
+
+async function hardDeleteUser(env: Env, userId: string): Promise<void> {
+  const apps = await env.DB.prepare(`SELECT id FROM domain_applications WHERE user_id=?`).bind(userId).all<{ id: string }>();
+  const appIds = (apps.results || []).map(a => a.id);
+  const records = await env.DB.prepare(`SELECT id FROM dns_records WHERE user_id=? OR application_id IN (SELECT id FROM domain_applications WHERE user_id=?)`).bind(userId, userId).all<{ id: string }>();
+  const recordIds = (records.results || []).map(r => r.id);
+  const messages = await env.DB.prepare(`SELECT id FROM system_messages WHERE sender_user_id=? OR target_user_id=?`).bind(userId, userId).all<{ id: string }>();
+  const messageIds = (messages.results || []).map(m => m.id);
+
+  await env.DB.batch([
+    env.DB.prepare(`DELETE FROM message_reads WHERE user_id=?`).bind(userId),
+    env.DB.prepare(`DELETE FROM message_reads WHERE message_id IN (SELECT id FROM system_messages WHERE sender_user_id=? OR target_user_id=?)`).bind(userId, userId),
+    env.DB.prepare(`DELETE FROM system_messages WHERE sender_user_id=? OR target_user_id=?`).bind(userId, userId),
+    env.DB.prepare(`DELETE FROM dns_records WHERE user_id=? OR application_id IN (SELECT id FROM domain_applications WHERE user_id=?)`).bind(userId, userId),
+    env.DB.prepare(`DELETE FROM domain_applications WHERE user_id=?`).bind(userId),
+    env.DB.prepare(`DELETE FROM sessions WHERE user_id=?`).bind(userId),
+    env.DB.prepare(`DELETE FROM audit_logs WHERE actor_user_id=? OR (target_type='user' AND target_id=?)`).bind(userId, userId),
+    env.DB.prepare(`DELETE FROM users WHERE id=?`).bind(userId),
+  ]);
+
+  const kvKeys = [`user:${userId}`, `account:${userId}`];
+  for (const appId of appIds) kvKeys.push(`domain_application:${appId}`, `application:${appId}`, `domain:${appId}`);
+  for (const recordId of recordIds) kvKeys.push(`dns_record:${recordId}`, `dns:${recordId}`);
+  for (const messageId of messageIds) kvKeys.push(`message:${messageId}`, `system_message:${messageId}`);
+  await deleteKnownKvKeys(env, kvKeys);
 }
 
 async function publicConfigHandler(env: Env): Promise<Response> {
@@ -716,15 +805,8 @@ async function deleteOwnAccount(request: Request, env: Env): Promise<Response> {
     throw new HttpError(409, 'ACTIVE_DOMAINS_EXIST', '账户下还有正常域名，请先申请删除域名并等待管理员批准后再注销账号');
   }
 
-  await audit(env, request, user.id, 'account.delete_self', 'user', user.id);
-  await env.DB.batch([
-    env.DB.prepare(`UPDATE users SET status='deleted',updated_at=datetime('now') WHERE id=?`).bind(user.id),
-    env.DB.prepare(`UPDATE domain_applications SET deleted_at=datetime('now') WHERE user_id=? AND status!='approved' AND (deleted_at IS NULL OR deleted_at='')`).bind(user.id),
-    env.DB.prepare(`DELETE FROM sessions WHERE user_id=?`).bind(user.id),
-    env.DB.prepare(`DELETE FROM audit_logs WHERE actor_user_id=? OR (target_type='user' AND target_id=?)`).bind(user.id, user.id),
-  ]);
-
-  return withCookie(ok({ deleted: true }), await destroySession(env, request));
+  await hardDeleteUser(env, user.id);
+  return withCookie(ok({ deleted: true, purged: true }), await destroySession(env, request));
 }
 
 async function listOwnApplications(request: Request, env: Env): Promise<Response> {
@@ -1057,9 +1139,8 @@ async function deleteOwnDnsRecordManaged(request: Request, env: Env, recordId: s
     }
   }
 
-  await env.DB.prepare(`UPDATE dns_records SET deleted_at=datetime('now'),status='deleted',updated_at=datetime('now') WHERE id=? AND user_id=?`).bind(recordId, user.id).run();
-  await audit(env, request, user.id, 'dns_record.delete', 'dns_record', recordId);
-  return ok({ deleted: true });
+  await hardDeleteDnsRecordRow(env, recordId);
+  return ok({ deleted: true, purged: true });
 }
 
 async function adminDnsRecords(request: Request, env: Env, url: URL): Promise<Response> {
@@ -1112,7 +1193,7 @@ async function deleteAllDnsRecordsForApp(env: Env, app: ApplicationRow, suffix: 
       if (!token) throw new HttpError(503, 'DNS_TOKEN_MISSING', '尚未配置 Cloudflare DNS API Token');
       await deleteDnsRecord(token, suffix.zoneId, record.cf_record_id);
     }
-    await env.DB.prepare(`UPDATE dns_records SET deleted_at=datetime('now'),status='deleted',updated_at=datetime('now') WHERE id=?`).bind(record.id).run();
+    await hardDeleteDnsRecordRow(env, record.id);
   }
   if (app.dns_record_id) {
     if (!token) throw new HttpError(503, 'DNS_TOKEN_MISSING', '尚未配置 Cloudflare DNS API Token');
@@ -1240,12 +1321,8 @@ async function deleteOwnApplication(request: Request, env: Env, id: string): Pro
     throw new HttpError(403, 'DELETE_ACTIVE_FORBIDDEN', '只能删除已拒绝或已撤销的无效域名');
   }
 
-  await env.DB.prepare(`
-    UPDATE domain_applications SET deleted_at=datetime('now'), updated_at=datetime('now') WHERE id=? AND user_id=?
-  `).bind(id, user.id).run();
-
-  await audit(env, request, user.id, 'application.delete_invalid', 'domain_application', id);
-  return ok({ deleted: true });
+  await hardDeleteDomainApplication(env, id);
+  return ok({ deleted: true, purged: true });
 }
 
 
@@ -1552,10 +1629,14 @@ async function adminSendMessage(request: Request, env: Env, id: string): Promise
 }
 
 async function adminDeleteMessage(request: Request, env: Env, id: string): Promise<Response> {
-  const admin = await requireAdmin(env, request);
-  await env.DB.prepare(`UPDATE system_messages SET deleted_at=datetime('now'), updated_at=datetime('now') WHERE id=?`).bind(id).run();
-  await audit(env, request, admin.id, 'admin.message_delete', 'message', id, {});
-  return ok({ deleted: true });
+  await requireAdmin(env, request);
+  await env.DB.batch([
+    env.DB.prepare(`DELETE FROM message_reads WHERE message_id=?`).bind(id),
+    env.DB.prepare(`DELETE FROM system_messages WHERE id=?`).bind(id),
+    env.DB.prepare(`DELETE FROM audit_logs WHERE target_type='message' AND target_id=?`).bind(id),
+  ]);
+  await deleteKnownKvKeys(env, [`message:${id}`, `system_message:${id}`]);
+  return ok({ deleted: true, purged: true });
 }
 
 async function adminOverview(request: Request, env: Env): Promise<Response> {
@@ -1614,9 +1695,8 @@ async function adminReviewApplication(request: Request, env: Env, id: string, ac
 
   if (action === 'delete') {
     if (app.status === 'approved' && app.dns_record_id) throw new HttpError(409, 'REVOKE_FIRST', '正常域名请先撤销 DNS 后再删除');
-    await env.DB.prepare(`UPDATE domain_applications SET deleted_at=datetime('now'),updated_at=datetime('now') WHERE id=?`).bind(id).run();
-    await audit(env, request, admin.id, 'admin.application_delete', 'domain_application', id);
-    return ok({ deleted: true });
+    await hardDeleteDomainApplication(env, id);
+    return ok({ deleted: true, purged: true });
   }
 
   if (action === 'reject-delete') {
@@ -1642,14 +1722,8 @@ async function adminReviewApplication(request: Request, env: Env, id: string, ac
       throw new HttpError(502, 'DNS_DELETE_FAILED', message);
     }
 
-    await env.DB.prepare(`
-      UPDATE domain_applications
-      SET deleted_at=datetime('now'), delete_requested_at=NULL, delete_requested_by=NULL,
-          review_note=?, reviewed_at=datetime('now'), reviewed_by=?, dns_record_id=NULL, error_message=NULL, updated_at=datetime('now')
-      WHERE id=?
-    `).bind(note, admin.id, id).run();
-    await audit(env, request, admin.id, 'admin.application_delete_approve', 'domain_application', id, { note });
-    return ok({ deleted: true });
+    await hardDeleteDomainApplication(env, id);
+    return ok({ deleted: true, purged: true });
   }
 
   if (action === 'reject') {
