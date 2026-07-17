@@ -617,6 +617,11 @@ function applyTheme() {
 }
 
 
+
+Object.assign(I18N_EN, {
+  '消息中心':'Message Center','系统消息':'System Messages','我的消息':'My Messages','暂无消息':'No messages yet','全部消息':'All Messages','未读':'Unread','已读':'Read','标为已读':'Mark as Read','发送消息':'Send Message','消息标题':'Message Title','消息内容':'Message Content','接收对象':'Recipients','全部用户':'All Users','指定用户':'Specific User','按角色':'By Role','普通用户':'Users','消息类型':'Message Type','普通通知':'Info','成功提示':'Success','警告提醒':'Warning','重要警告':'Important','立即发送':'Send Now','保存草稿':'Save Draft','保存为模板':'Save as Template','草稿':'Draft','模板':'Template','已发送':'Sent','发送时间':'Sent At','创建时间':'Created At','发送人':'Sender','目标':'Target','套用模板':'Use Template','发送草稿':'Send Draft','编辑草稿':'Edit Draft','删除消息':'Delete Message','请输入消息标题':'Enter message title','请输入消息内容':'Enter message content','消息已发送':'Message sent','草稿已保存':'Draft saved','模板已保存':'Template saved','消息已删除':'Message deleted','消息已标为已读':'Message marked as read','管理员可以在这里发送系统通知、保存草稿和维护常用模板。':'Admins can send system notices, save drafts, and manage templates here.','用户可以在这里查看系统通知、管理员留言、域名处理结果和维护提醒。':'View system notices, admin messages, domain updates, and maintenance reminders here.'
+});
+
 window.addEventListener('error', event => {
   if (event?.message) toast(event.message, 'error');
 });
@@ -661,6 +666,7 @@ async function route() {
   if (hash === '#/apply') return renderApply();
   if (hash === '#/domains' || hash === '#/applications') return renderDomains();
   if (hash === '#/account') return renderAccount();
+  if (hash === '#/messages') return renderMessageCenter();
   if (hash === '#/help') return renderHelpCenter();
   if (hash === '#/admin') return renderAdminOverview();
   if (hash === '#/admin/applications') return renderAdminApplications();
@@ -817,6 +823,7 @@ function shell(title, content) {
         ${nav('#/apply','＋','域名注册')}
         ${nav('#/domains','🌐','域名管理')}
         ${nav('#/account','⚙','账户设置')}
+        ${nav('#/messages','✉','消息中心')}
         ${nav('#/help','☸','帮助中心')}
         ${isAdmin ? `<hr>${nav('#/admin','▦','管理概览')}${nav('#/admin/applications','✓','域名审核')}${nav('#/admin/users','♟','用户管理')}${nav('#/admin/settings','⚙','管理员设置')}` : ''}
       </nav>
@@ -1027,6 +1034,128 @@ function renderHelpCenter() {
   };
   search?.addEventListener('input', runFilter);
   document.querySelector('#help-search-btn')?.addEventListener('click', runFilter);
+}
+
+
+function messageLevelBadge(level) {
+  const map = { info:'普通通知', success:'成功提示', warning:'警告提醒', danger:'重要警告' };
+  return `<span class="message-level message-level-${esc(level || 'info')}">${esc(map[level] || map.info)}</span>`;
+}
+function messageStatusBadgeText(status) {
+  const map = { sent:'已发送', draft:'草稿', template:'模板' };
+  return map[status] || status;
+}
+function messageTargetOptions(users = []) {
+  return users.map(u => `<option value="${attr(u.id)}">${esc(u.username)}${u.email ? ' / '+esc(u.email) : ''}</option>`).join('');
+}
+function messageComposeForm(users = [], preset = {}) {
+  const status = preset.status || 'sent';
+  const targetType = preset.targetType || 'all';
+  const targetRole = preset.targetRole || 'user';
+  return `<form id="message-compose-form" class="message-compose form-grid" data-edit-id="${attr(preset.id || '')}">
+    <label class="field"><span>接收对象</span><select name="targetType" id="msg-target-type"><option value="all" ${targetType==='all'?'selected':''}>全部用户</option><option value="role" ${targetType==='role'?'selected':''}>按角色</option><option value="user" ${targetType==='user'?'selected':''}>指定用户</option></select></label>
+    <label class="field msg-target-role"><span>角色</span><select name="targetRole"><option value="user" ${targetRole==='user'?'selected':''}>普通用户</option><option value="admin" ${targetRole==='admin'?'selected':''}>管理员</option></select></label>
+    <label class="field msg-target-user"><span>用户</span><select name="targetUserId"><option value="">请选择用户</option>${messageTargetOptions(users)}</select></label>
+    <label class="field"><span>消息类型</span><select name="level"><option value="info" ${(preset.level||'info')==='info'?'selected':''}>普通通知</option><option value="success" ${preset.level==='success'?'selected':''}>成功提示</option><option value="warning" ${preset.level==='warning'?'selected':''}>警告提醒</option><option value="danger" ${preset.level==='danger'?'selected':''}>重要警告</option></select></label>
+    <label class="field wide"><span>消息标题</span><input name="title" placeholder="请输入消息标题" maxlength="120" required value="${attr(preset.title || '')}"></label>
+    <label class="field wide"><span>消息内容</span><textarea name="body" placeholder="请输入消息内容" rows="8" required>${esc(preset.body || '')}</textarea></label>
+    <div class="message-compose-actions wide">
+      <button class="btn primary" type="button" data-message-action="sent">立即发送</button>
+      <button class="btn secondary" type="button" data-message-action="draft">保存草稿</button>
+      <button class="btn soft" type="button" data-message-action="template">保存为模板</button>
+      ${preset.id ? '<button class="btn ghost" type="button" id="clear-message-form">取消编辑</button>' : ''}
+    </div>
+  </form>`;
+}
+function bindMessageTargetVisibility() {
+  const form = document.querySelector('#message-compose-form');
+  const type = form?.querySelector('#msg-target-type');
+  const refresh = () => {
+    const v = type?.value || 'all';
+    form?.querySelector('.msg-target-role')?.classList.toggle('hidden', v !== 'role');
+    form?.querySelector('.msg-target-user')?.classList.toggle('hidden', v !== 'user');
+  };
+  type?.addEventListener('change', refresh);
+  refresh();
+}
+function bindMessageCompose(users, preset = null) {
+  bindMessageTargetVisibility();
+  document.querySelector('#clear-message-form')?.addEventListener('click', () => renderMessageCenter());
+  document.querySelectorAll('[data-template-use]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.templateUse;
+      const res = await api('/api/admin/messages');
+      const t = (res.messages || []).find(m => m.id === id);
+      if (t) renderMessageCenter(t);
+    });
+  });
+  document.querySelectorAll('[data-message-action]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const form = document.querySelector('#message-compose-form');
+      const data = Object.fromEntries(new FormData(form));
+      data.status = btn.dataset.messageAction;
+      const editId = form.dataset.editId;
+      btn.disabled = true;
+      try {
+        if (editId && data.status !== 'sent') {
+          await api(`/api/admin/messages/${encodeURIComponent(editId)}`, { method:'PATCH', body:data });
+        } else {
+          await api('/api/admin/messages', { method:'POST', body:data });
+        }
+        toast(data.status === 'sent' ? '消息已发送' : (data.status === 'template' ? '模板已保存' : '草稿已保存'), 'success');
+        await renderMessageCenter();
+      } catch (error) { toast(error.message, 'error'); btn.disabled = false; }
+    });
+  });
+}
+function messageListHtml(messages, admin = false) {
+  if (!messages.length) return '<div class="empty">暂无消息</div>';
+  return messages.map(m => `<article class="message-card ${m.isRead ? 'read' : 'unread'} message-${esc(m.level || 'info')}">
+    <div class="message-main">
+      <div class="message-head"><h3>${esc(m.title)}</h3>${messageLevelBadge(m.level)}${admin ? `<span class="status-pill status-${esc(m.status)}">${esc(messageStatusBadgeText(m.status))}</span>` : (m.isRead ? '<span class="message-read">已读</span>' : '<span class="message-unread">未读</span>')}</div>
+      <p>${esc(m.body).replace(/\n/g,'<br>')}</p>
+      <div class="message-meta"><span>发送人：${esc(m.senderUsername || '系统管理员')}</span>${admin ? `<span>目标：${esc(m.targetLabel || '')}</span>` : ''}<span>时间：${fmtDate(m.sentAt || m.createdAt, true)}</span></div>
+    </div>
+    <div class="message-actions">
+      ${!admin && !m.isRead ? `<button class="btn small soft" data-read-message="${attr(m.id)}">标为已读</button>` : ''}
+      ${admin && m.status !== 'sent' ? `<button class="btn small primary" data-send-message="${attr(m.id)}">发送草稿</button><button class="btn small soft" data-edit-message="${attr(m.id)}">编辑草稿</button>` : ''}
+      ${admin && m.status === 'template' ? `<button class="btn small secondary" data-template-use="${attr(m.id)}">套用模板</button>` : ''}
+      ${admin ? `<button class="btn small danger-soft" data-delete-message="${attr(m.id)}">删除消息</button>` : ''}
+    </div>
+  </article>`).join('');
+}
+async function renderMessageCenter(preset = null) {
+  shell('消息中心', `<div class="loading-card">正在读取消息…</div>`);
+  try {
+    const mine = await api('/api/messages');
+    const isAdmin = state.me?.role === 'admin';
+    let adminMessages = [];
+    let users = [];
+    if (isAdmin) {
+      const [msgRes, userRes] = await Promise.all([api('/api/admin/messages'), api('/api/admin/users')]);
+      adminMessages = msgRes.messages || [];
+      users = userRes.users || [];
+    }
+    const inbox = mine.messages || [];
+    const templates = adminMessages.filter(m => m.status === 'template');
+    const drafts = adminMessages.filter(m => m.status === 'draft');
+    const sent = adminMessages.filter(m => m.status === 'sent');
+    shell('消息中心', `
+      <section class="message-hero card"><div><h2>消息中心</h2><p>${isAdmin ? '管理员可以在这里发送系统通知、保存草稿和维护常用模板。' : '用户可以在这里查看系统通知、管理员留言、域名处理结果和维护提醒。'}</p></div><div class="message-count"><strong>${mine.unread || 0}</strong><span>未读</span></div></section>
+      <section class="card"><div class="section-head"><div><h2>我的消息</h2><p>系统消息、管理员通知和域名处理结果都会显示在这里。</p></div></div><div class="message-list">${messageListHtml(inbox, false)}</div></section>
+      ${isAdmin ? `<section class="card"><div class="section-head"><div><h2>发送消息</h2><p>可以发送给全部用户、普通用户、管理员或指定用户。</p></div></div>${messageComposeForm(users, preset || {})}</section>
+      <section class="card"><div class="section-head"><div><h2>草稿信息</h2><p>未发送的消息可以继续编辑或直接发送。</p></div></div><div class="message-list">${messageListHtml(drafts, true)}</div></section>
+      <section class="card"><div class="section-head"><div><h2>消息模板</h2><p>保存常用通知，下次可以直接套用。</p></div></div><div class="message-list">${messageListHtml(templates, true)}</div></section>
+      <section class="card"><div class="section-head"><div><h2>已发送消息</h2><p>查看已发送的系统通知和用户阅读情况。</p></div></div><div class="message-list">${messageListHtml(sent, true)}</div></section>` : ''}
+    `);
+    document.querySelectorAll('[data-read-message]').forEach(btn => btn.addEventListener('click', async () => { await api(`/api/messages/${encodeURIComponent(btn.dataset.readMessage)}/read`, { method:'POST', body:{} }); toast('消息已标为已读','success'); await renderMessageCenter(); }));
+    if (isAdmin) {
+      bindMessageCompose(users, preset);
+      document.querySelectorAll('[data-send-message]').forEach(btn => btn.addEventListener('click', async () => { if (!confirm('确认发送这条消息？')) return; await api(`/api/admin/messages/${encodeURIComponent(btn.dataset.sendMessage)}/send`, { method:'POST', body:{} }); toast('消息已发送','success'); await renderMessageCenter(); }));
+      document.querySelectorAll('[data-delete-message]').forEach(btn => btn.addEventListener('click', async () => { if (!confirm('确认删除这条消息？')) return; await api(`/api/admin/messages/${encodeURIComponent(btn.dataset.deleteMessage)}`, { method:'DELETE' }); toast('消息已删除','success'); await renderMessageCenter(); }));
+      document.querySelectorAll('[data-edit-message]').forEach(btn => btn.addEventListener('click', async () => { const msg = adminMessages.find(m => m.id === btn.dataset.editMessage); if (msg) await renderMessageCenter(msg); }));
+    }
+  } catch (error) { toast(error.message, 'error'); }
 }
 
 async function renderDomains() {
