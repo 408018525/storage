@@ -1310,9 +1310,7 @@ async function adminCreateUser(request: Request, env: Env): Promise<Response> {
   const body = await readJson<Record<string, unknown>>(request);
   const settings = await loadSettings(env);
 
-  if (!asBoolean(body.humanCheck, false)) {
-    throw new HttpError(400, 'HUMAN_CHECK_REQUIRED', '请完成人机确认后再创建用户');
-  }
+  await verifyTurnstile(env, request, body.turnstileToken, env.TURNSTILE_ACTION_REGISTER || 'register');
 
   const username = normalizeUsername(body.username);
   const email = normalizeEmail(body.email);
