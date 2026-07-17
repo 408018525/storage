@@ -538,6 +538,60 @@ async function renderRoute() {
   afterRender();
 }
 
+
+const AUTO_REFRESH_MS = 60 * 1000;
+let autoRefreshTimer = null;
+let autoRefreshRunning = false;
+
+function isEditingElement(el = document.activeElement) {
+  if (!el) return false;
+  return Boolean(el.closest?.('input, textarea, select, [contenteditable="true"], .modal'));
+}
+
+function currentRouteCanAutoRefresh() {
+  const hash = location.hash || '';
+  if (!state.me) return false;
+  if (document.hidden) return false;
+  if (modalRoot?.innerHTML?.trim()) return false;
+  if (isEditingElement()) return false;
+  return hash === '#/apply'
+    || hash === '#/domains'
+    || hash === '#/applications'
+    || hash === '#/messages'
+    || hash === '#/logs'
+    || hash === '#/admin'
+    || hash === '#/admin/applications'
+    || hash === '#/admin/users'
+    || hash.startsWith('#/domain/');
+}
+
+async function autoRefreshCurrentData() {
+  if (autoRefreshRunning || !currentRouteCanAutoRefresh()) return;
+  autoRefreshRunning = true;
+  const hashBefore = location.hash;
+  const scrollX = window.scrollX;
+  const scrollY = window.scrollY;
+  try {
+    await refreshMessageBadge();
+    if (location.hash === hashBefore && currentRouteCanAutoRefresh()) {
+      await renderRoute();
+      requestAnimationFrame(() => window.scrollTo(scrollX, scrollY));
+    }
+  } catch (_) {
+    // 静默失败，不打断用户当前操作。
+  } finally {
+    autoRefreshRunning = false;
+  }
+}
+
+function startAutoRefresh() {
+  if (autoRefreshTimer) return;
+  autoRefreshTimer = setInterval(autoRefreshCurrentData, AUTO_REFRESH_MS);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) autoRefreshCurrentData();
+  });
+}
+
 const statusText = {
   pending: '待审核',
   processing: '处理中',
@@ -621,7 +675,7 @@ function applyTheme() {
 
 
 Object.assign(I18N_EN, {
-  '消息中心设置':'Message Center Settings','帮助分类':'Help Categories','新增问题':'Add Question','编辑问题':'Edit Question','保存全部':'Save All','添加到分类':'Add to Category','问题标题':'Question Title','问题答案':'Answer','分类标题':'Category Title','分类说明':'Category Description','恢复默认帮助内容':'Restore Default Help Content','帮助内容已保存':'Help content saved','帮助内容已恢复默认':'Help content restored','消息中心':'Message Center','系统消息':'System Messages','我的消息':'My Messages','暂无消息':'No messages yet','全部消息':'All Messages','未读':'Unread','已读':'Read','标为已读':'Mark as Read','发送消息':'Send Message','消息标题':'Message Title','消息内容':'Message Content','接收对象':'Recipients','全部用户':'All Users','指定用户':'Specific User','按角色':'By Role','普通用户':'Users','消息类型':'Message Type','普通通知':'Info','成功提示':'Success','警告提醒':'Warning','重要警告':'Important','立即发送':'Send Now','保存草稿':'Save Draft','保存为模板':'Save as Template','草稿':'Draft','模板':'Template','已发送':'Sent','发送时间':'Sent At','创建时间':'Created At','发送人':'Sender','目标':'Target','套用模板':'Use Template','发送草稿':'Send Draft','编辑草稿':'Edit Draft','删除消息':'Delete Message','请输入消息标题':'Enter message title','请输入消息内容':'Enter message content','消息已发送':'Message sent','草稿已保存':'Draft saved','模板已保存':'Template saved','消息已删除':'Message deleted','消息已标为已读':'Message marked as read','管理员可以在这里发送系统通知、保存草稿和维护常用模板。':'Admins can send system notices, save drafts, and manage templates here.','用户可以在这里查看系统通知、管理员消息、域名处理结果和维护提醒。':'View system notices, admin messages, domain updates, and maintenance reminders here.','批量已读':'Mark Selected Read','全部已读':'Mark All Read','请选择要标记的消息':'Select messages to mark as read','已读用户':'Read Users','用户已读':'User Read','管理员已读':'Admin Read','未读消息':'Unread Messages'
+  '消息中心设置':'Message Center Settings','帮助中心设置':'Help Center Settings','帮助分类':'Help Categories','新增问题':'Add Question','编辑问题':'Edit Question','保存全部':'Save All','添加到分类':'Add to Category','问题标题':'Question Title','问题答案':'Answer','分类标题':'Category Title','分类说明':'Category Description','恢复默认帮助内容':'Restore Default Help Content','帮助内容已保存':'Help content saved','帮助内容已恢复默认':'Help content restored','消息中心':'Message Center','系统消息':'System Messages','我的消息':'My Messages','暂无消息':'No messages yet','全部消息':'All Messages','未读':'Unread','已读':'Read','标为已读':'Mark as Read','发送消息':'Send Message','消息标题':'Message Title','消息内容':'Message Content','接收对象':'Recipients','全部用户':'All Users','指定用户':'Specific User','按角色':'By Role','普通用户':'Users','消息类型':'Message Type','普通通知':'Info','成功提示':'Success','警告提醒':'Warning','重要警告':'Important','立即发送':'Send Now','保存草稿':'Save Draft','保存为模板':'Save as Template','草稿':'Draft','模板':'Template','已发送':'Sent','发送时间':'Sent At','创建时间':'Created At','发送人':'Sender','目标':'Target','套用模板':'Use Template','发送草稿':'Send Draft','编辑草稿':'Edit Draft','删除消息':'Delete Message','请输入消息标题':'Enter message title','请输入消息内容':'Enter message content','消息已发送':'Message sent','草稿已保存':'Draft saved','模板已保存':'Template saved','消息已删除':'Message deleted','消息已标为已读':'Message marked as read','管理员可以在这里发送系统通知、保存草稿和维护常用模板。':'Admins can send system notices, save drafts, and manage templates here.','用户可以在这里查看系统通知、管理员消息、域名处理结果和维护提醒。':'View system notices, admin messages, domain updates, and maintenance reminders here.','批量已读':'Mark Selected Read','全部已读':'Mark All Read','请选择要标记的消息':'Select messages to mark as read','已读用户':'Read Users','用户已读':'User Read','管理员已读':'Admin Read','未读消息':'Unread Messages'
 });
 
 Object.assign(I18N_EN, {
@@ -650,6 +704,7 @@ async function init() {
     state.me = me.user;
     applyTheme();
     await renderRoute();
+    startAutoRefresh();
   } catch (error) {
     app.innerHTML = `<div class="center-screen"><h2>应用加载失败</h2><p>${esc(error.message)}</p><button class="btn primary" id="retry">重试</button></div>`;
     document.querySelector('#retry')?.addEventListener('click', () => location.reload());
@@ -872,7 +927,7 @@ function shell(title, content) {
         ${!isAdmin ? nav('#/messages','✉','消息中心') : ''}
         ${nav('#/logs','↩','操作日志')}
         ${nav('#/help','☸','帮助中心')}
-        ${isAdmin ? `<hr>${nav('#/admin','▦','管理概览')}${nav('#/admin/applications','✓','域名审核')}${nav('#/admin/users','♟','用户管理')}${nav('#/admin/settings','⚙','管理员设置')}${nav('#/messages','✉','消息中心')}${nav('#/admin/help-settings','☸','消息中心设置')}` : ''}
+        ${isAdmin ? `<hr>${nav('#/admin','▦','管理概览')}${nav('#/admin/applications','✓','域名审核')}${nav('#/admin/users','♟','用户管理')}${nav('#/admin/settings','⚙','管理员设置')}${nav('#/messages','✉','消息中心')}${nav('#/admin/help-settings','☸','帮助中心设置')}` : ''}
       </nav>
       <div class="side-user"><strong>${esc(state.me.username)}</strong><small>${isAdmin ? '管理员' : '普通用户'}</small><button id="logout" class="btn ghost">退出登录</button></div>
     </aside>
@@ -2136,7 +2191,7 @@ function showUserModal(u) {
 
 
 async function renderAdminHelpSettings() {
-  shell('消息中心设置', `<div class="loading-card">正在读取帮助内容…</div>`);
+  shell('帮助中心设置', `<div class="loading-card">正在读取帮助内容…</div>`);
   try {
     const res = await api('/api/admin/help-settings').catch(() => ({ help: state.config?.help || { categories: [] } }));
     let categories = normalizeHelpCategories(res.help?.categories || state.config?.help?.categories || []);
@@ -2164,8 +2219,8 @@ async function renderAdminHelpSettings() {
       </section>`;
 
     const renderPage = () => {
-      shell('消息中心设置', `
-        <section class="message-hero card"><div><h2>消息中心设置</h2><p>管理员可以在这里增改“常见问题 / DNS 记录说明 / 域名管理问题”的帮助内容。用户在帮助中心搜索时会优先读取这里保存的内容。</p></div></section>
+      shell('帮助中心设置', `
+        <section class="message-hero card"><div><h2>帮助中心设置</h2><p>管理员可以在这里增改“常见问题 / DNS 记录说明 / 域名管理问题”的帮助内容。用户在帮助中心搜索时会优先读取这里保存的内容。</p></div></section>
         <section class="card help-edit-toolbar">
           <div><h2>帮助内容管理</h2><p>修改后点击保存，所有用户刷新后即可看到最新说明。</p></div>
           <div class="toolbar-actions"><button class="btn primary" id="save-help-settings">保存全部</button><button class="btn soft" id="restore-help-defaults">恢复默认帮助内容</button></div>
