@@ -748,11 +748,11 @@ async function renderLogin() {
         <form id="login-form" class="login-compact-form">
           <label class="login-field">
             <span>用户名或账户邮箱/手机号</span>
-            <div class="login-input-wrap"><span class="login-input-icon">♙</span><input name="identity" placeholder="用户名或账户邮箱/手机号" required autocomplete="username"></div>
+            <div class="login-input-wrap"><input name="identity" placeholder="用户名或账户邮箱/手机号" required autocomplete="username"></div>
           </label>
           <label class="login-field">
             <span>密码</span>
-            <div class="login-input-wrap"><span class="login-input-icon">🔒</span><input id="login-password" name="password" placeholder="请输入密码" type="password" required autocomplete="current-password"><button type="button" class="password-eye" id="toggle-password">◉</button></div>
+            <div class="login-input-wrap"><input id="login-password" name="password" placeholder="请输入密码" type="password" required autocomplete="current-password"><button type="button" class="password-eye" id="toggle-password">◉</button></div>
           </label>
           <div class="login-row">
             <label class="login-check"><input name="remember" type="checkbox"> <span>记住我</span></label>
@@ -770,7 +770,7 @@ async function renderLogin() {
     const input = document.querySelector('#login-password');
     input.type = input.type === 'password' ? 'text' : 'password';
   });
-  document.querySelector('#forgot-password')?.addEventListener('click', () => toast('当前系统暂未开放自助找回密码，请联系管理员重置密码。', 'error'));
+  document.querySelector('#forgot-password')?.addEventListener('click', () => { window.location.href = 'https://mailform.flore.top'; });
   document.querySelector('#login-form').addEventListener('submit', async e => {
     e.preventDefault();
     const btn = e.submitter;
