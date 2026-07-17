@@ -993,3 +993,26 @@ th { font-size: 12px; }
   .help-search-status{font-size:13px;margin: -4px 0 12px;}
   .help-search-tags span{font-size:11px;padding:4px 8px;}
 }
+
+
+/* v40 admin message/help settings */
+.help-edit-toolbar { display:flex; align-items:center; justify-content:space-between; gap:18px; }
+.help-edit-toolbar .toolbar-actions { display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
+.help-edit-wrap { display:grid; gap:18px; }
+.help-edit-card .section-head { align-items:flex-start; }
+.help-category-fields { margin:14px 0 18px; }
+.help-edit-list { display:grid; gap:10px; }
+.help-edit-item { border:1px solid var(--line); border-radius:18px; background:#fff; overflow:hidden; }
+.help-edit-item summary { cursor:pointer; padding:16px 18px; display:flex; align-items:center; justify-content:space-between; gap:12px; font-weight:900; list-style:none; }
+.help-edit-item summary::-webkit-details-marker { display:none; }
+.help-edit-item summary small { color:var(--muted); font-size:13px; white-space:nowrap; }
+.help-edit-fields { padding:0 18px 18px; }
+.help-edit-fields textarea { min-height:120px; resize:vertical; }
+.help-edit-actions { display:flex; justify-content:flex-end; }
+@media (max-width: 760px) {
+  .help-edit-toolbar { align-items:stretch; flex-direction:column; }
+  .help-edit-toolbar .toolbar-actions { justify-content:stretch; }
+  .help-edit-toolbar .toolbar-actions .btn { flex:1; }
+  .help-edit-item summary { padding:13px 14px; }
+  .help-edit-fields { padding:0 14px 14px; }
+}
