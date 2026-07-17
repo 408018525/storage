@@ -788,3 +788,22 @@ th { font-size: 12px; }
 .message-unread,.message-read{display:inline-flex;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:900}.message-unread{background:#eef2ff;color:#4338ca}.message-read{background:#f1f5f9;color:#64748b}
 .message-compose{background:#f8fafc;border:1px solid var(--line);border-radius:22px;padding:18px}.message-compose textarea{resize:vertical}.message-compose-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
 @media(max-width:760px){.message-hero,.message-card{flex-direction:column}.message-count{width:100%;display:flex;align-items:center;justify-content:center;gap:10px}.message-count strong{font-size:24px}.message-actions{width:100%;justify-content:flex-start}.message-compose-actions{justify-content:stretch}.message-compose-actions .btn{flex:1}.message-head h3{font-size:17px}}
+
+
+/* v35 help center dropdown categories */
+.help-category-wrap{display:grid;gap:16px;margin-bottom:22px}
+.help-category{background:rgba(255,255,255,.94);border:1px solid var(--line);border-radius:24px;box-shadow:var(--shadow);overflow:hidden}
+.help-category>summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:22px 26px;cursor:pointer;border-bottom:1px solid transparent}
+.help-category>summary::-webkit-details-marker{display:none}
+.help-category>summary h2{margin:0 0 6px;font-size:24px}
+.help-category>summary p{margin:0;color:var(--muted);font-weight:800;line-height:1.5}
+.help-category>summary strong{white-space:nowrap;background:#eef4ff;color:#1d4ed8;border:1px solid #dbe7ff;border-radius:999px;padding:8px 12px;font-size:13px}
+.help-category>summary::after{content:'⌄';font-size:26px;font-weight:900;color:#334155;margin-left:6px}
+.help-category[open]>summary{border-bottom-color:var(--line)}
+.help-category[open]>summary::after{content:'⌃'}
+.help-category-body{padding:18px 22px 22px;display:grid;gap:10px;max-height:72vh;overflow:auto}
+.help-category-body .help-item{margin-bottom:0}
+.help-category-body .help-item summary{padding:13px 15px;border-radius:13px}
+.help-category-body .help-detail{background:#f8fafc;border:1px solid #e5e7eb;border-top:0;border-radius:0 0 13px 13px;margin:-10px 0 4px;padding:16px 18px;color:#475569}
+.help-category-body .help-detail p{margin:8px 0;line-height:1.8}
+@media(max-width:760px){.help-category>summary{padding:17px 16px;align-items:flex-start}.help-category>summary h2{font-size:20px}.help-category>summary p{font-size:13px}.help-category>summary strong{font-size:12px}.help-category-body{padding:12px;max-height:none}.help-category-body .help-item summary{font-size:14px;padding:12px}.help-category-body .help-detail{font-size:13px;padding:13px}}
