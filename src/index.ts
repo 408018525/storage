@@ -448,18 +448,35 @@ async function login(request: Request, env: Env): Promise<Response> {
 
   let passwordOk = false;
   if (user) {
-    try { passwordOk = await verifyPassword(password, user.password_hash, user.password_salt); }
-    catch { passwordOk = false; }
+    try {
+      passwordOk = await verifyPassword(password, user.password_hash, user.password_salt);
+    } catch (error) {
+      console.error('password verify failed', error);
+      passwordOk = false;
+    }
   }
+
   if (!user || !passwordOk) {
     await audit(env, request, user?.id || null, 'auth.login_failed', 'user', user?.id || null, { identity });
     throw new HttpError(401, 'INVALID_CREDENTIALS', '用户名或密码错误');
   }
   if (user.status !== 'active') throw new HttpError(403, 'ACCOUNT_DISABLED', '账户已被禁用');
 
-  await env.DB.prepare(`
-    UPDATE users SET last_login_at=datetime('now'), updated_at=datetime('now') WHERE id=?
-  `).bind(user.id).run();
+  try {
+    await env.DB.prepare(`
+      UPDATE users SET last_login_at=datetime('now'), updated_at=datetime('now') WHERE id=?
+    `).bind(user.id).run();
+  } catch (error) {
+    try { await env.DB.prepare(`ALTER TABLE users ADD COLUMN last_login_at TEXT`).run(); } catch {}
+    try { await env.DB.prepare(`ALTER TABLE users ADD COLUMN updated_at TEXT`).run(); } catch {}
+    try {
+      await env.DB.prepare(`
+        UPDATE users SET last_login_at=datetime('now'), updated_at=datetime('now') WHERE id=?
+      `).bind(user.id).run();
+    } catch (inner) {
+      console.error('login timestamp update failed', inner);
+    }
+  }
 
   const cookie = await createSession(env, request, user.id, Boolean(body.remember));
   await audit(env, request, user.id, 'auth.login', 'user', user.id);
@@ -1269,21 +1286,44 @@ async function createSession(env: Env, request: Request, userId: string, remembe
   const days = remember ? 30 : 1;
   const expires = new Date(Date.now() + days * DAY).toISOString();
   const id = crypto.randomUUID();
+  const ua = String(request.headers.get('user-agent') || '').slice(0, 300);
+  const ip = clientIp(request);
+
+  const insertFull = () => env.DB.prepare(`
+    INSERT INTO sessions (id,user_id,token_hash,ip,user_agent,expires_at)
+    VALUES (?,?,?,?,?,?)
+  `).bind(id, userId, tokenHash, ip, ua, expires).run();
+
   try {
-    await env.DB.prepare(`
-      INSERT INTO sessions (id,user_id,token_hash,ip,user_agent,expires_at)
-      VALUES (?,?,?,?,?,?)
-    `).bind(id, userId, tokenHash, clientIp(request), String(request.headers.get('user-agent') || '').slice(0, 300), expires).run();
-  } catch (error) {
-    // 兼容旧版 sessions 表：如果旧表缺少 ip/user_agent 字段，先补字段，再退回最小字段写入。
+    await insertFull();
+  } catch (firstError) {
+    console.error('session insert failed, repairing sessions table', firstError);
     try { await env.DB.prepare(`ALTER TABLE sessions ADD COLUMN ip TEXT`).run(); } catch {}
     try { await env.DB.prepare(`ALTER TABLE sessions ADD COLUMN user_agent TEXT`).run(); } catch {}
     try { await env.DB.prepare(`ALTER TABLE sessions ADD COLUMN expires_at TEXT`).run(); } catch {}
-    await env.DB.prepare(`
-      INSERT INTO sessions (id,user_id,token_hash,expires_at)
-      VALUES (?,?,?,?)
-    `).bind(id, userId, tokenHash, expires).run();
+    try { await env.DB.prepare(`ALTER TABLE sessions ADD COLUMN created_at TEXT`).run(); } catch {}
+
+    try {
+      await insertFull();
+    } catch (secondError) {
+      console.error('session insert still failed, recreating sessions table', secondError);
+      await env.DB.prepare(`DROP TABLE IF EXISTS sessions`).run();
+      await env.DB.prepare(`
+        CREATE TABLE sessions (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          token_hash TEXT NOT NULL UNIQUE,
+          ip TEXT,
+          user_agent TEXT,
+          expires_at TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `).run();
+      try { await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token_hash)').run(); } catch {}
+      await insertFull();
+    }
   }
+
   return cookieString('sid', token, {
     maxAge: days * DAY / 1000,
     httpOnly: true,
