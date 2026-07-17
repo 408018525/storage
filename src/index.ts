@@ -252,6 +252,8 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   match = pathname.match(/^\/api\/messages\/([^/]+)\/read$/);
   if (match && method === 'POST') return markOwnMessageRead(request, env, decodeURIComponent(match[1]));
 
+  if (method === 'GET' && pathname === '/api/operation-logs') return listOperationLogs(request, env);
+
   if (method === 'GET' && pathname === '/api/admin/overview') return adminOverview(request, env);
   if (method === 'GET' && pathname === '/api/admin/applications') return adminApplications(request, env, url);
   if (method === 'GET' && pathname === '/api/admin/users') return adminUsers(request, env);
@@ -411,6 +413,8 @@ async function ensureSchema(env: Env): Promise<void> {
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_messages_status ON system_messages(status, sent_at)'),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_messages_target_user ON system_messages(target_type, target_user_id, status)'),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_messages_target_role ON system_messages(target_type, target_role, status)'),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at)'),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_audit_logs_actor ON audit_logs(actor_user_id, created_at)'),
   ]);
 
   const alters = [
@@ -454,6 +458,22 @@ async function ensureSchema(env: Env): Promise<void> {
       AND status='approved'
       AND (deleted_at IS NULL OR deleted_at='')
   `).bind(settings.domain.validDays).run();
+
+  await cleanupOperationLogs(env);
+}
+
+async function cleanupOperationLogs(env: Env): Promise<void> {
+  // 操作日志只保留最近 7 天；账号注销或被标记删除后，自动清理该账号相关日志。
+  try {
+    await env.DB.prepare(`DELETE FROM audit_logs WHERE datetime(created_at) < datetime('now','-7 days')`).run();
+  } catch (error) { console.error('cleanup old audit logs failed', error); }
+  try {
+    await env.DB.prepare(`
+      DELETE FROM audit_logs
+      WHERE actor_user_id IN (SELECT id FROM users WHERE status='deleted')
+         OR (target_type='user' AND target_id IN (SELECT id FROM users WHERE status='deleted'))
+    `).run();
+  } catch (error) { console.error('cleanup deleted-user audit logs failed', error); }
 }
 
 async function publicConfigHandler(env: Env): Promise<Response> {
@@ -676,13 +696,14 @@ async function deleteOwnAccount(request: Request, env: Env): Promise<Response> {
     throw new HttpError(409, 'ACTIVE_DOMAINS_EXIST', '账户下还有正常域名，请先申请删除域名并等待管理员批准后再注销账号');
   }
 
+  await audit(env, request, user.id, 'account.delete_self', 'user', user.id);
   await env.DB.batch([
     env.DB.prepare(`UPDATE users SET status='deleted',updated_at=datetime('now') WHERE id=?`).bind(user.id),
     env.DB.prepare(`UPDATE domain_applications SET deleted_at=datetime('now') WHERE user_id=? AND status!='approved' AND (deleted_at IS NULL OR deleted_at='')`).bind(user.id),
     env.DB.prepare(`DELETE FROM sessions WHERE user_id=?`).bind(user.id),
+    env.DB.prepare(`DELETE FROM audit_logs WHERE actor_user_id=? OR (target_type='user' AND target_id=?)`).bind(user.id, user.id),
   ]);
 
-  await audit(env, request, user.id, 'account.delete_self', 'user', user.id);
   return withCookie(ok({ deleted: true }), await destroySession(env, request));
 }
 
@@ -1250,6 +1271,134 @@ function normalizeMessageStatus(value: unknown): string {
 function normalizeTargetType(value: unknown): string {
   const type = String(value || 'all').toLowerCase();
   return ['all', 'user', 'role'].includes(type) ? type : 'all';
+}
+
+
+interface OperationLogRow {
+  id: string;
+  actor_user_id?: string | null;
+  actor_username?: string | null;
+  action: string;
+  target_type?: string | null;
+  target_id?: string | null;
+  ip?: string | null;
+  meta_json?: string | null;
+  created_at: string;
+}
+
+async function listOperationLogs(request: Request, env: Env): Promise<Response> {
+  const user = await requireUser(env, request);
+  await cleanupOperationLogs(env);
+
+  const isAdmin = user.role === 'admin';
+  const sql = isAdmin ? `
+    SELECT l.*, u.username AS actor_username
+    FROM audit_logs l
+    LEFT JOIN users u ON u.id=l.actor_user_id
+    WHERE datetime(l.created_at) >= datetime('now','-7 days')
+      AND (u.status IS NULL OR u.status!='deleted')
+    ORDER BY datetime(l.created_at) DESC
+    LIMIT 300
+  ` : `
+    SELECT l.*, u.username AS actor_username
+    FROM audit_logs l
+    LEFT JOIN users u ON u.id=l.actor_user_id
+    WHERE l.actor_user_id=?
+      AND datetime(l.created_at) >= datetime('now','-7 days')
+      AND (u.status IS NULL OR u.status!='deleted')
+    ORDER BY datetime(l.created_at) DESC
+    LIMIT 200
+  `;
+
+  const rows = isAdmin
+    ? await env.DB.prepare(sql).all<OperationLogRow>()
+    : await env.DB.prepare(sql).bind(user.id).all<OperationLogRow>();
+
+  return ok({ logs: (rows.results || []).map(serializeOperationLog), retentionDays: 7, scope: isAdmin ? 'admin' : 'self' });
+}
+
+function serializeOperationLog(row: OperationLogRow) {
+  let meta: Record<string, unknown> = {};
+  try { meta = row.meta_json ? JSON.parse(row.meta_json) : {}; } catch { meta = {}; }
+  const actionText = operationActionText(row.action);
+  return {
+    id: row.id,
+    actorUserId: row.actor_user_id || null,
+    actorUsername: row.actor_username || (row.actor_user_id ? '未知用户' : '系统'),
+    action: row.action,
+    actionText,
+    description: operationDescription(row.action, row.target_type || '', row.target_id || '', meta),
+    targetType: row.target_type || null,
+    targetId: row.target_id || null,
+    ip: row.ip || null,
+    meta,
+    createdAt: row.created_at,
+  };
+}
+
+function operationActionText(action: string): string {
+  const map: Record<string, string> = {
+    'setup.bootstrap_admin': '初始化管理员',
+    'auth.register': '注册账号',
+    'auth.login': '登录账户',
+    'auth.logout': '退出登录',
+    'auth.login_failed': '登录失败',
+    'auth.password_changed': '修改密码',
+    'account.delete_self': '注销账号',
+    'application.create': '申请域名',
+    'application.dns_update': '更新主解析',
+    'dns_record.create': '添加 DNS 解析',
+    'dns_record.update': '修改 DNS 解析',
+    'dns_record.delete': '删除 DNS 解析',
+    'application.renew': '域名续期',
+    'application.delete_request': '申请删除域名',
+    'application.delete_request_cancel': '撤销删除申请',
+    'application.delete_invalid': '删除无效域名',
+    'application.reject': '拒绝域名申请',
+    'application.approve': '批准域名申请',
+    'application.disable': '禁用域名',
+    'application.revoke': '撤销域名',
+    'admin.application_delete': '管理员删除域名',
+    'admin.application_delete_approve': '批准删除域名',
+    'admin.application_delete_reject': '拒绝删除域名',
+    'admin.user_create': '管理员创建用户',
+    'admin.user_update': '管理员编辑用户',
+    'admin.settings_site': '修改界面设置',
+    'admin.settings_registration': '修改注册设置',
+    'admin.settings_domain': '修改域名规则',
+    'admin.message_sent': '发送消息',
+    'admin.message_draft': '保存消息草稿',
+    'admin.message_template': '保存消息模板',
+    'admin.message_update': '编辑消息',
+    'admin.message_send': '发送草稿消息',
+    'admin.message_delete': '删除消息',
+  };
+  return map[action] || action;
+}
+
+function operationDescription(action: string, targetType: string, targetId: string, meta: Record<string, unknown>): string {
+  const fqdn = String(meta.fqdnAscii || meta.fqdn || meta.name || '').trim();
+  const type = String(meta.type || meta.recordType || '').trim();
+  const content = String(meta.content || meta.recordContent || '').trim();
+  if (action === 'application.create' && fqdn) return `提交域名申请：${fqdn}`;
+  if (action === 'application.approve') return `管理员批准域名申请${targetId ? `（ID：${targetId}）` : ''}`;
+  if (action === 'application.reject') return `管理员拒绝域名申请${targetId ? `（ID：${targetId}）` : ''}`;
+  if (action === 'application.disable') return `管理员禁用域名并移除解析${targetId ? `（ID：${targetId}）` : ''}`;
+  if (action === 'application.revoke') return `管理员撤销域名并移除解析${targetId ? `（ID：${targetId}）` : ''}`;
+  if (action === 'dns_record.create') return `添加 DNS 解析${fqdn ? `：${fqdn}` : ''}${type ? `（${type}${content ? ` → ${content}` : ''}）` : ''}`;
+  if (action === 'dns_record.update') return `修改 DNS 解析${fqdn ? `：${fqdn}` : ''}${type ? `（${type}${content ? ` → ${content}` : ''}）` : ''}`;
+  if (action === 'dns_record.delete') return `删除 DNS 解析${targetId ? `（ID：${targetId}）` : ''}`;
+  if (action === 'application.delete_request') return `用户提交域名删除申请${targetId ? `（ID：${targetId}）` : ''}`;
+  if (action === 'application.delete_request_cancel') return `用户撤销 12 小时内的域名删除申请${targetId ? `（ID：${targetId}）` : ''}`;
+  if (action === 'application.renew') return `用户提交域名续期${meta.newExpires ? `，新到期时间：${String(meta.newExpires)}` : ''}`;
+  if (action === 'auth.login') return '用户成功登录系统';
+  if (action === 'auth.logout') return '用户退出登录';
+  if (action === 'auth.login_failed') return `登录失败${meta.identity ? `：${String(meta.identity)}` : ''}`;
+  if (action === 'admin.user_create') return `管理员创建用户${meta.username ? `：${String(meta.username)}` : ''}`;
+  if (action === 'admin.user_update') return `管理员更新用户资料、状态或额度${targetId ? `（ID：${targetId}）` : ''}`;
+  if (action.startsWith('admin.message_')) return '管理员处理消息中心内容';
+  if (action.startsWith('admin.settings_')) return '管理员修改系统设置';
+  return `${operationActionText(action)}${targetType ? `（${targetType}${targetId ? `：${targetId}` : ''}）` : ''}`;
 }
 
 async function listOwnMessages(request: Request, env: Env): Promise<Response> {
