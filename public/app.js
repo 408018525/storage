@@ -539,7 +539,7 @@ async function renderRoute() {
 }
 
 
-const AUTO_REFRESH_MS = 60 * 1000;
+const AUTO_REFRESH_MS = 5 * 60 * 1000;
 let autoRefreshTimer = null;
 let autoRefreshRunning = false;
 
@@ -679,7 +679,8 @@ Object.assign(I18N_EN, {
 });
 
 Object.assign(I18N_EN, {
-  '操作日志':'Operation Logs','最近操作记录':'Recent Operation Logs','仅显示最近 7 天内的账号注册域名、解析等部分操作记录。':'Only account, domain, DNS and related operations from the last 7 days are shown.','管理员可查看近 7 天内未注销账号的操作记录；普通用户仅查看自己的记录。':'Admins can view logs for non-deleted accounts from the last 7 days. Regular users can only view their own logs.','暂无操作记录。':'No operation logs.','操作类型':'Action','操作人':'Operator','操作说明':'Description','目标对象':'Target','IP 地址':'IP Address','保留时间':'Retention','7 天':'7 days','日志会自动清理：超过 7 天、或账号注销后的记录会从 D1 中删除。':'Logs are automatically cleaned from D1 after 7 days or when the account is cancelled.','正在读取操作日志…':'Loading operation logs…','系统':'System','未知用户':'Unknown User'
+  '操作日志':'Operation Logs','最近操作记录':'Recent Operation Logs','仅显示最近 7 天内的账号注册域名、解析等部分操作记录。':'Only account, domain, DNS and related operations from the last 7 days are shown.','管理员可查看近 7 天内未注销账号的操作记录；普通用户仅查看自己的记录。':'Admins can view logs for non-deleted accounts from the last 7 days. Regular users can only view their own logs.','暂无操作记录。':'No operation logs.','操作类型':'Action','操作人':'Operator','操作说明':'Description','目标对象':'Target','IP 地址':'IP Address','保留时间':'Retention','7 天':'7 days','日志会自动清理：超过 7 天、或账号注销后的记录会从 D1 中删除。':'Logs are automatically cleaned from D1 after 7 days or when the account is cancelled.','正在读取操作日志…':'Loading operation logs…','系统':'System','未知用户':'Unknown User',
+  '方式一：站内消息':'Method 1: In-site message','在下方填写标题和内容，消息会直接进入管理员的消息中心，适合已经登录后反馈域名、DNS、额度、审核等问题。':'Fill in the title and content below. The message will go directly to the admin Message Center. Use it for domain, DNS, quota, and review issues after login.','方式二：外部联系':'Method 2: External contact','点击右上角“其他：联系我们”会打开外部反馈页面，适合无法登录、无法收到消息、需要提交截图或更详细资料的情况。':'Click “Other: Contact Us” in the upper right to open the external contact form. Use it when you cannot log in, cannot receive messages, or need to submit screenshots/details.','其他：联系我们':'Other: Contact Us','直接发消息给管理员':'Send a message to admin','发送给管理员':'Send to Admin','请填写要反馈的问题标题':'Enter the issue title','请详细描述您遇到的问题、页面位置、操作步骤和错误提示':'Describe the issue, page, steps, and error message in detail','消息已发送到管理员消息中心':'Message sent to admin Message Center','请填写标题和内容':'Please enter title and content'
 });
 
 Object.assign(I18N_EN, {
@@ -1157,7 +1158,21 @@ function renderHelpCenter() {
     <section class="help-category-wrap">
       ${categories.map(cat => renderHelpCategory(cat.title, cat.subtitle, cat.items)).join('')}
     </section>
-    <section class="card help-card"><h2>需要帮助？</h2><p>如果您在使用过程中遇到问题，或者需要技术支持，请点击下方按钮提交。</p><a class="btn primary" href="https://mailform.flore.top" target="_blank" rel="noopener">提交问题反馈</a></section>
+    <section class="card help-contact-card">
+      <div class="section-head">
+        <div><h2>需要帮助？</h2><p>您可以选择站内消息或外部联系两种方式提交问题。</p></div>
+        <a class="btn secondary" href="https://mailform.flore.top" target="_blank" rel="noopener">其他：联系我们</a>
+      </div>
+      <div class="help-contact-methods">
+        <div><strong>方式一：站内消息</strong><p>在下方填写标题和内容，消息会直接进入管理员的消息中心，适合已经登录后反馈域名、DNS、额度、审核等问题。</p></div>
+        <div><strong>方式二：外部联系</strong><p>点击右上角“其他：联系我们”会打开外部反馈页面，适合无法登录、无法收到消息、需要提交截图或更详细资料的情况。</p></div>
+      </div>
+      <form id="help-contact-form" class="help-contact-form form-grid">
+        <label class="field wide"><span>消息标题</span><input name="title" maxlength="120" placeholder="请填写要反馈的问题标题" required></label>
+        <label class="field wide"><span>消息内容</span><textarea name="body" rows="8" placeholder="请详细描述您遇到的问题、页面位置、操作步骤和错误提示" required></textarea></label>
+        <div class="help-contact-actions wide"><button class="btn primary" type="submit">发送给管理员</button></div>
+      </form>
+    </section>
   `);
   const search = document.querySelector('#help-search');
   const status = document.querySelector('#help-search-status');
@@ -1305,6 +1320,26 @@ function renderHelpCenter() {
 
   search?.addEventListener('input', runFilter);
   document.querySelector('#help-search-btn')?.addEventListener('click', runFilter);
+  document.querySelector('#help-contact-form')?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const submit = form.querySelector('button[type="submit"]');
+    const f = new FormData(form);
+    const title = String(f.get('title') || '').trim();
+    const body = String(f.get('body') || '').trim();
+    if (!title || !body) { toast('请填写标题和内容', 'error'); return; }
+    submit.disabled = true;
+    try {
+      await api('/api/messages/contact-admin', { method:'POST', body:{ title, body } });
+      toast('消息已发送到管理员消息中心', 'success');
+      form.reset();
+      await refreshMessageBadge();
+    } catch (error) {
+      toast(error.message, 'error');
+    } finally {
+      submit.disabled = false;
+    }
+  });
 }
 
 function messageLevelBadge(level) {
