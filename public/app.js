@@ -232,6 +232,116 @@ Object.assign(I18N_EN, {
   'EN':'EN'
 });
 
+
+// v23 complete dynamic i18n patch: covers modal text, mixed text, labels, options, placeholders and malformed partial translations.
+Object.assign(I18N_EN, {
+  '← 返回域名列表':'← Back to Domain List',
+  '返回域名列表':'Back to Domain List',
+  'BackDomain List':'Back to Domain List',
+  'Back Domain List':'Back to Domain List',
+  'DomainStatus':'Domain Status',
+  'Domain Status':'Domain Status',
+  '域名状态':'Domain Status',
+  'DNS 状态':'DNS Status',
+  'DNS 记录':'DNS Records',
+  'DNS记录':'DNS Records',
+  '续期和域名详情':'Renewal & Domain Details',
+  '续期和详情':'Renewal & Details',
+  '快捷操作':'Quick Actions',
+  '申请删除':'Request Deletion',
+  '申请删除域名':'Request Deletion',
+  'Renewal not available yet':'Renewal not available yet',
+  '未到续期时间':'Renewal not available yet',
+  '添加 DNS 解析':'Add DNS Record',
+  '+ 添加解析':'+ Add Record',
+  '+ Add Record':'+ Add Record',
+  '＋ 添加解析':'+ Add Record',
+  '添加解析':'+ Add Record',
+  '添加记录':'+ Add Record',
+  '编辑解析':'Edit Record',
+  '编辑 DNS 解析':'Edit DNS Record',
+  '为 {domain} 设置子域解析':'Set subdomain DNS for {domain}',
+  '子域名前缀':'Subdomain Prefix',
+  '解析类型':'Record Type',
+  '记录类型':'Record Type',
+  '目标地址 / 记录值':'Target / Value',
+  '目标地址':'Target',
+  '记录值':'Value',
+  'CNAME填域名；A填IPv4；AAAA填IPv6；TXT填文本；MX填邮件服务器':'CNAME: domain; A: IPv4; AAAA: IPv6; TXT: text; MX: mail server',
+  'CNAME 填域名；A 填 IPv4；AAAA 填 IPv6；TXT 填文本；MX 填邮件服务器':'CNAME: domain; A: IPv4; AAAA: IPv6; TXT: text; MX: mail server',
+  '1 表示自动':'1 means automatic',
+  'A / AAAA / CNAME 可开启代理，TXT / MX 会自动使用仅 DNS':'A / AAAA / CNAME can be proxied. TXT / MX are DNS Only automatically.',
+  '完整解析名':'Full Record Name',
+  '提交解析':'Submit Record',
+  '保存解析':'Save Record',
+  '解析已提交':'Record submitted',
+  '解析已保存':'Record saved',
+  'DNS 解析已删除':'DNS record deleted',
+  '确认删除这条 DNS 解析？':'Delete this DNS record?',
+  '主机记录':'Host',
+  '代理状态':'Proxy Status',
+  '是否代理':'Proxy Status',
+  '仅 DNS':'DNS Only',
+  '开启代理':'Proxied',
+  'DNS Only':'DNS Only',
+  'Proxied':'Proxied',
+  'A 记录（IPv4）':'A Record (IPv4)',
+  'AAAA 记录（IPv6）':'AAAA Record (IPv6)',
+  'CNAME 记录（别名）':'CNAME Record (Alias)',
+  'TXT 记录（文本）':'TXT Record (Text)',
+  'MX 记录（邮件）':'MX Record (Mail)',
+  '请选择根域名':'Select a root domain',
+  '.请选择根域名':'.Select a root domain',
+  '选择根域名':'Select Root Domain',
+  '域名前缀':'Domain Prefix',
+  '输入前缀，如: myblog':'Enter a prefix, e.g. myblog',
+  '输入前缀，如：myblog':'Enter a prefix, e.g. myblog',
+  '2-36 位，仅支持字母、数字和连字符 -':'2–36 characters. Letters, numbers, and hyphens only.',
+  '完整域名预览':'Full Domain Preview',
+  '管理员审核通过后，您才可以设置 DNS 解析':'You can set DNS records only after admin approval.',
+  '查看完整说明 ›':'View Full Guide ›',
+  '确认注册':'Confirm Registration',
+  '注册新域名':'Register New Domain',
+  '选择根域名并输入前缀，快速注册一个专属您的免费域名':'Choose a root domain and enter a prefix to register your free domain.',
+  '取消':'Cancel',
+  '概览信息':'Overview',
+  '概览':'Overview',
+  '域名详情':'Domain Details',
+  '到期时间':'Expires',
+  '剩余时间':'Remaining Time',
+  '创建时间':'Created At',
+  '审核时间':'Reviewed At',
+  '审核备注':'Review Note',
+  '管理员留言':'Admin Note',
+  '无':'None',
+  '暂无记录':'No records',
+  'Not configured':'Not configured',
+  '未配置':'Not configured',
+  '已配置':'Configured',
+  'Active':'Active',
+  'Disabled':'Disabled',
+  '待审核':'Pending Review',
+  '正常':'Active',
+  '禁用':'Disabled',
+  '已禁用':'Disabled',
+  '申请删除中':'Deletion Requested',
+  '待删除审核':'Deletion Pending',
+  '域名通过审核后才开始计算有效期。':'Validity starts only after the domain is approved.',
+  '请勿申请违法、侵权、仿冒或误导性域名。':'Do not apply for illegal, infringing, impersonating, or misleading domains.',
+  '这里只显示域名状态，不显示编辑操作；进入“域名管理”后再管理解析。':'This page only shows domain status. Go to Domain Management to edit records.',
+  '管理员审核通过后，进入“域名管理”点击“管理域名”，再添加 DNS 解析。':'After admin approval, go to Domain Management → Manage Domain to add DNS records.',
+  '域名审核通过后才能添加解析。':'DNS records can be added only after approval.',
+  '当前域名还未通过审核，暂时不能设置 DNS 解析。':'This domain is not approved yet. DNS records are temporarily unavailable.',
+  '暂无 DNS 解析，请点击“添加解析”。':'No DNS records yet. Click Add Record.',
+  '暂无 DNS 解析':'No DNS records yet',
+  '请点击“添加解析”':'Click Add Record',
+  '快速注册一个专属您的免费域名':'Register your free subdomain quickly',
+  '正在验证...':'Verifying...',
+  '正在验证…':'Verifying…',
+  '隐私':'Privacy',
+  '帮助':'Help'
+});
+
 function lang() { return localStorage.getItem('ui_lang') || 'zh'; }
 function setLang(value) {
   localStorage.setItem('ui_lang', value === 'en' ? 'en' : 'zh');
@@ -250,8 +360,20 @@ function translateTextValue(value) {
   const trimmed = raw.trim();
   if (!trimmed) return value;
 
-  const direct = I18N_EN[trimmed];
+  const normalizedTrimmed = trimmed.replace(/\s+/g, ' ');
+  const direct = I18N_EN[trimmed] || I18N_EN[normalizedTrimmed];
   if (direct) return raw.replace(trimmed, direct);
+
+  const cleanedEnglish = normalizedTrimmed
+    .replace(/BackDomain List/g, 'Back to Domain List')
+    .replace(/DomainStatus/g, 'Domain Status')
+    .replace(/DomainDetails/g, 'Domain Details')
+    .replace(/DNSRecords/g, 'DNS Records')
+    .replace(/QuickActions/g, 'Quick Actions')
+    .replace(/RequestDeletion/g, 'Request Deletion')
+    .replace(/AddRecord/g, 'Add Record')
+    .replace(/FullRecord Name/g, 'Full Record Name');
+  if (cleanedEnglish !== normalizedTrimmed) return raw.replace(trimmed, cleanedEnglish);
 
   // Handle common punctuation forms: “管理员留言：” -> “Admin Note:”.
   const punctuationMatch = trimmed.match(/^(.+?)([：:])$/);
@@ -277,7 +399,15 @@ function translateTextValue(value) {
     .replace(/^用户可自由添加解析记录，支持三级\/多级子域名。.*$/, 'Users can freely add DNS records, including third-level and multi-level subdomains.')
     .replace(/^申请时只需要填写前缀和根域名。.*$/, 'Enter only the prefix and root domain. Configure DNS after approval.')
     .replace(/^确认(.+)该域名？$/, (_, action) => `Confirm ${translateTextValue(action).toLowerCase()} this domain?`)
-    .replace(/^活跃\s*(\d+)$/, 'Active $1');
+    .replace(/^活跃\s*(\d+)$/, 'Active $1')
+    .replace(/^为\s*(.+?)\s*设置子域解析$/, (_, domain) => `Set subdomain DNS for ${domain}`)
+    .replace(/^@ = (.+?);\s*www = (.+?);\s*api\.v1 = (.+?)$/, '@ = $1; www = $2; api.v1 = $3')
+    .replace(/^默认有效期\s*(\d+)\s*天$/, 'Default validity: $1 days')
+    .replace(/^最后\s*(\d+)\s*天可申请续期。?$/, 'Renewal opens in the last $1 days.')
+    .replace(/^CNAME填域名；A填IPv4；AAAA填IPv6；TXT填文本；MX填邮件服务器$/, 'CNAME: domain; A: IPv4; AAAA: IPv6; TXT: text; MX: mail server')
+    .replace(/^CNAME 填域名；A 填 IPv4；AAAA 填 IPv6；TXT 填文本；MX 填邮件服务器$/, 'CNAME: domain; A: IPv4; AAAA: IPv6; TXT: text; MX: mail server')
+    .replace(/^A \/ AAAA \/ CNAME 可开启代理，TXT \/ MX 会自动使用仅 DNS$/, 'A / AAAA / CNAME can be proxied. TXT / MX are DNS Only automatically.')
+    .replace(/^选择根域名并输入前缀，快速注册一个专属您的免费域名$/, 'Choose a root domain and enter a prefix to register your free domain.');
 
   if (translated !== trimmed) return raw.replace(trimmed, translated);
 
@@ -290,6 +420,18 @@ function translateTextValue(value) {
         mixed = mixed.split(key).join(I18N_EN[key]);
       }
     });
+  mixed = mixed
+    .replace(/BackDomain List/g, 'Back to Domain List')
+    .replace(/Back Domain List/g, 'Back to Domain List')
+    .replace(/DomainStatus/g, 'Domain Status')
+    .replace(/DNSRecords/g, 'DNS Records')
+    .replace(/QuickActions/g, 'Quick Actions')
+    .replace(/RequestDeletion/g, 'Request Deletion')
+    .replace(/FullRecordName/g, 'Full Record Name')
+    .replace(/FullRecord Name/g, 'Full Record Name')
+    .replace(/Target \/ Value/g, 'Target / Value')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
   if (mixed !== trimmed && !/[\u4e00-\u9fff]/.test(mixed)) return raw.replace(trimmed, mixed);
 
   return value;
@@ -388,7 +530,8 @@ function openModal(title, subtitle, content, size = '') {
   modalRoot.querySelector('.modal-backdrop').addEventListener('click', e => {
     if (e.target.classList.contains('modal-backdrop')) closeModal();
   });
-  afterRender();
+  bindLanguageControls();
+  applyI18n(modalRoot);
 }
 async function api(path, options = {}) {
   const opts = { method: options.method || 'GET', headers: { ...(options.headers || {}) }, credentials: 'same-origin' };
