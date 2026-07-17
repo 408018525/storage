@@ -225,6 +225,9 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   match = pathname.match(/^\/api\/applications\/([^/]+)\/delete-request$/);
   if (match && method === 'POST') return requestDeleteOwnApplication(request, env, decodeURIComponent(match[1]));
 
+  match = pathname.match(/^\/api\/applications\/([^/]+)\/delete-request\/cancel$/);
+  if (match && method === 'POST') return cancelDeleteOwnApplication(request, env, decodeURIComponent(match[1]));
+
   if (method === 'GET' && pathname === '/api/admin/overview') return adminOverview(request, env);
   if (method === 'GET' && pathname === '/api/admin/applications') return adminApplications(request, env, url);
   if (method === 'GET' && pathname === '/api/admin/users') return adminUsers(request, env);
@@ -584,9 +587,9 @@ async function deleteOwnAccount(request: Request, env: Env): Promise<Response> {
   }
 
   const currentPassword = String(body.currentPassword || '');
-  const confirmUsername = String(body.confirmUsername || '').trim().toLowerCase();
-  if (confirmUsername !== user.username.toLowerCase()) {
-    throw new HttpError(400, 'CONFIRM_USERNAME_MISMATCH', '请输入当前用户名确认注销');
+  const confirmAccount = String(body.confirmAccount ?? body.confirmUsername ?? '').trim();
+  if (confirmAccount !== user.username) {
+    throw new HttpError(400, 'CONFIRM_USERNAME_MISMATCH', '请输入当前账号确认注销');
   }
 
   const row = await env.DB.prepare(`
@@ -1067,12 +1070,17 @@ async function renewOwnApplication(request: Request, env: Env, id: string): Prom
 
 async function requestDeleteOwnApplication(request: Request, env: Env, id: string): Promise<Response> {
   const user = await requireUser(env, request);
+  const body = await readJson<Record<string, unknown>>(request);
   const app = await env.DB.prepare(`
     SELECT * FROM domain_applications
     WHERE id=? AND user_id=? AND status='approved' AND (deleted_at IS NULL OR deleted_at='')
   `).bind(id, user.id).first<ApplicationRow>();
 
   if (!app) throw new HttpError(404, 'NOT_FOUND', '只有正常域名可以申请删除');
+  const confirmDomain = String(body.confirmDomain || '').trim();
+  if (confirmDomain !== app.fqdn_unicode && confirmDomain !== app.fqdn_ascii) {
+    throw new HttpError(400, 'CONFIRM_DOMAIN_MISMATCH', '请输入完整域名确认删除');
+  }
   if (app.delete_requested_at) throw new HttpError(409, 'DELETE_ALREADY_REQUESTED', '该域名已提交删除申请，等待管理员审核');
 
   await env.DB.prepare(`
@@ -1082,6 +1090,32 @@ async function requestDeleteOwnApplication(request: Request, env: Env, id: strin
   `).bind(user.id, id, user.id).run();
 
   await audit(env, request, user.id, 'application.delete_request', 'domain_application', id);
+  const updated = await env.DB.prepare(`SELECT * FROM domain_applications WHERE id=?`).bind(id).first<ApplicationRow>();
+  return ok({ application: serializeApplication(updated!, await loadSettings(env)) });
+}
+
+async function cancelDeleteOwnApplication(request: Request, env: Env, id: string): Promise<Response> {
+  const user = await requireUser(env, request);
+  const app = await env.DB.prepare(`
+    SELECT * FROM domain_applications
+    WHERE id=? AND user_id=? AND status='approved' AND (deleted_at IS NULL OR deleted_at='')
+  `).bind(id, user.id).first<ApplicationRow>();
+
+  if (!app || !app.delete_requested_at) {
+    throw new HttpError(404, 'NO_DELETE_REQUEST', '该域名没有可撤销的删除申请');
+  }
+  const requestedAt = parseDate(app.delete_requested_at);
+  if (!requestedAt || Date.now() - requestedAt.getTime() > 12 * 60 * 60 * 1000) {
+    throw new HttpError(403, 'DELETE_CANCEL_EXPIRED', '删除申请只能在提交后 12 小时内撤销');
+  }
+
+  await env.DB.prepare(`
+    UPDATE domain_applications
+    SET delete_requested_at=NULL, delete_requested_by=NULL, updated_at=datetime('now')
+    WHERE id=? AND user_id=?
+  `).bind(id, user.id).run();
+
+  await audit(env, request, user.id, 'application.delete_request_cancel', 'domain_application', id);
   const updated = await env.DB.prepare(`SELECT * FROM domain_applications WHERE id=?`).bind(id).first<ApplicationRow>();
   return ok({ application: serializeApplication(updated!, await loadSettings(env)) });
 }
@@ -1496,6 +1530,9 @@ function serializeApplication(app: ApplicationRow, settings: AppSettings) {
   const remainingDays = remainingMs === null ? null : Math.max(0, Math.ceil(remainingMs / DAY));
   const canRenew = approved && remainingDays !== null && remainingDays <= settings.domain.renewWindowDays;
   const deleteRequested = Boolean(app.delete_requested_at);
+  const deleteRequestedAtDate = deleteRequested ? parseDate(app.delete_requested_at || '') : null;
+  const deleteCancelDeadline = deleteRequestedAtDate ? new Date(deleteRequestedAtDate.getTime() + 12 * 60 * 60 * 1000) : null;
+  const canCancelDeleteRequest = Boolean(deleteCancelDeadline && Date.now() <= deleteCancelDeadline.getTime());
 
   return {
     id: app.id,
@@ -1523,6 +1560,8 @@ function serializeApplication(app: ApplicationRow, settings: AppSettings) {
     renewedAt: app.renewed_at || null,
     deleteRequested,
     deleteRequestedAt: app.delete_requested_at || null,
+    deleteCancelDeadline: deleteCancelDeadline ? deleteCancelDeadline.toISOString() : null,
+    canCancelDeleteRequest,
     renewCount: Number(app.renew_count || 0),
     remainingDays,
     remainingText: expires ? (remainingDays === 0 ? '今天到期' : `${remainingDays} 天`) : '',
