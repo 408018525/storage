@@ -267,6 +267,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   if (match && method === 'POST') return cancelDeleteOwnApplication(request, env, decodeURIComponent(match[1]));
 
   if (method === 'GET' && pathname === '/api/messages') return listOwnMessages(request, env);
+  if (method === 'POST' && pathname === '/api/messages/read-batch') return markOwnMessagesReadBatch(request, env);
   match = pathname.match(/^\/api\/messages\/([^/]+)\/read$/);
   if (match && method === 'POST') return markOwnMessageRead(request, env, decodeURIComponent(match[1]));
 
@@ -1370,6 +1371,45 @@ function normalizeTargetType(value: unknown): string {
   return ['all', 'user', 'role'].includes(type) ? type : 'all';
 }
 
+async function sendSystemMessageToUser(env: Env, senderUserId: string | null, targetUserId: string, title: string, body: string, level: string = 'info'): Promise<string> {
+  const id = crypto.randomUUID();
+  await env.DB.prepare(`
+    INSERT INTO system_messages (id, sender_user_id, target_type, target_user_id, target_role, title, body, level, status, sent_at)
+    VALUES (?, ?, 'user', ?, NULL, ?, ?, ?, 'sent', datetime('now'))
+  `).bind(id, senderUserId, targetUserId, cleanText(title, 120) || '系统消息', cleanText(body, 5000) || '您有一条新的系统消息。', normalizeMessageLevel(level)).run();
+  return id;
+}
+
+function domainMessageBody(app: ApplicationRow, actionText: string, note: string): string {
+  const lines = [`域名：${app.fqdn_unicode || app.fqdn_ascii}`, `处理结果：${actionText}`];
+  if (note) lines.push(`管理员留言：${note}`);
+  lines.push('请进入消息中心查看通知；域名管理页面不再单独显示管理员留言。');
+  return lines.join('\n');
+}
+
+async function sendDomainStatusMessage(env: Env, adminId: string, app: ApplicationRow, actionText: string, note: string, level: string = 'info'): Promise<void> {
+  await sendSystemMessageToUser(env, adminId, app.user_id, `域名处理通知：${app.fqdn_unicode || app.fqdn_ascii}`, domainMessageBody(app, actionText, note), level);
+}
+
+async function getReadReceipts(env: Env, messageIds: string[]): Promise<Record<string, Array<{ userId: string; username: string; readAt: string }>>> {
+  const result: Record<string, Array<{ userId: string; username: string; readAt: string }>> = {};
+  const ids = Array.from(new Set(messageIds.filter(Boolean))).slice(0, 500);
+  if (!ids.length) return result;
+  const placeholders = ids.map(() => '?').join(',');
+  const rows = await env.DB.prepare(`
+    SELECT r.message_id, r.user_id, COALESCE(u.username, r.user_id) AS username, r.read_at
+    FROM message_reads r
+    LEFT JOIN users u ON u.id=r.user_id
+    WHERE r.message_id IN (${placeholders})
+    ORDER BY datetime(r.read_at) DESC
+  `).bind(...ids).all<{ message_id: string; user_id: string; username: string; read_at: string }>();
+  for (const row of rows.results || []) {
+    if (!result[row.message_id]) result[row.message_id] = [];
+    result[row.message_id].push({ userId: row.user_id, username: row.username, readAt: row.read_at });
+  }
+  return result;
+}
+
 
 interface OperationLogRow {
   id: string;
@@ -1535,6 +1575,29 @@ async function markOwnMessageRead(request: Request, env: Env, id: string): Promi
   return ok({ read: true });
 }
 
+async function markOwnMessagesReadBatch(request: Request, env: Env): Promise<Response> {
+  const user = await requireUser(env, request);
+  const body = await readJson<Record<string, unknown>>(request, 64 * 1024);
+  const rawIds = Array.isArray(body.ids) ? body.ids : [];
+  const ids = Array.from(new Set(rawIds.map(x => cleanText(x, 80)).filter(Boolean))).slice(0, 200);
+  if (!ids.length) throw new HttpError(400, 'NO_MESSAGE_IDS', '请选择要标记已读的消息');
+
+  const placeholders = ids.map(() => '?').join(',');
+  const rows = await env.DB.prepare(`
+    SELECT id FROM system_messages
+    WHERE id IN (${placeholders}) AND status='sent' AND (deleted_at IS NULL OR deleted_at='')
+      AND (target_type='all' OR (target_type='user' AND target_user_id=?) OR (target_type='role' AND target_role=?))
+  `).bind(...ids, user.id, user.role).all<{ id: string }>();
+  const allowed = (rows.results || []).map(x => x.id);
+  if (!allowed.length) throw new HttpError(404, 'MESSAGE_NOT_FOUND', '消息不存在或无权查看');
+
+  await env.DB.batch(allowed.map(id => env.DB.prepare(`
+    INSERT OR REPLACE INTO message_reads (message_id, user_id, read_at)
+    VALUES (?, ?, datetime('now'))
+  `).bind(id, user.id)));
+  return ok({ read: true, count: allowed.length });
+}
+
 async function adminListMessages(request: Request, env: Env, url: URL): Promise<Response> {
   await requireAdmin(env, request);
   const status = String(url.searchParams.get('status') || '').toLowerCase();
@@ -1549,7 +1612,12 @@ async function adminListMessages(request: Request, env: Env, url: URL): Promise<
     ORDER BY COALESCE(m.updated_at, m.sent_at, m.created_at) DESC
     LIMIT 500
   `).all<any>();
-  return ok({ messages: (rows.results || []).map((row: any) => ({ ...serializeMessage(row), readCount: Number(row.read_count || 0) })) });
+  const raw = rows.results || [];
+  const receipts = await getReadReceipts(env, raw.map((row: any) => row.id));
+  return ok({ messages: raw.map((row: any) => {
+    const readUsers = receipts[row.id] || [];
+    return { ...serializeMessage(row), readCount: Number(row.read_count || 0), readUsers };
+  }) });
 }
 
 async function buildMessagePayload(env: Env, body: Record<string, unknown>) {
@@ -1707,6 +1775,7 @@ async function adminReviewApplication(request: Request, env: Env, id: string, ac
       WHERE id=?
     `).bind(note, admin.id, id).run();
     await audit(env, request, admin.id, 'admin.application_delete_reject', 'domain_application', id, { note });
+    await sendDomainStatusMessage(env, admin.id, app, '删除申请已被拒绝', note || '管理员拒绝了该域名删除申请。', 'warning');
     return ok({ deleteRejected: true });
   }
 
@@ -1722,6 +1791,7 @@ async function adminReviewApplication(request: Request, env: Env, id: string, ac
       throw new HttpError(502, 'DNS_DELETE_FAILED', message);
     }
 
+    await sendDomainStatusMessage(env, admin.id, app, '删除申请已批准', note || '管理员已批准删除申请，域名和关联 DNS 记录已移除。', 'success');
     await hardDeleteDomainApplication(env, id);
     return ok({ deleted: true, purged: true });
   }
@@ -1734,6 +1804,7 @@ async function adminReviewApplication(request: Request, env: Env, id: string, ac
       WHERE id=?
     `).bind(note, admin.id, id).run();
     await audit(env, request, admin.id, 'application.reject', 'domain_application', id, { note });
+    await sendDomainStatusMessage(env, admin.id, app, '域名申请已被拒绝', note || '管理员拒绝了该域名申请。', 'warning');
     return ok({ status: 'rejected' });
   }
 
@@ -1758,6 +1829,7 @@ async function adminReviewApplication(request: Request, env: Env, id: string, ac
     }
 
     await audit(env, request, admin.id, 'application.approve', 'domain_application', id, { syncedDnsRecords: synced });
+    await sendDomainStatusMessage(env, admin.id, app, '域名申请已通过', note || '管理员已批准该域名，您现在可以进入域名管理添加 DNS 解析。', 'success');
     return ok({ status: 'approved', syncedDnsRecords: synced });
   }
 
@@ -1780,6 +1852,7 @@ async function adminReviewApplication(request: Request, env: Env, id: string, ac
       WHERE id=?
     `).bind(disableNote, admin.id, id).run();
     await audit(env, request, admin.id, 'application.disable', 'domain_application', id, { note });
+    await sendDomainStatusMessage(env, admin.id, app, '域名已被禁用', note || '管理员已禁用该域名，DNS 记录已移除。', 'danger');
     return ok({ status: 'revoked', statusText: '已禁用' });
   }
 
@@ -1798,6 +1871,7 @@ async function adminReviewApplication(request: Request, env: Env, id: string, ac
       WHERE id=?
     `).bind(note, admin.id, id).run();
     await audit(env, request, admin.id, 'application.revoke', 'domain_application', id, { note });
+    await sendDomainStatusMessage(env, admin.id, app, '域名已被撤销', note || '管理员已撤销该域名，DNS 记录已移除。', 'warning');
     return ok({ status: 'revoked' });
   }
 
@@ -2100,7 +2174,7 @@ function serializeApplication(app: ApplicationRow, settings: AppSettings) {
     ttl: Number(app.ttl || 1),
     status: app.status,
     statusText: disabledByAdmin ? '已禁用' : (deleteRequested && app.status === 'approved' ? '待删除审核' : statusLabel(app.status)),
-    reviewNote: disabledByAdmin ? String(app.review_note || '').replace(/^【已禁用】/, '') : (app.review_note || ''),
+    reviewNote: '',
     errorMessage: app.error_message || '',
     dnsRecordId: app.dns_record_id || '',
     dnsConfigured: Boolean(app.record_content),
