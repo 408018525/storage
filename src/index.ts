@@ -238,6 +238,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   if (method === 'GET' && pathname === '/api/auth/me') return authMe(request, env);
   if (method === 'POST' && pathname === '/api/auth/change-password') return changeOwnPassword(request, env);
   if (method === 'POST' && pathname === '/api/account/delete') return deleteOwnAccount(request, env);
+  if (method === 'GET' && pathname === '/api/account/devices') return listOwnLoginDevices(request, env);
 
   if (method === 'GET' && pathname === '/api/applications') return listOwnApplications(request, env);
   if (method === 'POST' && pathname === '/api/applications') return createApplication(request, env);
@@ -299,6 +300,9 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   match = pathname.match(/^\/api\/admin\/users\/([^/]+)$/);
   if (match && method === 'PATCH') return adminUpdateUser(request, env, decodeURIComponent(match[1]));
 
+  match = pathname.match(/^\/api\/admin\/users\/([^/]+)\/devices$/);
+  if (match && method === 'GET') return adminUserLoginDevices(request, env, decodeURIComponent(match[1]));
+
   match = pathname.match(/^\/api\/admin\/applications\/([^/]+)\/(approve|reject|revoke|disable|delete|approve-delete|reject-delete)$/);
   if (match && method === 'POST') return adminReviewApplication(request, env, decodeURIComponent(match[1]), match[2]);
 
@@ -330,6 +334,11 @@ async function ensureSchema(env: Env): Promise<void> {
         token_hash TEXT NOT NULL UNIQUE,
         ip TEXT,
         user_agent TEXT,
+        device_name TEXT,
+        device_type TEXT,
+        device_model TEXT,
+        first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
+        last_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
         expires_at TEXT NOT NULL,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         FOREIGN KEY(user_id) REFERENCES users(id)
@@ -444,6 +453,11 @@ async function ensureSchema(env: Env): Promise<void> {
   const alters = [
     `ALTER TABLE sessions ADD COLUMN ip TEXT`,
     `ALTER TABLE sessions ADD COLUMN user_agent TEXT`,
+    `ALTER TABLE sessions ADD COLUMN device_name TEXT`,
+    `ALTER TABLE sessions ADD COLUMN device_type TEXT`,
+    `ALTER TABLE sessions ADD COLUMN device_model TEXT`,
+    `ALTER TABLE sessions ADD COLUMN first_seen_at TEXT`,
+    `ALTER TABLE sessions ADD COLUMN last_seen_at TEXT`,
     `ALTER TABLE sessions ADD COLUMN expires_at TEXT`,
     `ALTER TABLE sessions ADD COLUMN created_at TEXT`,
     `ALTER TABLE users ADD COLUMN domain_quota INTEGER NOT NULL DEFAULT 3`,
@@ -773,7 +787,48 @@ async function changeOwnPassword(request: Request, env: Env): Promise<Response> 
     env.DB.prepare(`DELETE FROM sessions WHERE user_id=?`).bind(user.id),
   ]);
   await audit(env, request, user.id, 'auth.password_changed', 'user', user.id);
+
   return withCookie(ok({ changed: true }), await destroySession(env, request));
+}
+
+async function listOwnLoginDevices(request: Request, env: Env): Promise<Response> {
+  const user = await requireUser(env, request);
+  const devices = await listLoginDevicesForUser(env, user.id);
+  return ok({ count: devices.length, devices });
+}
+
+async function adminUserLoginDevices(request: Request, env: Env, userId: string): Promise<Response> {
+  await requireAdmin(env, request);
+  const user = await env.DB.prepare(`SELECT id,username,email,role,status FROM users WHERE id=? AND status!='deleted'`).bind(userId).first<any>();
+  if (!user) throw new HttpError(404, 'USER_NOT_FOUND', '用户不存在');
+  const devices = await listLoginDevicesForUser(env, userId);
+  return ok({ user: serializeUser(user), count: devices.length, devices });
+}
+
+async function listLoginDevicesForUser(env: Env, userId: string) {
+  const rows = await env.DB.prepare(`
+    SELECT id, ip, user_agent, device_name, device_type, device_model,
+      COALESCE(first_seen_at, created_at) AS first_seen_at,
+      COALESCE(last_seen_at, created_at) AS last_seen_at,
+      expires_at, created_at
+    FROM sessions
+    WHERE user_id=? AND expires_at > datetime('now')
+    ORDER BY COALESCE(last_seen_at, created_at) DESC
+    LIMIT 100
+  `).bind(userId).all<any>();
+  return (rows.results || []).map(row => {
+    const parsed = parseDeviceInfo(row.user_agent || '');
+    return {
+      id: row.id,
+      deviceName: row.device_name || parsed.name,
+      deviceType: row.device_type || parsed.type,
+      deviceModel: row.device_model || parsed.model,
+      ip: row.ip || '',
+      firstLoginAt: row.first_seen_at || row.created_at || '',
+      lastUsedAt: row.last_seen_at || row.created_at || '',
+      expiresAt: row.expires_at || '',
+    };
+  });
 }
 
 async function deleteOwnAccount(request: Request, env: Env): Promise<Response> {
@@ -1361,7 +1416,7 @@ function serializeMessage(row: MessageRow) {
 
 function normalizeMessageLevel(value: unknown): string {
   const level = String(value || 'info').toLowerCase();
-  return ['info', 'success', 'warning', 'danger'].includes(level) ? level : 'info';
+  return ['info', 'success', 'warning', 'danger', 'important', 'system'].includes(level) ? level : 'info';
 }
 
 function normalizeMessageStatus(value: unknown): string {
@@ -1370,8 +1425,8 @@ function normalizeMessageStatus(value: unknown): string {
 }
 
 function normalizeTargetType(value: unknown): string {
-  const type = String(value || 'all').toLowerCase();
-  return ['all', 'user', 'role'].includes(type) ? type : 'all';
+  const type = String(value || '').toLowerCase();
+  return ['all', 'user', 'role', 'none'].includes(type) ? type : 'none';
 }
 
 async function sendSystemMessageToUser(env: Env, senderUserId: string | null, targetUserId: string, title: string, body: string, level: string = 'info'): Promise<string> {
@@ -1730,13 +1785,19 @@ async function adminListMessages(request: Request, env: Env, url: URL): Promise<
 }
 
 async function buildMessagePayload(env: Env, body: Record<string, unknown>) {
+  const status = normalizeMessageStatus(body.status);
   const title = cleanText(body.title, 120);
   const text = cleanText(body.body ?? body.content, 5000);
   if (!title) throw new HttpError(400, 'TITLE_REQUIRED', '请填写消息标题');
   if (!text) throw new HttpError(400, 'BODY_REQUIRED', '请填写消息内容');
-  const targetType = normalizeTargetType(body.targetType ?? body.target_type);
+  let targetType = normalizeTargetType(body.targetType ?? body.target_type);
   let targetUserId = cleanText(body.targetUserId ?? body.target_user_id, 80) || null;
   let targetRole = cleanText(body.targetRole ?? body.target_role, 20) || null;
+
+  // 草稿和模板允许暂时不选择发送对象；真正发送时必须补全对象。
+  if (targetType === 'none' && status === 'sent') {
+    throw new HttpError(400, 'TARGET_REQUIRED', '立即发送前请选择接收对象');
+  }
   if (targetType === 'all') {
     targetUserId = null;
     targetRole = null;
@@ -1745,9 +1806,14 @@ async function buildMessagePayload(env: Env, body: Record<string, unknown>) {
     targetRole = targetRole === 'admin' ? 'admin' : 'user';
   } else if (targetType === 'user') {
     targetRole = null;
-    if (!targetUserId) throw new HttpError(400, 'TARGET_USER_REQUIRED', '请选择接收用户');
-    const user = await env.DB.prepare(`SELECT id FROM users WHERE id=? AND status!='deleted'`).bind(targetUserId).first<{ id: string }>();
-    if (!user) throw new HttpError(404, 'TARGET_USER_NOT_FOUND', '接收用户不存在');
+    if (!targetUserId) {
+      if (status === 'sent') throw new HttpError(400, 'TARGET_USER_REQUIRED', '请选择接收用户');
+      targetType = 'none';
+      targetUserId = null;
+    } else {
+      const user = await env.DB.prepare(`SELECT id FROM users WHERE id=? AND status!='deleted'`).bind(targetUserId).first<{ id: string }>();
+      if (!user) throw new HttpError(404, 'TARGET_USER_NOT_FOUND', '接收用户不存在');
+    }
   }
   return {
     title,
@@ -1756,7 +1822,7 @@ async function buildMessagePayload(env: Env, body: Record<string, unknown>) {
     targetUserId,
     targetRole,
     level: normalizeMessageLevel(body.level),
-    status: normalizeMessageStatus(body.status),
+    status,
   };
 }
 
@@ -1796,6 +1862,8 @@ async function adminSendMessage(request: Request, env: Env, id: string): Promise
   const admin = await requireAdmin(env, request);
   const existing = await env.DB.prepare(`SELECT * FROM system_messages WHERE id=? AND (deleted_at IS NULL OR deleted_at='')`).bind(id).first<MessageRow>();
   if (!existing) throw new HttpError(404, 'MESSAGE_NOT_FOUND', '消息不存在');
+  if (existing.target_type === 'none') throw new HttpError(400, 'TARGET_REQUIRED', '发送草稿前请先编辑并选择接收对象');
+  if (existing.target_type === 'user' && !existing.target_user_id) throw new HttpError(400, 'TARGET_USER_REQUIRED', '发送草稿前请先选择接收用户');
   await env.DB.prepare(`
     UPDATE system_messages
     SET status='sent', sent_at=COALESCE(sent_at, datetime('now')), updated_at=datetime('now')
@@ -2400,6 +2468,33 @@ function turnstilePublicConfig(env: Env) {
   };
 }
 
+
+function parseDeviceInfo(userAgent: string): { name: string; type: string; model: string } {
+  const ua = String(userAgent || '');
+  const lower = ua.toLowerCase();
+  let type = '电脑';
+  if (/ipad|tablet|kindle|silk/.test(lower)) type = '平板';
+  else if (/mobile|iphone|android|phone/.test(lower)) type = '手机';
+
+  let os = '未知系统';
+  if (/windows nt 10/i.test(ua)) os = 'Windows 10/11';
+  else if (/windows/i.test(ua)) os = 'Windows';
+  else if (/iphone/i.test(ua)) os = 'iPhone';
+  else if (/ipad/i.test(ua)) os = 'iPad';
+  else if (/android/i.test(ua)) os = 'Android';
+  else if (/mac os x/i.test(ua)) os = 'macOS';
+  else if (/linux/i.test(ua)) os = 'Linux';
+
+  let browser = '浏览器';
+  if (/edg\//i.test(ua)) browser = 'Edge';
+  else if (/chrome\//i.test(ua) && !/edg\//i.test(ua)) browser = 'Chrome';
+  else if (/safari\//i.test(ua) && !/chrome\//i.test(ua)) browser = 'Safari';
+  else if (/firefox\//i.test(ua)) browser = 'Firefox';
+
+  const model = `${os} / ${browser}`;
+  return { name: `${browser} · ${os}`, type, model };
+}
+
 async function getAuthUser(env: Env, request: Request): Promise<UserRow | null> {
   const sid = parseCookie(request.headers.get('cookie') || '').sid;
   if (!sid) return null;
@@ -2408,6 +2503,7 @@ async function getAuthUser(env: Env, request: Request): Promise<UserRow | null> 
     SELECT * FROM sessions WHERE token_hash=? AND expires_at > datetime('now') LIMIT 1
   `).bind(tokenHash).first<{ id: string; user_id: string }>();
   if (!session) return null;
+  try { await env.DB.prepare(`UPDATE sessions SET last_seen_at=datetime('now') WHERE id=?`).bind(session.id).run(); } catch {}
   const user = await env.DB.prepare(`
     SELECT * FROM users WHERE id=? AND status!='deleted' LIMIT 1
   `).bind(session.user_id).first<UserRow>();
@@ -2435,11 +2531,12 @@ async function createSession(env: Env, request: Request, userId: string, remembe
   const id = crypto.randomUUID();
   const ua = String(request.headers.get('user-agent') || '').slice(0, 300);
   const ip = clientIp(request);
+  const device = parseDeviceInfo(ua);
 
   const insertFull = () => env.DB.prepare(`
-    INSERT INTO sessions (id,user_id,token_hash,ip,user_agent,expires_at)
-    VALUES (?,?,?,?,?,?)
-  `).bind(id, userId, tokenHash, ip, ua, expires).run();
+    INSERT INTO sessions (id,user_id,token_hash,ip,user_agent,device_name,device_type,device_model,first_seen_at,last_seen_at,expires_at)
+    VALUES (?,?,?,?,?,?,?,?,datetime('now'),datetime('now'),?)
+  `).bind(id, userId, tokenHash, ip, ua, device.name, device.type, device.model, expires).run();
 
   try {
     await insertFull();
@@ -2447,6 +2544,11 @@ async function createSession(env: Env, request: Request, userId: string, remembe
     console.error('session insert failed, repairing sessions table', firstError);
     try { await env.DB.prepare(`ALTER TABLE sessions ADD COLUMN ip TEXT`).run(); } catch {}
     try { await env.DB.prepare(`ALTER TABLE sessions ADD COLUMN user_agent TEXT`).run(); } catch {}
+    try { await env.DB.prepare(`ALTER TABLE sessions ADD COLUMN device_name TEXT`).run(); } catch {}
+    try { await env.DB.prepare(`ALTER TABLE sessions ADD COLUMN device_type TEXT`).run(); } catch {}
+    try { await env.DB.prepare(`ALTER TABLE sessions ADD COLUMN device_model TEXT`).run(); } catch {}
+    try { await env.DB.prepare(`ALTER TABLE sessions ADD COLUMN first_seen_at TEXT`).run(); } catch {}
+    try { await env.DB.prepare(`ALTER TABLE sessions ADD COLUMN last_seen_at TEXT`).run(); } catch {}
     try { await env.DB.prepare(`ALTER TABLE sessions ADD COLUMN expires_at TEXT`).run(); } catch {}
     try { await env.DB.prepare(`ALTER TABLE sessions ADD COLUMN created_at TEXT`).run(); } catch {}
 
@@ -2462,6 +2564,11 @@ async function createSession(env: Env, request: Request, userId: string, remembe
           token_hash TEXT NOT NULL UNIQUE,
           ip TEXT,
           user_agent TEXT,
+          device_name TEXT,
+          device_type TEXT,
+          device_model TEXT,
+          first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
+          last_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
           expires_at TEXT NOT NULL,
           created_at TEXT NOT NULL DEFAULT (datetime('now'))
         )
