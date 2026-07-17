@@ -1416,7 +1416,7 @@ function serializeMessage(row: MessageRow) {
 
 function normalizeMessageLevel(value: unknown): string {
   const level = String(value || 'info').toLowerCase();
-  return ['info', 'success', 'warning', 'danger', 'important', 'system'].includes(level) ? level : 'info';
+  return ['info', 'success', 'warning', 'danger', 'important', 'system', 'feedback'].includes(level) ? level : 'info';
 }
 
 function normalizeMessageStatus(value: unknown): string {
@@ -1609,12 +1609,8 @@ async function contactAdminMessage(request: Request, env: Env): Promise<Response
   const id = crypto.randomUUID();
   await env.DB.prepare(`
     INSERT INTO system_messages (id, sender_user_id, target_type, target_user_id, target_role, title, body, level, status, sent_at)
-    VALUES (?, ?, 'role', NULL, 'admin', ?, ?, 'info', 'sent', datetime('now'))
+    VALUES (?, ?, 'role', NULL, 'admin', ?, ?, 'feedback', 'sent', datetime('now'))
   `).bind(id, user.id, title, text).run();
-  await env.DB.prepare(`
-    INSERT OR REPLACE INTO message_reads (message_id, user_id, read_at)
-    VALUES (?, ?, datetime('now'))
-  `).bind(id, user.id).run();
   await audit(env, request, user.id, 'message.contact_admin', 'message', id, { title });
   const row = await env.DB.prepare(`SELECT m.*, sender.username AS sender_username FROM system_messages m LEFT JOIN users sender ON sender.id=m.sender_user_id WHERE m.id=?`).bind(id).first<MessageRow>();
   return ok({ sent: true, movedToMessageCenter: true, message: serializeMessage(row!) });
@@ -1623,7 +1619,28 @@ async function contactAdminMessage(request: Request, env: Env): Promise<Response
 async function listOwnMessages(request: Request, env: Env): Promise<Response> {
   const user = await requireUser(env, request);
   const rows = await env.DB.prepare(`
-    SELECT m.*, sender.username AS sender_username, target.username AS target_username, r.read_at
+    SELECT m.*,
+      sender.username AS sender_username,
+      target.username AS target_username,
+      r.read_at,
+      CASE
+        WHEN m.target_type='user' AND m.target_user_id IS NOT NULL THEN (
+          SELECT COUNT(*) FROM message_reads rr WHERE rr.message_id=m.id AND rr.user_id=m.target_user_id
+        )
+        WHEN m.target_type='role' AND m.target_role IS NOT NULL THEN (
+          SELECT COUNT(DISTINCT rr.user_id)
+          FROM message_reads rr
+          JOIN users ru ON ru.id=rr.user_id
+          WHERE rr.message_id=m.id AND ru.role=m.target_role AND ru.status!='deleted'
+        )
+        WHEN m.target_type='all' THEN (
+          SELECT COUNT(DISTINCT rr.user_id)
+          FROM message_reads rr
+          JOIN users ru ON ru.id=rr.user_id
+          WHERE rr.message_id=m.id AND ru.status!='deleted'
+        )
+        ELSE 0
+      END AS recipient_read_count
     FROM system_messages m
     LEFT JOIN users sender ON sender.id=m.sender_user_id
     LEFT JOIN users target ON target.id=m.target_user_id
@@ -1639,8 +1656,23 @@ async function listOwnMessages(request: Request, env: Env): Promise<Response> {
     ORDER BY COALESCE(m.sent_at, m.created_at) DESC
     LIMIT 300
   `).bind(user.id, user.id, user.role, user.id).all<MessageRow>();
-  const messages = (rows.results || []).map(serializeMessage);
-  return ok({ messages, unread: messages.filter(m => !m.isRead).length });
+  const messages = (rows.results || []).map(row => {
+    const msg = serializeMessage(row) as ReturnType<typeof serializeMessage> & Record<string, unknown>;
+    const sentByMe = row.sender_user_id === user.id;
+    const recipientReadCount = Number((row as any).recipient_read_count || 0);
+    msg.sentByMe = sentByMe;
+    msg.recipientReadCount = recipientReadCount;
+    msg.recipientRead = recipientReadCount > 0;
+    if (sentByMe) {
+      msg.isRead = true;
+      if (row.target_type === 'role' && row.target_role === 'admin') msg.recipientReadText = recipientReadCount > 0 ? '管理员已读' : '管理员未读';
+      else if (row.target_type === 'role' && row.target_role === 'user') msg.recipientReadText = recipientReadCount > 0 ? '用户已读' : '用户未读';
+      else if (row.target_type === 'all') msg.recipientReadText = recipientReadCount > 0 ? `已有 ${recipientReadCount} 人已读` : '全部未读';
+      else msg.recipientReadText = recipientReadCount > 0 ? '对方已读' : '对方未读';
+    }
+    return msg;
+  });
+  return ok({ messages, unread: messages.filter(m => !m.sentByMe && !m.isRead).length });
 }
 
 async function replyOwnMessage(request: Request, env: Env, id: string): Promise<Response> {
@@ -1732,10 +1764,6 @@ async function markOwnMessageRead(request: Request, env: Env, id: string): Promi
       AND (target_type='all' OR (target_type='user' AND target_user_id=?) OR (target_type='role' AND target_role=?))
   `).bind(id, user.id, user.role).first<{ id: string }>();
   if (!message) throw new HttpError(404, 'MESSAGE_NOT_FOUND', '消息不存在或无权查看');
-  await env.DB.prepare(`
-    INSERT OR REPLACE INTO message_reads (message_id, user_id, read_at)
-    VALUES (?, ?, datetime('now'))
-  `).bind(id, user.id).run();
   return ok({ read: true });
 }
 
