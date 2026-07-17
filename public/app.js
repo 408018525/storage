@@ -622,6 +622,10 @@ Object.assign(I18N_EN, {
   '消息中心':'Message Center','系统消息':'System Messages','我的消息':'My Messages','暂无消息':'No messages yet','全部消息':'All Messages','未读':'Unread','已读':'Read','标为已读':'Mark as Read','发送消息':'Send Message','消息标题':'Message Title','消息内容':'Message Content','接收对象':'Recipients','全部用户':'All Users','指定用户':'Specific User','按角色':'By Role','普通用户':'Users','消息类型':'Message Type','普通通知':'Info','成功提示':'Success','警告提醒':'Warning','重要警告':'Important','立即发送':'Send Now','保存草稿':'Save Draft','保存为模板':'Save as Template','草稿':'Draft','模板':'Template','已发送':'Sent','发送时间':'Sent At','创建时间':'Created At','发送人':'Sender','目标':'Target','套用模板':'Use Template','发送草稿':'Send Draft','编辑草稿':'Edit Draft','删除消息':'Delete Message','请输入消息标题':'Enter message title','请输入消息内容':'Enter message content','消息已发送':'Message sent','草稿已保存':'Draft saved','模板已保存':'Template saved','消息已删除':'Message deleted','消息已标为已读':'Message marked as read','管理员可以在这里发送系统通知、保存草稿和维护常用模板。':'Admins can send system notices, save drafts, and manage templates here.','用户可以在这里查看系统通知、管理员留言、域名处理结果和维护提醒。':'View system notices, admin messages, domain updates, and maintenance reminders here.'
 });
 
+Object.assign(I18N_EN, {
+  '操作日志':'Operation Logs','最近操作记录':'Recent Operation Logs','仅显示最近 7 天内的账号注册域名、解析等部分操作记录。':'Only account, domain, DNS and related operations from the last 7 days are shown.','管理员可查看近 7 天内未注销账号的操作记录；普通用户仅查看自己的记录。':'Admins can view logs for non-deleted accounts from the last 7 days. Regular users can only view their own logs.','暂无操作记录。':'No operation logs.','操作类型':'Action','操作人':'Operator','操作说明':'Description','目标对象':'Target','IP 地址':'IP Address','保留时间':'Retention','7 天':'7 days','日志会自动清理：超过 7 天、或账号注销后的记录会从 D1 中删除。':'Logs are automatically cleaned from D1 after 7 days or when the account is cancelled.','正在读取操作日志…':'Loading operation logs…','系统':'System','未知用户':'Unknown User'
+});
+
 window.addEventListener('error', event => {
   if (event?.message) toast(event.message, 'error');
 });
@@ -667,6 +671,7 @@ async function route() {
   if (hash === '#/domains' || hash === '#/applications') return renderDomains();
   if (hash === '#/account') return renderAccount();
   if (hash === '#/messages') return renderMessageCenter();
+  if (hash === '#/logs') return renderOperationLogs();
   if (hash === '#/help') return renderHelpCenter();
   if (hash === '#/admin') return renderAdminOverview();
   if (hash === '#/admin/applications') return renderAdminApplications();
@@ -824,6 +829,7 @@ function shell(title, content) {
         ${nav('#/domains','🌐','域名管理')}
         ${nav('#/account','⚙','账户设置')}
         ${nav('#/messages','✉','消息中心')}
+        ${nav('#/logs','↩','操作日志')}
         ${nav('#/help','☸','帮助中心')}
         ${isAdmin ? `<hr>${nav('#/admin','▦','管理概览')}${nav('#/admin/applications','✓','域名审核')}${nav('#/admin/users','♟','用户管理')}${nav('#/admin/settings','⚙','管理员设置')}` : ''}
       </nav>
@@ -1102,6 +1108,50 @@ function bindMessageCompose(users, preset = null) {
     });
   });
 }
+
+function logTargetLabel(log) {
+  const typeMap = {
+    user: '用户', domain_application: '域名申请', dns_record: 'DNS 记录', message: '消息', setting: '设置'
+  };
+  const type = typeMap[log.targetType] || log.targetType || '—';
+  return log.targetId ? `${type} / ${String(log.targetId).slice(0, 10)}` : type;
+}
+function operationLogListHtml(logs) {
+  if (!logs.length) return '<div class="operation-empty">暂无操作记录。</div>';
+  return `<div class="operation-log-list">${logs.map(log => `
+    <article class="operation-log-item">
+      <div class="operation-log-icon">↩</div>
+      <div class="operation-log-main">
+        <div class="operation-log-head"><strong>${esc(log.actionText || log.action)}</strong><span>${fmtDate(log.createdAt, true)}</span></div>
+        <p>${esc(log.description || '')}</p>
+        <div class="operation-log-meta">
+          <span>操作人：${esc(log.actorUsername || '系统')}</span>
+          <span>目标对象：${esc(logTargetLabel(log))}</span>
+          ${log.ip ? `<span>IP 地址：${esc(log.ip)}</span>` : ''}
+        </div>
+      </div>
+    </article>`).join('')}</div>`;
+}
+async function renderOperationLogs() {
+  shell('操作日志', `<div class="loading-card">正在读取操作日志…</div>`);
+  try {
+    const result = await api('/api/operation-logs');
+    const logs = result.logs || [];
+    shell('操作日志', `
+      <section class="card operation-log-card">
+        <div class="operation-log-title">
+          <div class="operation-title-left"><span class="operation-title-icon">↩</span><div><h2>最近操作记录</h2><p>仅显示最近 7 天内的账号注册域名、解析等部分操作记录。</p></div></div>
+          <span class="status-pill status-active">7 天</span>
+        </div>
+        <div class="operation-log-note">管理员可查看近 7 天内未注销账号的操作记录；普通用户仅查看自己的记录。</div>
+        ${operationLogListHtml(logs)}
+        <p class="operation-retention">日志会自动清理：超过 7 天、或账号注销后的记录会从 D1 中删除。</p>
+      </section>`);
+  } catch (error) {
+    toast(error.message, 'error');
+  }
+}
+
 function messageListHtml(messages, admin = false) {
   if (!messages.length) return '<div class="empty">暂无消息</div>';
   return messages.map(m => `<article class="message-card ${m.isRead ? 'read' : 'unread'} message-${esc(m.level || 'info')}">
