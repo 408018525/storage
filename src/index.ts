@@ -199,6 +199,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   if (method === 'POST' && pathname === '/api/auth/logout') return logout(request, env);
   if (method === 'GET' && pathname === '/api/auth/me') return authMe(request, env);
   if (method === 'POST' && pathname === '/api/auth/change-password') return changeOwnPassword(request, env);
+  if (method === 'POST' && pathname === '/api/account/delete') return deleteOwnAccount(request, env);
 
   if (method === 'GET' && pathname === '/api/applications') return listOwnApplications(request, env);
   if (method === 'POST' && pathname === '/api/applications') return createApplication(request, env);
@@ -572,6 +573,49 @@ async function changeOwnPassword(request: Request, env: Env): Promise<Response> 
   ]);
   await audit(env, request, user.id, 'auth.password_changed', 'user', user.id);
   return withCookie(ok({ changed: true }), await destroySession(env, request));
+}
+
+async function deleteOwnAccount(request: Request, env: Env): Promise<Response> {
+  const user = await requireUser(env, request);
+  const body = await readJson<Record<string, unknown>>(request);
+
+  if (user.role === 'admin') {
+    throw new HttpError(403, 'ADMIN_DELETE_FORBIDDEN', '管理员账号不能在前台注销，请先创建其他管理员后由后台处理');
+  }
+
+  const currentPassword = String(body.currentPassword || '');
+  const confirmUsername = String(body.confirmUsername || '').trim().toLowerCase();
+  if (confirmUsername !== user.username.toLowerCase()) {
+    throw new HttpError(400, 'CONFIRM_USERNAME_MISMATCH', '请输入当前用户名确认注销');
+  }
+
+  const row = await env.DB.prepare(`
+    SELECT password_hash,password_salt FROM users WHERE id=? AND status='active'
+  `).bind(user.id).first<{ password_hash: string; password_salt: string }>();
+
+  if (!row || !(await verifyPassword(currentPassword, row.password_hash, row.password_salt))) {
+    throw new HttpError(401, 'INVALID_CURRENT_PASSWORD', '当前密码不正确');
+  }
+
+  const activeDomains = await env.DB.prepare(`
+    SELECT COUNT(*) AS count FROM domain_applications
+    WHERE user_id=?
+      AND status='approved'
+      AND (deleted_at IS NULL OR deleted_at='')
+  `).bind(user.id).first<{ count: number }>();
+
+  if (Number(activeDomains?.count || 0) > 0) {
+    throw new HttpError(409, 'ACTIVE_DOMAINS_EXIST', '账户下还有正常域名，请先申请删除域名并等待管理员批准后再注销账号');
+  }
+
+  await env.DB.batch([
+    env.DB.prepare(`UPDATE users SET status='deleted',updated_at=datetime('now') WHERE id=?`).bind(user.id),
+    env.DB.prepare(`UPDATE domain_applications SET deleted_at=datetime('now') WHERE user_id=? AND status!='approved' AND (deleted_at IS NULL OR deleted_at='')`).bind(user.id),
+    env.DB.prepare(`DELETE FROM sessions WHERE user_id=?`).bind(user.id),
+  ]);
+
+  await audit(env, request, user.id, 'account.delete_self', 'user', user.id);
+  return withCookie(ok({ deleted: true }), await destroySession(env, request));
 }
 
 async function listOwnApplications(request: Request, env: Env): Promise<Response> {
