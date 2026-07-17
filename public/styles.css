@@ -1179,3 +1179,18 @@ th { font-size: 12px; }
 .login-input-wrap{
   gap:10px;
 }
+
+/* v44 message center unread badge + read receipts */
+.nav{position:relative}
+.nav .nav-icon{width:24px;text-align:center;flex:0 0 24px}
+.nav .nav-label{flex:1;min-width:0}
+.nav .nav-badge{position:absolute;right:10px;top:8px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#ef4444;color:#fff;font-size:11px;line-height:18px;text-align:center;font-weight:900;box-shadow:0 0 0 2px rgba(15,23,42,.95)}
+.nav.active .nav-badge{box-shadow:0 0 0 2px rgba(255,255,255,.08)}
+.message-toolbar{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.message-card{position:relative}
+.message-select{display:flex;align-items:flex-start;padding-top:5px}
+.message-check{width:18px;height:18px;accent-color:var(--accent,#4f63f6);cursor:pointer}
+.message-readers{margin-top:10px;padding:10px 12px;border-radius:14px;background:#f8fafc;border:1px solid var(--line);color:#475569;font-size:13px;line-height:1.55}
+.message-readers b{color:#0f172a;margin-right:4px}
+.message-card.read .message-check{opacity:.65}
+@media(max-width:760px){.message-toolbar{width:100%;justify-content:flex-start}.message-select{position:absolute;right:14px;top:14px}.message-card{padding-right:48px}.nav .nav-badge{right:14px;top:9px}}
