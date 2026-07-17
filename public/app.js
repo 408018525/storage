@@ -578,6 +578,15 @@ function applyTheme() {
   document.title = lang() === 'en' ? 'Domain Registration Center' : (site.title || '免费二级域名注册中心');
 }
 
+
+window.addEventListener('error', event => {
+  if (event?.message) toast(event.message, 'error');
+});
+window.addEventListener('unhandledrejection', event => {
+  const message = event?.reason?.message || String(event?.reason || '请求失败');
+  toast(message, 'error');
+});
+
 async function init() {
   try {
     const [{ config }, me] = await Promise.all([
@@ -958,8 +967,8 @@ async function renderDomainDetail(id) {
       api(`/api/applications/${encodeURIComponent(id)}/dns-records`).catch(() => ({ records: [] })),
     ]);
     const records = dnsResult.records || [];
-    const dnsRows = records.map(r => dnsRecordRow(r, approved)).join('');
     const approved = a.status === 'approved';
+    const dnsRows = records.map(r => dnsRecordRow(r, approved)).join('');
     const expiryLine = approved && a.expiresAt ? fmtDate(a.expiresAt, true) : '—';
     const remainingLine = approved ? esc(a.remainingText || '') : '—';
     const addDnsButton = approved ? '<button class="btn primary" id="add-dns">＋ 添加解析</button>' : '<button class="btn secondary" disabled>审核通过后可配置 DNS</button>';
