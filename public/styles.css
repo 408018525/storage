@@ -253,3 +253,18 @@ body{font-size:14px}
 .modal{border-radius:24px}.modal-titlebar{padding:22px 26px}.modal-icon{width:48px;height:48px;font-size:24px}.modal-titlebar h2{font-size:25px}.modal-x{font-size:44px}.modal-body{padding:24px}.modal-form{gap:18px}.modal-actions{padding-top:18px}
 .detail-hero{padding:22px;border-radius:24px}.detail-main h1{font-size:34px}.tabs{padding:16px 22px;gap:14px}.tab{font-size:16px}.tab-page{padding:22px}.info-card{padding:22px;border-radius:24px}
 th,td{padding:13px}table{min-width:700px}.stats{gap:14px}.stat{padding:20px}.stat strong{font-size:30px}
+
+
+/* v14 account cancellation */
+.account-delete-card {
+  grid-column: 1 / -1;
+}
+.danger-zone {
+  border-color: rgba(239, 68, 68, 0.28);
+  background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,245,245,0.92));
+}
+.danger-zone p {
+  color: #64748b;
+  margin: 8px 0 18px;
+  line-height: 1.7;
+}
