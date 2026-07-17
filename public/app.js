@@ -1344,7 +1344,7 @@ function renderHelpCenter() {
 }
 
 function messageLevelBadge(level) {
-  const map = { info:'普通通知', success:'成功提示', warning:'警告提醒', danger:'重要警告', important:'重要通知', system:'系统通知' };
+  const map = { info:'普通通知', feedback:'用户反馈', success:'成功提示', warning:'警告提醒', danger:'重要警告', important:'重要通知', system:'系统通知' };
   return `<span class="message-level message-level-${esc(level || 'info')}">${esc(map[level] || map.info)}</span>`;
 }
 function messageStatusBadgeText(status) {
@@ -1604,25 +1604,37 @@ function messageReadUsersText(m) {
   return `${names}${more}`;
 }
 
+function messageReadBadgeHtml(m) {
+  if (m.sentByMe) {
+    const text = m.recipientReadText || (Number(m.recipientReadCount || 0) > 0 ? '对方已读' : '对方未读');
+    return `<span class="${Number(m.recipientReadCount || 0) > 0 ? 'message-read' : 'message-unread'}">${esc(text)}</span>`;
+  }
+  if (state.me?.role === 'admin') return m.isRead ? '<span class="message-read">管理员已读</span>' : '<span class="message-unread">管理员未读</span>';
+  return m.isRead ? '<span class="message-read">已读</span>' : '<span class="message-unread">未读</span>';
+}
+
 function messageListHtml(messages, admin = false) {
   if (!messages.length) return '<div class="empty">暂无消息</div>';
-  const readLabel = state.me?.role === 'admin' ? '管理员已读' : '用户已读';
-  return messages.map(m => `<article class="message-card ${m.isRead ? 'read' : 'unread'} message-${esc(m.level || 'info')}" data-message-id="${attr(m.id)}">
+  return messages.map(m => {
+    const shouldShowTarget = admin || m.sentByMe || state.me?.role === 'admin';
+    const targetLabel = m.targetLabel || (m.targetRole === 'admin' ? '管理员' : '');
+    return `<article class="message-card ${m.isRead ? 'read' : 'unread'} message-${esc(m.level || 'info')}" data-message-id="${attr(m.id)}">
     <div class="message-select">${!admin ? `<input type="checkbox" class="message-check" value="${attr(m.id)}" ${m.isRead ? 'data-read="1"' : ''}>` : ''}</div>
     <div class="message-main">
-      <div class="message-head"><h3>${esc(m.title)}</h3>${messageLevelBadge(m.level)}${admin ? `<span class="status-pill status-${esc(m.status)}">${esc(messageStatusBadgeText(m.status))}</span>` : (m.isRead ? `<span class="message-read">${readLabel}</span>` : '<span class="message-unread">未读</span>')}</div>
+      <div class="message-head"><h3>${esc(m.title)}</h3>${messageLevelBadge(m.level)}${admin ? `<span class="status-pill status-${esc(m.status)}">${esc(messageStatusBadgeText(m.status))}</span>` : messageReadBadgeHtml(m)}</div>
       <p>${esc(m.body).replace(/\n/g,'<br>')}</p>
-      <div class="message-meta"><span>发送人：${esc(m.senderUsername || '系统管理员')}</span>${admin ? `<span>目标：${esc(m.targetLabel || '')}</span>` : ''}<span>时间：${fmtDate(m.sentAt || m.createdAt, true)}</span></div>
+      <div class="message-meta"><span>发送人：${esc(m.senderUsername || '系统管理员')}</span>${shouldShowTarget ? `<span>发送对象：${esc(targetLabel)}</span>` : ''}<span>时间：${fmtDate(m.sentAt || m.createdAt, true)}</span></div>
       ${admin && m.status === 'sent' ? `<div class="message-readers"><b>已读用户：</b>${esc(messageReadUsersText(m))}</div>` : ''}
     </div>
     <div class="message-actions">
-      ${!admin && !m.isRead ? `<button class="btn small soft" data-read-message="${attr(m.id)}">标为已读</button>` : ''}
+      ${!admin && !m.isRead && !m.sentByMe ? `<button class="btn small soft" data-read-message="${attr(m.id)}">标为已读</button>` : ''}
       ${!admin ? `<button class="btn small secondary" data-reply-message="${attr(m.id)}">回复</button>` : ''}
       ${admin && m.status !== 'sent' ? `<button class="btn small primary" data-send-message="${attr(m.id)}">发送草稿</button><button class="btn small soft" data-edit-message="${attr(m.id)}">编辑草稿</button>` : ''}
       ${admin && m.status === 'template' ? `<button class="btn small secondary" data-template-use="${attr(m.id)}">套用模板</button>` : ''}
       ${admin ? `<button class="btn small danger-soft" data-delete-message="${attr(m.id)}">删除消息</button>` : ''}
     </div>
-  </article>`).join('');
+  </article>`;
+  }).join('');
 }
 function showReplyMessageModal(message) {
   if (!message) return;
