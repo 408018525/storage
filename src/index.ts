@@ -473,7 +473,7 @@ async function register(request: Request, env: Env): Promise<Response> {
     WHERE username=? COLLATE NOCASE OR (? IS NOT NULL AND email=? COLLATE NOCASE)
     LIMIT 1
   `).bind(username, email, email).first<{ id: string }>();
-  if (duplicate) throw new HttpError(409, 'USER_EXISTS', '用户名或邮箱已被使用');
+  if (duplicate) throw new HttpError(409, 'USER_EXISTS', '账号或邮箱/手机号已被使用');
 
   const { hash, salt } = await hashPassword(password);
   const id = crypto.randomUUID();
@@ -634,7 +634,7 @@ async function listOwnApplications(request: Request, env: Env): Promise<Response
   const apps = (rows.results || []).map(x => serializeApplication(x, settings));
   const used = apps.filter(x => !['rejected', 'revoked', 'deleted'].includes(x.status)).length;
   const rawTotal = Number(user.domain_quota || settings.domain.defaultQuota);
-  const total = rawTotal >= 9999 ? settings.domain.defaultQuota : rawTotal;
+  const total = Math.max(0, rawTotal); // v29：额度按管理员设置原样生效，不再把 9999 还原为默认值
 
   return ok({
     applications: apps,
@@ -697,7 +697,7 @@ async function createApplication(request: Request, env: Env): Promise<Response> 
   `).bind(user.id).first<{ count: number }>();
 
   const rawQuota = Number(user.domain_quota || settings.domain.defaultQuota);
-  const totalQuota = rawQuota >= 9999 ? settings.domain.defaultQuota : rawQuota;
+  const totalQuota = Math.max(0, rawQuota); // v29：按用户自身额度限制，不再把 9999 还原为默认值
   if (Number(activeCount?.count || 0) >= totalQuota) {
     throw new HttpError(403, 'DOMAIN_QUOTA_EXCEEDED', `您的域名额度已用完，当前额度为 ${totalQuota} 个`);
   }
@@ -1331,7 +1331,7 @@ async function adminUsers(request: Request, env: Env): Promise<Response> {
     email: u.email,
     role: u.role,
     status: u.status,
-    domainQuota: Number(u.domain_quota || settings.domain.defaultQuota) >= 9999 ? settings.domain.defaultQuota : Number(u.domain_quota || settings.domain.defaultQuota),
+    domainQuota: Math.max(0, Number(u.domain_quota ?? settings.domain.defaultQuota)),
     createdAt: u.created_at,
     lastLoginAt: u.last_login_at,
     applicationCount: Number(u.application_count || 0),
@@ -1351,14 +1351,14 @@ async function adminCreateUser(request: Request, env: Env): Promise<Response> {
   const password = validatePassword(body.password);
   const role: Role = body.role === 'admin' ? 'admin' : 'user';
   const status = ['active', 'disabled'].includes(String(body.status)) ? String(body.status) as UserStatus : 'active';
-  const quota = clamp(Number(body.domainQuota || settings.domain.defaultQuota), 0, 9999);
+  const quota = Math.max(0, Math.floor(Number(body.domainQuota ?? settings.domain.defaultQuota) || 0));
 
   const duplicate = await env.DB.prepare(`
     SELECT id FROM users
     WHERE username=? COLLATE NOCASE OR (? IS NOT NULL AND email=? COLLATE NOCASE)
     LIMIT 1
   `).bind(username, email, email).first<{ id: string }>();
-  if (duplicate) throw new HttpError(409, 'USER_EXISTS', '用户名或邮箱已被使用');
+  if (duplicate) throw new HttpError(409, 'USER_EXISTS', '账号或邮箱/手机号已被使用');
 
   const { hash, salt } = await hashPassword(password);
   const id = crypto.randomUUID();
@@ -1381,7 +1381,7 @@ async function adminUpdateUser(request: Request, env: Env, id: string): Promise<
 
   const role = body.role === 'admin' ? 'admin' : 'user';
   const status = ['active', 'disabled'].includes(String(body.status)) ? String(body.status) : target.status;
-  const quota = clamp(Number(body.domainQuota || target.domain_quota || 3), 0, 9999);
+  const quota = Math.max(0, Math.floor(Number(body.domainQuota ?? target.domain_quota ?? 3) || 0));
 
   if (id === admin.id && (role !== 'admin' || status !== 'active')) {
     throw new HttpError(400, 'CANNOT_DISABLE_SELF', '不能降级或禁用当前管理员');
@@ -1516,7 +1516,7 @@ function serializeUser(user: UserRow) {
     email: user.email,
     role: user.role,
     status: user.status,
-    domainQuota: Number(user.domain_quota || 3) >= 9999 ? 3 : Number(user.domain_quota || 3),
+    domainQuota: Math.max(0, Number(user.domain_quota ?? 3)),
     createdAt: user.created_at,
     lastLoginAt: user.last_login_at || null,
   };
@@ -1785,9 +1785,18 @@ function normalizeUsername(raw: unknown): string {
 }
 
 function normalizeEmail(raw: unknown): string | null {
-  const value = String(raw || '').trim().toLowerCase();
-  if (!value) return null;
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) throw new HttpError(400, 'INVALID_EMAIL', '邮箱格式不正确');
+  // v28：此字段作为“邮箱/手机号”联系方式使用。
+  // 包含 @ 时按邮箱规范化；否则允许手机号/联系方式文本，避免手机号被邮箱校验拦截。
+  const original = String(raw || '').trim();
+  if (!original) return null;
+  if (original.includes('@')) {
+    const email = original.toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, 'INVALID_EMAIL_OR_PHONE', '邮箱/手机号格式不正确');
+    return email;
+  }
+  const value = original.replace(/\s+/g, '');
+  if (value.length < 5 || value.length > 40) throw new HttpError(400, 'INVALID_EMAIL_OR_PHONE', '邮箱/手机号格式不正确');
+  if (!/^[0-9+()\-]+$/.test(value)) throw new HttpError(400, 'INVALID_EMAIL_OR_PHONE', '邮箱/手机号格式不正确');
   return value;
 }
 
