@@ -1765,8 +1765,11 @@ function normalizeSuffix(raw: string): string {
 
 function normalizeRecordType(raw: unknown, allowed: string[]): DnsRecordType {
   const type = String(raw || 'CNAME').trim().toUpperCase();
-  const allowedSet = new Set((allowed || ['CNAME']).map(x => x.toUpperCase()));
-  if (!['CNAME', 'A', 'AAAA', 'TXT', 'MX'].includes(type) || !allowedSet.has(type)) {
+  // 用户子域解析默认开放 A / AAAA / CNAME / TXT / MX。
+  // 这样即使旧环境变量 DNS_ALLOWED_TYPES 仍是 CNAME,A,AAAA，也不会阻止用户添加 TXT/MX。
+  const publicTypes = ['CNAME', 'A', 'AAAA', 'TXT', 'MX'];
+  const allowedSet = new Set([...(allowed || []), ...publicTypes].map(x => String(x).toUpperCase()));
+  if (!publicTypes.includes(type) || !allowedSet.has(type)) {
     throw new HttpError(400, 'INVALID_RECORD_TYPE', 'DNS 记录类型不可用');
   }
   return type as DnsRecordType;
