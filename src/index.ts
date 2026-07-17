@@ -237,7 +237,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   match = pathname.match(/^\/api\/admin\/users\/([^/]+)$/);
   if (match && method === 'PATCH') return adminUpdateUser(request, env, decodeURIComponent(match[1]));
 
-  match = pathname.match(/^\/api\/admin\/applications\/([^/]+)\/(approve|reject|revoke|delete|approve-delete|reject-delete)$/);
+  match = pathname.match(/^\/api\/admin\/applications\/([^/]+)\/(approve|reject|revoke|disable|delete|approve-delete|reject-delete)$/);
   if (match && method === 'POST') return adminReviewApplication(request, env, decodeURIComponent(match[1]), match[2]);
 
   throw new HttpError(404, 'NOT_FOUND', '接口不存在');
@@ -1235,6 +1235,24 @@ async function adminReviewApplication(request: Request, env: Env, id: string, ac
 
     await audit(env, request, admin.id, 'application.approve', 'domain_application', id, { syncedDnsRecords: synced });
     return ok({ status: 'approved', syncedDnsRecords: synced });
+  }
+
+  if (action === 'disable') {
+    if (app.status !== 'approved') throw new HttpError(409, 'INVALID_STATE', '只有正常域名可以禁用');
+    try { await deleteAllDnsRecordsForApp(env, app, suffix); }
+    catch (error) {
+      const message = error instanceof Error ? error.message.slice(0, 1000) : 'DNS 删除失败';
+      await env.DB.prepare(`UPDATE domain_applications SET error_message=?,updated_at=datetime('now') WHERE id=?`).bind(message, id).run();
+      throw new HttpError(502, 'DNS_DELETE_FAILED', message);
+    }
+
+    await env.DB.prepare(`
+      UPDATE domain_applications
+      SET status='disabled',review_note=?,reviewed_at=datetime('now'),reviewed_by=?,dns_record_id=NULL,error_message=NULL,updated_at=datetime('now')
+      WHERE id=?
+    `).bind(note, admin.id, id).run();
+    await audit(env, request, admin.id, 'application.disable', 'domain_application', id, { note });
+    return ok({ status: 'disabled' });
   }
 
   if (action === 'revoke') {
