@@ -1344,7 +1344,7 @@ function renderHelpCenter() {
 }
 
 function messageLevelBadge(level) {
-  const map = { info:'普通通知', success:'成功提示', warning:'警告提醒', danger:'重要警告' };
+  const map = { info:'普通通知', success:'成功提示', warning:'警告提醒', danger:'重要警告', important:'重要通知', system:'系统通知' };
   return `<span class="message-level message-level-${esc(level || 'info')}">${esc(map[level] || map.info)}</span>`;
 }
 function messageStatusBadgeText(status) {
@@ -1356,13 +1356,13 @@ function messageTargetOptions(users = []) {
 }
 function messageComposeForm(users = [], preset = {}) {
   const status = preset.status || 'sent';
-  const targetType = preset.targetType || 'all';
+  const targetType = preset.targetType || 'none';
   const targetRole = preset.targetRole || 'user';
   return `<form id="message-compose-form" class="message-compose form-grid" data-edit-id="${attr(preset.id || '')}">
-    <label class="field"><span>接收对象</span><select name="targetType" id="msg-target-type"><option value="all" ${targetType==='all'?'selected':''}>全部用户</option><option value="role" ${targetType==='role'?'selected':''}>按角色</option><option value="user" ${targetType==='user'?'selected':''}>指定用户</option></select></label>
+    <label class="field"><span>接收对象</span><select name="targetType" id="msg-target-type"><option value="none" ${targetType==='none'?'selected':''}>暂不选择</option><option value="all" ${targetType==='all'?'selected':''}>全部用户</option><option value="role" ${targetType==='role'?'selected':''}>按角色</option><option value="user" ${targetType==='user'?'selected':''}>指定用户</option></select></label>
     <label class="field msg-target-role"><span>角色</span><select name="targetRole"><option value="user" ${targetRole==='user'?'selected':''}>普通用户</option><option value="admin" ${targetRole==='admin'?'selected':''}>管理员</option></select></label>
     <label class="field msg-target-user"><span>用户</span><select name="targetUserId"><option value="">请选择用户</option>${messageTargetOptions(users)}</select></label>
-    <label class="field"><span>消息类型</span><select name="level"><option value="info" ${(preset.level||'info')==='info'?'selected':''}>普通通知</option><option value="success" ${preset.level==='success'?'selected':''}>成功提示</option><option value="warning" ${preset.level==='warning'?'selected':''}>警告提醒</option><option value="danger" ${preset.level==='danger'?'selected':''}>重要警告</option></select></label>
+    <label class="field"><span>消息类型</span><select name="level"><option value="" ${!preset.level?'selected':''}>暂不选择</option><option value="info" ${(preset.level||'info')==='info'?'selected':''}>普通通知</option><option value="important" ${preset.level==='important'?'selected':''}>重要通知</option><option value="system" ${preset.level==='system'?'selected':''}>系统通知</option><option value="success" ${preset.level==='success'?'selected':''}>成功提示</option><option value="warning" ${preset.level==='warning'?'selected':''}>警告提醒</option><option value="danger" ${preset.level==='danger'?'selected':''}>重要警告</option></select></label>
     <label class="field wide"><span>消息标题</span><input name="title" placeholder="请输入消息标题" maxlength="120" required value="${attr(preset.title || '')}"></label>
     <label class="field wide"><span>消息内容</span><textarea name="body" placeholder="请输入消息内容" rows="8" required>${esc(preset.body || '')}</textarea></label>
     <div class="message-compose-actions wide">
@@ -1377,7 +1377,7 @@ function bindMessageTargetVisibility() {
   const form = document.querySelector('#message-compose-form');
   const type = form?.querySelector('#msg-target-type');
   const refresh = () => {
-    const v = type?.value || 'all';
+    const v = type?.value || 'none';
     form?.querySelector('.msg-target-role')?.classList.toggle('hidden', v !== 'role');
     form?.querySelector('.msg-target-user')?.classList.toggle('hidden', v !== 'user');
   };
@@ -2073,11 +2073,45 @@ async function renewDomain(id) {
   } catch (error) { toast(error.message, 'error'); }
 }
 
+
+function deviceTableHtml(devices = []) {
+  if (!devices.length) return '<div class="empty">暂无已登录设备</div>';
+  return `<div class="table-wrap device-table-wrap"><table class="device-table"><thead><tr><th>设备名称</th><th>类型</th><th>设备型号</th><th>第一次登录时间</th><th>最近一次使用时间</th></tr></thead><tbody>${devices.map(d => `<tr><td><strong>${esc(d.deviceName || '未知设备')}</strong></td><td>${esc(d.deviceType || '未知')}</td><td>${esc(d.deviceModel || '未知')}</td><td>${fmtDate(d.firstLoginAt, true)}</td><td>${fmtDate(d.lastUsedAt, true)}</td></tr>`).join('')}</tbody></table></div>`;
+}
+
+function deviceCardsHtml(devices = []) {
+  if (!devices.length) return '<div class="empty">暂无已登录设备</div>';
+  return `<div class="device-card-list">${devices.map(d => `<article class="device-card"><div><strong>${esc(d.deviceName || '未知设备')}</strong><span>${esc(d.deviceType || '未知')} · ${esc(d.deviceModel || '未知')}</span></div><div class="device-times"><span>第一次登录：${fmtDate(d.firstLoginAt, true)}</span><span>最近使用：${fmtDate(d.lastUsedAt, true)}</span></div></article>`).join('')}</div>`;
+}
+
+async function showUserDevicesModal(u) {
+  openModal('用户登录设备管理', u.username, '<div class="loading-card">正在读取登录设备…</div>', 'wide');
+  try {
+    const res = await api(`/api/admin/users/${encodeURIComponent(u.id)}/devices`);
+    const devices = res.devices || [];
+    openModal('用户登录设备管理', `${u.username} 当前已登录设备：${devices.length} 台`, `
+      <div class="modal-form">
+        ${deviceTableHtml(devices)}
+        <div class="modal-actions"><button class="btn secondary" type="button" data-cancel>关闭</button></div>
+      </div>`, 'wide');
+    document.querySelector('[data-cancel]')?.addEventListener('click', closeModal);
+  } catch (error) { toast(error.message, 'error'); }
+}
+
 async function renderAccount() {
+  shell('账户设置', `<div class="loading-card">正在读取账户信息…</div>`);
+  let devices = [];
+  try {
+    const res = await api('/api/account/devices');
+    devices = res.devices || [];
+  } catch (error) {
+    console.warn('device list failed', error);
+  }
   shell('账户设置', `
     <div class="grid two">
       <section class="card"><h2>账户信息</h2><div class="info-list"><span>用户名</span><strong>${esc(state.me.username)}</strong><span>角色</span><strong>${state.me.role === 'admin' ? '管理员' : '普通用户'}</strong><span>域名额度</span><strong>${esc(state.me.domainQuota ?? state.quota.total ?? 3)}</strong></div></section>
       <section class="card"><h2>修改密码</h2><form id="password-form" class="form-grid"><label class="field wide"><span>当前密码</span><input name="currentPassword" type="password" required></label><label class="field wide"><span>新密码</span><input name="newPassword" type="password" required minlength="8"></label><button class="btn primary wide" type="submit">修改密码</button></form></section>
+      <section class="card wide"><div class="section-head"><div><h2>登录设备管理</h2><p>当前同账号已登录设备数量：${devices.length} 台。可以查看设备名称、首次登录和最近使用时间。</p></div></div>${deviceCardsHtml(devices)}</section>
       <section class="card danger-zone account-delete-card"><h2>注销账号</h2><p>注销后账号将无法登录。为避免域名遗留，账户下仍有正常域名时需要先申请删除域名并等待管理员批准。</p><button class="btn danger" id="delete-account" type="button">注销账号</button></section>
     </div>`);
   document.querySelector('#password-form').addEventListener('submit', async e => {
@@ -2096,7 +2130,6 @@ async function renderAccount() {
   });
   document.querySelector('#delete-account')?.addEventListener('click', showDeleteAccountModal);
 }
-
 function showDeleteAccountModal() {
   openModal('注销账号', '此操作不可直接恢复，请谨慎确认。', `
     <form id="delete-account-form" class="modal-form">
@@ -2251,9 +2284,10 @@ function showUserModal(u) {
       <label class="field wide"><span>角色</span><select name="role"><option value="user" ${u.role==='user'?'selected':''}>用户</option><option value="admin" ${u.role==='admin'?'selected':''}>管理员</option></select></label>
       <label class="field wide"><span>状态</span><select name="status"><option value="active" ${u.status==='active'?'selected':''}>启用</option><option value="disabled" ${u.status==='disabled'?'selected':''}>禁用</option></select></label>
       <label class="field wide"><span>域名额度</span><input name="domainQuota" type="number" min="0" step="1" value="${attr(u.domainQuota ?? 3)}"></label>
-      <div class="modal-actions"><button class="btn secondary" type="button" data-cancel>取消</button><button class="btn primary" type="submit">保存</button></div>
+      <div class="modal-actions"><button class="btn soft" type="button" id="show-user-devices">用户登录设备管理</button><button class="btn secondary" type="button" data-cancel>取消</button><button class="btn primary" type="submit">保存</button></div>
     </form>`);
   document.querySelector('[data-cancel]').addEventListener('click', closeModal);
+  document.querySelector('#show-user-devices')?.addEventListener('click', () => showUserDevicesModal(u));
   document.querySelector('#user-form').addEventListener('submit', async e => {
     e.preventDefault();
     try {
