@@ -2527,29 +2527,61 @@ function turnstilePublicConfig(env: Env) {
 }
 
 
-function parseDeviceInfo(userAgent: string): { name: string; type: string; model: string } {
+function stripClientHint(value: string | null): string {
+  return String(value || '').replace(/^"|"$/g, '').trim();
+}
+
+function parseDeviceInfoFromRequest(request: Request): { name: string; type: string; model: string } {
+  const ua = String(request.headers.get('user-agent') || '');
+  const chPlatform = stripClientHint(request.headers.get('sec-ch-ua-platform'));
+  const chModel = stripClientHint(request.headers.get('sec-ch-ua-model'));
+  const chMobile = stripClientHint(request.headers.get('sec-ch-ua-mobile'));
+  const chBrands = stripClientHint(request.headers.get('sec-ch-ua'));
+  return parseDeviceInfo(ua, { platform: chPlatform, model: chModel, mobile: chMobile, brands: chBrands });
+}
+
+function parseDeviceInfo(userAgent: string, hints: { platform?: string; model?: string; mobile?: string; brands?: string } = {}): { name: string; type: string; model: string } {
   const ua = String(userAgent || '');
   const lower = ua.toLowerCase();
-  let type = '电脑';
-  if (/ipad|tablet|kindle|silk/.test(lower)) type = '平板';
-  else if (/mobile|iphone|android|phone/.test(lower)) type = '手机';
+  const platform = String(hints.platform || '').replace(/^"|"$/g, '').trim();
+  const hintModel = String(hints.model || '').replace(/^"|"$/g, '').trim();
+  const hintBrands = String(hints.brands || '').replace(/"/g, '').trim();
+  const isMobileHint = hints.mobile === '?1';
 
-  let os = '未知系统';
-  if (/windows nt 10/i.test(ua)) os = 'Windows 10/11';
+  let type = '电脑';
+  if (/ipad|tablet|kindle|silk/.test(lower) || /ipad/i.test(platform)) type = '平板';
+  else if (isMobileHint || /mobile|iphone|android|phone/.test(lower)) type = '手机';
+
+  let os = platform || '未知系统';
+  if (/windows nt 10/i.test(ua) || /windows/i.test(platform)) os = 'Windows 10/11';
   else if (/windows/i.test(ua)) os = 'Windows';
-  else if (/iphone/i.test(ua)) os = 'iPhone';
+  else if (/iphone/i.test(ua) || /ios/i.test(platform)) os = 'iPhone';
   else if (/ipad/i.test(ua)) os = 'iPad';
-  else if (/android/i.test(ua)) os = 'Android';
-  else if (/mac os x/i.test(ua)) os = 'macOS';
-  else if (/linux/i.test(ua)) os = 'Linux';
+  else if (/android/i.test(ua) || /android/i.test(platform)) os = 'Android';
+  else if (/mac os x/i.test(ua) || /macos/i.test(platform)) os = 'macOS';
+  else if (/linux/i.test(ua) || /linux/i.test(platform)) os = 'Linux';
 
   let browser = '浏览器';
-  if (/edg\//i.test(ua)) browser = 'Edge';
+  if (/edg\//i.test(ua) || /Microsoft Edge|Edge/i.test(hintBrands)) browser = 'Edge';
   else if (/chrome\//i.test(ua) && !/edg\//i.test(ua)) browser = 'Chrome';
   else if (/safari\//i.test(ua) && !/chrome\//i.test(ua)) browser = 'Safari';
   else if (/firefox\//i.test(ua)) browser = 'Firefox';
 
-  const model = `${os} / ${browser}`;
+  let model = hintModel;
+  if (!model) {
+    if (/iphone/i.test(os)) model = '苹果 iPhone（浏览器未提供具体型号）';
+    else if (/ipad/i.test(os)) model = '苹果 iPad（浏览器未提供具体型号）';
+    else if (/macos/i.test(os)) model = 'Apple Mac（浏览器未提供具体型号）';
+    else if (/huawei|honor/i.test(ua)) model = '华为设备';
+    else if (/android/i.test(os)) model = 'Android 设备（浏览器未提供具体型号）';
+    else if (/windows/i.test(os)) model = 'Windows 电脑（浏览器未提供具体品牌型号）';
+    else model = `${os} / ${browser}`;
+  } else if (/huawei/i.test(model)) {
+    model = `华为 ${model.replace(/^huawei\s*/i, '')}`.trim();
+  } else if (/iphone/i.test(model)) {
+    model = `苹果 ${model}`;
+  }
+
   return { name: `${browser} · ${os}`, type, model };
 }
 
@@ -2561,7 +2593,7 @@ async function getAuthUser(env: Env, request: Request): Promise<UserRow | null> 
     SELECT * FROM sessions WHERE token_hash=? AND expires_at > datetime('now') LIMIT 1
   `).bind(tokenHash).first<{ id: string; user_id: string }>();
   if (!session) return null;
-  try { await env.DB.prepare(`UPDATE sessions SET last_seen_at=datetime('now') WHERE id=?`).bind(session.id).run(); } catch {}
+  try { await env.DB.prepare(`UPDATE sessions SET last_seen_at=? WHERE id=?`).bind(new Date().toISOString(), session.id).run(); } catch {}
   const user = await env.DB.prepare(`
     SELECT * FROM users WHERE id=? AND status!='deleted' LIMIT 1
   `).bind(session.user_id).first<UserRow>();
@@ -2589,12 +2621,13 @@ async function createSession(env: Env, request: Request, userId: string, remembe
   const id = crypto.randomUUID();
   const ua = String(request.headers.get('user-agent') || '').slice(0, 300);
   const ip = clientIp(request);
-  const device = parseDeviceInfo(ua);
+  const device = parseDeviceInfoFromRequest(request);
+  const nowIso = new Date().toISOString();
 
   const insertFull = () => env.DB.prepare(`
     INSERT INTO sessions (id,user_id,token_hash,ip,user_agent,device_name,device_type,device_model,first_seen_at,last_seen_at,expires_at)
-    VALUES (?,?,?,?,?,?,?,?,datetime('now'),datetime('now'),?)
-  `).bind(id, userId, tokenHash, ip, ua, device.name, device.type, device.model, expires).run();
+    VALUES (?,?,?,?,?,?,?,?,?,?,?)
+  `).bind(id, userId, tokenHash, ip, ua, device.name, device.type, device.model, nowIso, nowIso, expires).run();
 
   try {
     await insertFull();
