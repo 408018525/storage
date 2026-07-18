@@ -1456,3 +1456,31 @@ html, body {
     margin-top: 18px !important;
   }
 }
+
+/* v53 desktop/mobile sidebar full-height fix
+   The global 80% zoom makes 100vh look visually shorter.
+   Compensate on non-mobile layouts so the dark sidebar reaches the real bottom. */
+@media (min-width: 1101px) {
+  .app-shell {
+    min-height: calc(100vh / 0.8) !important;
+  }
+
+  .sidebar {
+    min-height: calc(100vh / 0.8) !important;
+    height: calc(100vh / 0.8) !important;
+    align-self: stretch !important;
+  }
+}
+
+@supports not (zoom: 1) {
+  @media (min-width: 1101px) {
+    .app-shell {
+      min-height: 125vh !important;
+    }
+
+    .sidebar {
+      min-height: 125vh !important;
+      height: 125vh !important;
+    }
+  }
+}
