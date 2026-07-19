@@ -1249,7 +1249,14 @@ async function deleteAllDnsRecordsForApp(env: Env, app: ApplicationRow, suffix: 
   const rows = await env.DB.prepare(`
     SELECT * FROM dns_records WHERE application_id=? AND (deleted_at IS NULL OR deleted_at='')
   `).bind(app.id).all<DnsRecordRow>();
-  for (const record of rows.results || []) {
+  const records = rows.results || [];
+  const namesToClean = new Set<string>();
+
+  // v56：D1 保存的 Cloudflare record_id 可能已经过期，或者用户在 Cloudflare 后台手动改过记录类型。
+  // 删除/禁用/撤销域名时，除了按 record_id 删除，也按完整域名名称兜底清理 Cloudflare 里仍存在的记录。
+  if (app.fqdn_ascii) namesToClean.add(String(app.fqdn_ascii).toLowerCase());
+  for (const record of records) {
+    if (record.name) namesToClean.add(String(record.name).toLowerCase());
     if (record.cf_record_id) {
       if (!token) throw new HttpError(503, 'DNS_TOKEN_MISSING', '尚未配置 Cloudflare DNS API Token');
       await deleteDnsRecord(token, suffix.zoneId, record.cf_record_id);
@@ -1258,7 +1265,13 @@ async function deleteAllDnsRecordsForApp(env: Env, app: ApplicationRow, suffix: 
   }
   if (app.dns_record_id) {
     if (!token) throw new HttpError(503, 'DNS_TOKEN_MISSING', '尚未配置 Cloudflare DNS API Token');
-    try { await deleteDnsRecord(token, suffix.zoneId, app.dns_record_id); } catch {}
+    await deleteDnsRecord(token, suffix.zoneId, app.dns_record_id);
+  }
+
+  if (token) {
+    for (const name of namesToClean) {
+      await deleteDnsRecordsByName(token, suffix.zoneId, name);
+    }
   }
 }
 
@@ -2473,15 +2486,54 @@ async function updateDnsRecord(token: string, zoneId: string, recordId: string, 
   return data.result;
 }
 
+function cloudflareErrorText(data: any): string {
+  try { return JSON.stringify(data?.errors || data || {}).toLowerCase(); }
+  catch { return ''; }
+}
+
+function isCloudflareRecordMissing(status: number, data: any): boolean {
+  const text = cloudflareErrorText(data);
+  return status === 404
+    || text.includes('record does not exist')
+    || text.includes('dns record not found')
+    || text.includes('not_found')
+    || text.includes('not found')
+    || text.includes('81044');
+}
+
 async function deleteDnsRecord(token: string, zoneId: string, recordId: string): Promise<void> {
   if (!zoneId) throw new HttpError(503, 'ZONE_ID_MISSING', '尚未配置 DNS_ZONE_ID');
+  if (!recordId) return;
   const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records/${recordId}`, {
     method: 'DELETE',
     headers: { authorization: `Bearer ${token}` },
   });
   const data: any = await res.json().catch(() => ({}));
   if (!res.ok || data.success === false) {
+    // v56：Cloudflare 已经没有这条记录时，说明外部已经删除；这里视为删除成功，继续清 D1，避免卡死。
+    if (isCloudflareRecordMissing(res.status, data)) return;
     throw new Error(data.errors?.[0]?.message || `Cloudflare DNS 删除失败 HTTP ${res.status}`);
+  }
+}
+
+async function listCloudflareDnsRecordsByName(token: string, zoneId: string, name: string): Promise<Array<{ id: string; name?: string; type?: string }>> {
+  if (!zoneId || !name) return [];
+  const url = new URL(`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records`);
+  url.searchParams.set('name', name);
+  url.searchParams.set('per_page', '100');
+  const res = await fetch(url.toString(), { headers: { authorization: `Bearer ${token}` } });
+  const data: any = await res.json().catch(() => ({}));
+  if (!res.ok || data.success === false) {
+    if (isCloudflareRecordMissing(res.status, data)) return [];
+    throw new Error(data.errors?.[0]?.message || `Cloudflare DNS 查询失败 HTTP ${res.status}`);
+  }
+  return Array.isArray(data.result) ? data.result : [];
+}
+
+async function deleteDnsRecordsByName(token: string, zoneId: string, name: string): Promise<void> {
+  const records = await listCloudflareDnsRecordsByName(token, zoneId, name);
+  for (const record of records) {
+    if (record?.id) await deleteDnsRecord(token, zoneId, record.id);
   }
 }
 
