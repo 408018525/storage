@@ -870,13 +870,51 @@ async function deleteOwnAccount(request: Request, env: Env): Promise<Response> {
   return withCookie(ok({ deleted: true, purged: true }), await destroySession(env, request));
 }
 
+
+function applicationDnsProjection(alias: string = 'a'): string {
+  const live = `(r.deleted_at IS NULL OR r.deleted_at='')`;
+  const order = `CASE r.host WHEN '@' THEN 0 ELSE 1 END, r.host ASC, r.type ASC, r.created_at ASC`;
+  return `
+    (SELECT COUNT(*) FROM dns_records r WHERE r.application_id=${alias}.id AND ${live}) AS dns_count,
+    (SELECT r.type FROM dns_records r WHERE r.application_id=${alias}.id AND ${live} ORDER BY ${order} LIMIT 1) AS primary_record_type,
+    (SELECT r.content FROM dns_records r WHERE r.application_id=${alias}.id AND ${live} ORDER BY ${order} LIMIT 1) AS primary_record_content,
+    (SELECT r.cf_record_id FROM dns_records r WHERE r.application_id=${alias}.id AND ${live} ORDER BY ${order} LIMIT 1) AS primary_dns_record_id,
+    (SELECT GROUP_CONCAT(r.type || ' → ' || r.content, '；') FROM dns_records r WHERE r.application_id=${alias}.id AND ${live}) AS dns_summary
+  `;
+}
+
+async function syncApplicationDnsSummary(env: Env, applicationId: string): Promise<void> {
+  const row = await env.DB.prepare(`
+    SELECT type, content, cf_record_id
+    FROM dns_records
+    WHERE application_id=? AND (deleted_at IS NULL OR deleted_at='')
+    ORDER BY CASE host WHEN '@' THEN 0 ELSE 1 END, host ASC, type ASC, created_at ASC
+    LIMIT 1
+  `).bind(applicationId).first<{ type: string; content: string; cf_record_id?: string | null }>();
+
+  if (row) {
+    await env.DB.prepare(`
+      UPDATE domain_applications
+      SET record_type=?, record_content=?, dns_record_id=?, updated_at=datetime('now')
+      WHERE id=?
+    `).bind(row.type, row.content, row.cf_record_id || '', applicationId).run();
+  } else {
+    await env.DB.prepare(`
+      UPDATE domain_applications
+      SET record_type='', record_content='', dns_record_id=NULL, updated_at=datetime('now')
+      WHERE id=?
+    `).bind(applicationId).run();
+  }
+}
+
 async function listOwnApplications(request: Request, env: Env): Promise<Response> {
   const user = await requireUser(env, request);
   const settings = await loadSettings(env);
   const rows = await env.DB.prepare(`
-    SELECT * FROM domain_applications
-    WHERE user_id=? AND (deleted_at IS NULL OR deleted_at='')
-    ORDER BY created_at DESC
+    SELECT a.*, ${applicationDnsProjection('a')}
+    FROM domain_applications a
+    WHERE a.user_id=? AND (a.deleted_at IS NULL OR a.deleted_at='')
+    ORDER BY a.created_at DESC
     LIMIT 500
   `).bind(user.id).all<ApplicationRow>();
 
@@ -899,7 +937,9 @@ async function listOwnApplications(request: Request, env: Env): Promise<Response
 async function getOwnApplication(request: Request, env: Env, id: string): Promise<Response> {
   const user = await requireUser(env, request);
   const app = await env.DB.prepare(`
-    SELECT * FROM domain_applications WHERE id=? AND user_id=? AND (deleted_at IS NULL OR deleted_at='')
+    SELECT a.*, ${applicationDnsProjection('a')}
+    FROM domain_applications a
+    WHERE a.id=? AND a.user_id=? AND (a.deleted_at IS NULL OR a.deleted_at='')
   `).bind(id, user.id).first<ApplicationRow>();
   if (!app) throw new HttpError(404, 'NOT_FOUND', '域名不存在');
   return ok({ application: serializeApplication(app, await loadSettings(env)) });
@@ -1099,11 +1139,7 @@ async function createOwnDnsRecord(request: Request, env: Env, applicationId: str
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
   `).bind(id, applicationId, user.id, host, name, type, content, priority, proxied, ttl, cfRecordId, status, errorMessage).run();
 
-  await env.DB.prepare(`
-    UPDATE domain_applications
-    SET record_type=COALESCE(NULLIF(record_type,''),?), record_content=COALESCE(NULLIF(record_content,''),?), dns_record_id=COALESCE(NULLIF(dns_record_id,''),?), updated_at=datetime('now')
-    WHERE id=?
-  `).bind(type, content, cfRecordId, applicationId).run();
+  await syncApplicationDnsSummary(env, applicationId);
 
   await audit(env, request, user.id, 'dns_record.create', 'dns_record', id, { applicationId, name, type });
   const row = await env.DB.prepare(`SELECT * FROM dns_records WHERE id=?`).bind(id).first<DnsRecordRow>();
@@ -1170,6 +1206,7 @@ async function updateOwnDnsRecordManaged(request: Request, env: Env, recordId: s
     WHERE id=? AND user_id=?
   `).bind(host, name, type, content, priority, proxied, ttl, cfRecordId, status, errorMessage, recordId, user.id).run();
 
+  await syncApplicationDnsSummary(env, row.application_id);
   await audit(env, request, user.id, 'dns_record.update', 'dns_record', recordId, { name, type });
   const updated = await env.DB.prepare(`SELECT * FROM dns_records WHERE id=?`).bind(recordId).first<DnsRecordRow>();
   return ok({ record: serializeDnsRecord(updated!) });
@@ -1201,6 +1238,7 @@ async function deleteOwnDnsRecordManaged(request: Request, env: Env, recordId: s
   }
 
   await hardDeleteDnsRecordRow(env, recordId);
+  await syncApplicationDnsSummary(env, row.application_id);
   return ok({ deleted: true, purged: true });
 }
 
@@ -1981,14 +2019,14 @@ async function adminApplications(request: Request, env: Env, url: URL): Promise<
   const limit = clamp(Number(url.searchParams.get('limit') || 500), 1, 1000);
   const rows = status === 'all'
     ? await env.DB.prepare(`
-        SELECT a.*,u.username FROM domain_applications a
+        SELECT a.*,u.username, ${applicationDnsProjection('a')} FROM domain_applications a
         LEFT JOIN users u ON u.id=a.user_id
         WHERE (a.deleted_at IS NULL OR a.deleted_at='')
         ORDER BY CASE a.status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END, a.created_at DESC
         LIMIT ?
       `).bind(limit).all<ApplicationRow>()
     : await env.DB.prepare(`
-        SELECT a.*,u.username FROM domain_applications a
+        SELECT a.*,u.username, ${applicationDnsProjection('a')} FROM domain_applications a
         LEFT JOIN users u ON u.id=a.user_id
         WHERE a.status=? AND (a.deleted_at IS NULL OR a.deleted_at='')
         ORDER BY a.created_at DESC
@@ -2405,6 +2443,15 @@ function serializeApplication(app: ApplicationRow, settings: AppSettings) {
   const deleteCancelDeadline = deleteRequestedAtDate ? new Date(deleteRequestedAtDate.getTime() + 12 * 60 * 60 * 1000) : null;
   const canCancelDeleteRequest = Boolean(deleteCancelDeadline && Date.now() <= deleteCancelDeadline.getTime());
   const disabledByAdmin = app.status === 'revoked' && String(app.review_note || '').startsWith('【已禁用】');
+  const extra = app as ApplicationRow & Record<string, unknown>;
+  const dnsCount = Math.max(0, Number(extra.dns_count || 0));
+  const primaryRecordType = String(extra.primary_record_type || app.record_type || '').trim();
+  const primaryRecordContent = String(extra.primary_record_content || app.record_content || '').trim();
+  const primaryDnsRecordId = String(extra.primary_dns_record_id || app.dns_record_id || '').trim();
+  const rawDnsSummary = String(extra.dns_summary || '').trim();
+  const dnsSummary = dnsCount > 0
+    ? (rawDnsSummary || `${primaryRecordType} → ${primaryRecordContent}`)
+    : '';
 
   return {
     id: app.id,
@@ -2416,16 +2463,18 @@ function serializeApplication(app: ApplicationRow, settings: AppSettings) {
     suffixAscii: app.suffix_ascii,
     fqdnUnicode: app.fqdn_unicode,
     fqdnAscii: app.fqdn_ascii,
-    recordType: app.record_type || 'CNAME',
-    recordContent: app.record_content || '',
+    recordType: primaryRecordType || 'CNAME',
+    recordContent: primaryRecordContent,
     proxied: Boolean(app.proxied),
     ttl: Number(app.ttl || 1),
     status: app.status,
     statusText: disabledByAdmin ? '已禁用' : (deleteRequested && app.status === 'approved' ? '待删除审核' : statusLabel(app.status)),
     reviewNote: '',
     errorMessage: app.error_message || '',
-    dnsRecordId: app.dns_record_id || '',
-    dnsConfigured: Boolean(app.record_content),
+    dnsRecordId: primaryDnsRecordId,
+    dnsConfigured: dnsCount > 0 || Boolean(primaryRecordContent),
+    dnsCount,
+    dnsSummary,
     createdAt: created ? created.toISOString() : app.created_at,
     reviewedAt: app.reviewed_at || null,
     expiresAt: expires ? expires.toISOString() : null,
