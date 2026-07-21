@@ -53,6 +53,7 @@ interface UserRow {
   id: string;
   username: string;
   email: string | null;
+  phone?: string | null;
   password_hash: string;
   password_salt: string;
   role: Role;
@@ -237,6 +238,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   if (method === 'POST' && pathname === '/api/auth/logout') return logout(request, env);
   if (method === 'GET' && pathname === '/api/auth/me') return authMe(request, env);
   if (method === 'POST' && pathname === '/api/auth/change-password') return changeOwnPassword(request, env);
+  if (method === 'PATCH' && pathname === '/api/account/profile') return updateOwnProfile(request, env);
   if (method === 'POST' && pathname === '/api/account/delete') return deleteOwnAccount(request, env);
   if (method === 'GET' && pathname === '/api/account/devices') return listOwnLoginDevices(request, env);
 
@@ -318,6 +320,7 @@ async function ensureSchema(env: Env): Promise<void> {
         id TEXT PRIMARY KEY,
         username TEXT NOT NULL UNIQUE,
         email TEXT UNIQUE,
+        phone TEXT,
         password_hash TEXT NOT NULL,
         password_salt TEXT NOT NULL,
         role TEXT NOT NULL DEFAULT 'user',
@@ -462,6 +465,7 @@ async function ensureSchema(env: Env): Promise<void> {
     `ALTER TABLE sessions ADD COLUMN last_seen_at TEXT`,
     `ALTER TABLE sessions ADD COLUMN expires_at TEXT`,
     `ALTER TABLE sessions ADD COLUMN created_at TEXT`,
+    `ALTER TABLE users ADD COLUMN phone TEXT`,
     `ALTER TABLE users ADD COLUMN domain_quota INTEGER NOT NULL DEFAULT 3`,
     `ALTER TABLE users ADD COLUMN permissions_json TEXT DEFAULT '{}'`,
     `ALTER TABLE users ADD COLUMN updated_at TEXT`,
@@ -717,8 +721,8 @@ async function login(request: Request, env: Env): Promise<Response> {
   }
 
   const user = await env.DB.prepare(`
-    SELECT * FROM users WHERE (username=? COLLATE NOCASE OR email=? COLLATE NOCASE) LIMIT 1
-  `).bind(identity, identity).first<UserRow>();
+    SELECT * FROM users WHERE (username=? COLLATE NOCASE OR email=? COLLATE NOCASE OR phone=? COLLATE NOCASE) LIMIT 1
+  `).bind(identity, identity, identity).first<UserRow>();
 
   let passwordOk = false;
   if (user) {
@@ -767,6 +771,36 @@ async function logout(request: Request, env: Env): Promise<Response> {
 async function authMe(request: Request, env: Env): Promise<Response> {
   const user = await getAuthUser(env, request);
   return ok({ user: user ? serializeUser(user) : null });
+}
+
+
+async function updateOwnProfile(request: Request, env: Env): Promise<Response> {
+  const user = await requireUser(env, request);
+  const body = await readJson<Record<string, unknown>>(request);
+
+  const username = normalizeUsername(body.username ?? user.username);
+  const email = normalizeOptionalEmailStrict(body.email);
+  const phone = normalizeOptionalPhone(body.phone);
+
+  const duplicate = await env.DB.prepare(`
+    SELECT id FROM users
+    WHERE id!=?
+      AND (
+        username=? COLLATE NOCASE
+        OR (? IS NOT NULL AND email=? COLLATE NOCASE)
+        OR (? IS NOT NULL AND phone=? COLLATE NOCASE)
+      )
+    LIMIT 1
+  `).bind(user.id, username, email, email, phone, phone).first<{ id: string }>();
+  if (duplicate) throw new HttpError(409, 'USER_EXISTS', '用户名、邮箱或手机号已被使用');
+
+  await env.DB.prepare(`
+    UPDATE users SET username=?, email=?, phone=?, updated_at=datetime('now') WHERE id=?
+  `).bind(username, email, phone, user.id).run();
+
+  await audit(env, request, user.id, 'account.profile_update', 'user', user.id, { username, email, phone: phone ? 'set' : 'empty' });
+  const updated = await env.DB.prepare(`SELECT * FROM users WHERE id=?`).bind(user.id).first<UserRow>();
+  return ok({ user: serializeUser(updated!) });
 }
 
 async function changeOwnPassword(request: Request, env: Env): Promise<Response> {
@@ -856,14 +890,22 @@ async function deleteOwnAccount(request: Request, env: Env): Promise<Response> {
   }
 
   const activeDomains = await env.DB.prepare(`
-    SELECT COUNT(*) AS count FROM domain_applications
+    SELECT id, fqdn_unicode, fqdn_ascii, status, delete_requested_at
+    FROM domain_applications
     WHERE user_id=?
-      AND status='approved'
+      AND status NOT IN ('rejected','revoked')
       AND (deleted_at IS NULL OR deleted_at='')
-  `).bind(user.id).first<{ count: number }>();
+    ORDER BY created_at DESC
+    LIMIT 100
+  `).bind(user.id).all<{ id: string; fqdn_unicode: string; fqdn_ascii: string; status: string; delete_requested_at?: string | null }>();
 
-  if (Number(activeDomains?.count || 0) > 0) {
-    throw new HttpError(409, 'ACTIVE_DOMAINS_EXIST', '账户下还有正常域名，请先申请删除域名并等待管理员批准后再注销账号');
+  const blockingDomains = (activeDomains.results || []).map(x => ({
+    id: x.id,
+    domain: x.fqdn_unicode || x.fqdn_ascii,
+    status: x.delete_requested_at ? '待删除审核' : statusLabel(x.status),
+  }));
+  if (blockingDomains.length > 0) {
+    throw new HttpError(409, 'ACTIVE_DOMAINS_EXIST', '账户下还有未注销域名，请先申请删除并等待管理员批准后再注销账号', { domains: blockingDomains });
   }
 
   await hardDeleteUser(env, user.id);
@@ -2423,6 +2465,7 @@ function serializeUser(user: UserRow) {
     id: user.id,
     username: user.username,
     email: user.email,
+    phone: user.phone || null,
     role: user.role,
     status: user.status,
     domainQuota: Math.max(0, Number(user.domain_quota ?? 3)),
@@ -2829,6 +2872,26 @@ function normalizeEmail(raw: unknown): string | null {
   const value = original.replace(/\s+/g, '');
   if (value.length < 5 || value.length > 40) throw new HttpError(400, 'INVALID_EMAIL_OR_PHONE', '邮箱/手机号格式不正确');
   if (!/^[0-9+()\-]+$/.test(value)) throw new HttpError(400, 'INVALID_EMAIL_OR_PHONE', '邮箱/手机号格式不正确');
+  return value;
+}
+
+
+function normalizeOptionalEmailStrict(raw: unknown): string | null {
+  const value = String(raw || '').trim();
+  if (!value) return null;
+  const email = value.toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new HttpError(400, 'INVALID_EMAIL', '邮箱格式不正确');
+  }
+  return email;
+}
+
+function normalizeOptionalPhone(raw: unknown): string | null {
+  const value = String(raw || '').trim().replace(/\s+/g, '');
+  if (!value) return null;
+  if (value.length < 5 || value.length > 40 || !/^[0-9+()\-]+$/.test(value)) {
+    throw new HttpError(400, 'INVALID_PHONE', '手机号格式不正确');
+  }
   return value;
 }
 
