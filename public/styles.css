@@ -1484,3 +1484,64 @@ html, body {
     }
   }
 }
+
+
+/* v58 account profile and deletion guard */
+.copy-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.copy-mini {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border, #d7e1f2);
+  background: #f7faff;
+  border-radius: 9px;
+  color: #2f58d8;
+  cursor: pointer;
+  font-weight: 800;
+  line-height: 1;
+}
+.copy-mini:hover {
+  background: #edf4ff;
+  transform: translateY(-1px);
+}
+.account-info-list strong {
+  min-width: 0;
+  word-break: break-all;
+}
+.blocking-domain-box {
+  border-color: #fecdd3;
+  background: #fff7f8;
+}
+.blocking-domain-list {
+  margin: 14px 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+.blocking-domain-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #ffe1e6;
+  border-radius: 12px;
+  background: #fff;
+}
+.blocking-domain-list span {
+  color: #e11d48;
+  font-weight: 800;
+  white-space: nowrap;
+}
+@media (max-width: 720px) {
+  .blocking-domain-list li {
+    display: block;
+  }
+  .blocking-domain-list span {
+    display: block;
+    margin-top: 4px;
+  }
+}
