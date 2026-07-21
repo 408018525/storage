@@ -616,6 +616,13 @@ function fmtDate(value, withTime = false) {
 function statusBadge(status, label) {
   return `<span class="status-pill status-${esc(status)}">${esc(label || statusText[status] || status)}</span>`;
 }
+function appDnsDisplay(a) {
+  const count = Number(a?.dnsCount || a?.dns_count || 0);
+  const summary = String(a?.dnsSummary || '').trim();
+  if (summary) return count > 1 ? `${count} 条：${summary}` : summary;
+  if (a?.dnsConfigured && a?.recordType && a?.recordContent) return `${a.recordType} → ${a.recordContent}`;
+  return '未配置';
+}
 function toast(message, type = '') {
   const el = document.createElement('div');
   el.className = `toast ${type}`;
@@ -1916,7 +1923,7 @@ async function renderDomains() {
 
 function domainCard(a, options = {}) {
   const approved = a.status === 'approved';
-  const dns = approved ? (a.dnsConfigured ? `${a.recordType} → ${a.recordContent}` : '未配置') : '审核通过后可配置';
+  const dns = approved ? appDnsDisplay(a) : '审核通过后可配置';
   const status = a.statusText || statusText[a.status] || a.status;
   const expiryMetrics = approved ? `
       <div><span>到期时间</span><strong>${a.expiresAt ? fmtDate(a.expiresAt) : '—'}</strong></div>
@@ -2365,7 +2372,7 @@ async function renderAdminApplications() {
     const rows = applications.map(a => `<tr>
       <td><strong>${esc(a.fqdnUnicode)}</strong><br><code>${esc(a.fqdnAscii)}</code></td>
       <td>${esc(a.username || '—')}</td>
-      <td>${a.dnsConfigured ? `<b>${esc(a.recordType)}</b> → <code>${esc(a.recordContent)}</code>` : '<span class="muted">未配置 DNS</span>'}</td>
+      <td>${a.dnsConfigured ? `<code>${esc(appDnsDisplay(a))}</code>` : '<span class="muted">未配置 DNS</span>'}</td>
       <td>${statusBadge(a.status, a.statusText)}</td>
       <td>${a.status === 'approved' && a.expiresAt ? fmtDate(a.expiresAt) : '—'}<br><small>${a.status === 'approved' ? esc(a.remainingText || '') : ''}</small></td>
       <td class="actions-cell">
