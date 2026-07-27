@@ -1545,3 +1545,20 @@ html, body {
     margin-top: 4px;
   }
 }
+
+
+/* v59 admin settings expansion */
+.admin-settings-v59 .admin-tabs { flex-wrap: wrap; gap: 10px; }
+.admin-settings-v59 .tab { min-height: 42px; }
+.settings-grid { gap: 18px; }
+.settings-grid .field textarea { min-height: 96px; resize: vertical; }
+.settings-grid .field em { display:block; margin-top:6px; color:var(--muted); font-style:normal; font-size:13px; }
+.color-preview { width:52px; height:32px; border-radius:12px; border:1px solid var(--line); display:inline-block; margin-top:8px; }
+.readonly-box { background:#f8fafc; border:1px solid var(--line); border-radius:18px; padding:16px; color:var(--muted); }
+.readonly-box b { color:var(--text); display:block; margin-bottom:6px; }
+.danger-notice { border-color:#fecaca; background:#fff7f7; color:#9f1239; }
+.admin-settings-v59 .wide { grid-column:1/-1; }
+@media (max-width: 900px) { .settings-grid { grid-template-columns:1fr !important; } }
+
+.site-notice { margin: 18px 24px 0; background: #eef6ff; border: 1px solid #bfdbfe; border-radius: 18px; padding: 16px 18px; color: #1d4ed8; font-weight: 700; }
+.app-footer { margin: 0 24px 24px; padding: 18px; color: var(--muted); text-align: center; font-size: 14px; }
