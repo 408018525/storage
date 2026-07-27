@@ -157,10 +157,23 @@ interface AppSettings {
     accent: string;
     accent2: string;
     logoText: string;
+    logoImageUrl?: string;
+    icp?: string;
+    homepageNotice?: string;
+    notFoundText?: string;
+    defaultLanguage?: string;
+    showQuota?: boolean;
+    showExpiryReminder?: boolean;
   };
   registration: {
     enabled: boolean;
     autoActivate: boolean;
+    blockTempEmail?: boolean;
+    maxAccountsPerIp?: number;
+    ipRegisterCooldownMinutes?: number;
+    turnstileRegisterEnabled?: boolean;
+    defaultStatus?: 'auto' | 'manual';
+    disabledMessage?: string;
   };
   domain: {
     defaultQuota: number;
@@ -168,6 +181,19 @@ interface AppSettings {
     renewWindowDays: number;
     allowUserDeleteInvalid: boolean;
     allowDnsEditAfterApproved: boolean;
+    prefixMinLength?: number;
+    prefixMaxLength?: number;
+    prefixBlacklistText?: string;
+    allowNumericPrefix?: boolean;
+    allowUnderscorePrefix?: boolean;
+    selfRenewEnabled?: boolean;
+    expiryReminderDays?: number;
+    expiredDnsCleanupDays?: number;
+    allowUserDeleteActive?: boolean;
+    allowDomainTransfer?: boolean;
+    maxDnsRecordsPerDomain?: number;
+    approvalMode?: 'manual' | 'auto';
+    platformMaxDomains?: number;
   };
   help: {
     categories: HelpCategorySetting[];
@@ -175,6 +201,8 @@ interface AppSettings {
   dns: {
     envManaged: boolean;
     reservedPrefixes: string[];
+    defaultProxied?: boolean;
+    allowMxRecords?: boolean;
     suffixes: Array<{
       label: string;
       suffix: string;
@@ -186,6 +214,26 @@ interface AppSettings {
       proxied: boolean;
       enabled: boolean;
     }>;
+  };
+  blacklist?: {
+    prefixes: string[];
+    ips: string[];
+    emails: string[];
+  };
+  notification?: {
+    events: Record<string, boolean>;
+    expiryTemplate: string;
+  };
+  security?: {
+    adminSessionTimeoutHours: number;
+    adminIpWhitelist: string;
+    auditRetentionDays: number;
+  };
+  automation?: {
+    enabled: boolean;
+    scanCycleMinutes: number;
+    checkExpiringDomains: boolean;
+    cleanupExpiredDns: boolean;
   };
 }
 
@@ -298,8 +346,8 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   match = pathname.match(/^\/api\/admin\/messages\/([^/]+)\/send$/);
   if (match && method === 'POST') return adminSendMessage(request, env, decodeURIComponent(match[1]));
 
-  match = pathname.match(/^\/api\/admin\/settings\/(site|registration|domain)$/);
-  if (match && method === 'PUT') return adminUpdateSettings(request, env, match[1] as 'site' | 'registration' | 'domain');
+  match = pathname.match(/^\/api\/admin\/settings\/(site|registration|domain|dns|blacklist|notification|security|automation)$/);
+  if (match && method === 'PUT') return adminUpdateSettings(request, env, match[1] as AdminSettingGroup);
 
   match = pathname.match(/^\/api\/admin\/users\/([^/]+)$/);
   if (match && method === 'PATCH') return adminUpdateUser(request, env, decodeURIComponent(match[1]));
@@ -510,7 +558,8 @@ async function ensureSchema(env: Env): Promise<void> {
 async function cleanupOperationLogs(env: Env): Promise<void> {
   // 操作日志只保留最近 7 天；账号注销或被标记删除后，自动清理该账号相关日志。
   try {
-    await env.DB.prepare(`DELETE FROM audit_logs WHERE datetime(created_at) < datetime('now','-7 days')`).run();
+    const settings = await loadSettings(env);
+    await env.DB.prepare(`DELETE FROM audit_logs WHERE datetime(created_at) < datetime('now','-' || ? || ' days')`).bind(settings.security?.auditRetentionDays || 7).run();
   } catch (error) { console.error('cleanup old audit logs failed', error); }
   try {
     await env.DB.prepare(`
@@ -617,7 +666,7 @@ async function publicConfigHandler(env: Env): Promise<Response> {
   return ok({
     config: {
       site: settings.site,
-      registration: { ...settings.registration, enabled: true },
+      registration: settings.registration,
       domain: settings.domain,
       help: settings.help,
       suffixes: settings.dns.suffixes
@@ -672,6 +721,10 @@ async function register(request: Request, env: Env): Promise<Response> {
   await rateLimit(env, request, 'register', 10, 3600);
   const body = await readJson<Record<string, unknown>>(request);
   const settings = await loadSettings(env);
+  const ip = clientIp(request);
+
+  if ((settings.blacklist?.ips || []).includes(ip)) throw new HttpError(403, 'IP_BLOCKED', '当前 IP 已被禁止注册');
+  if (!settings.registration.enabled) throw new HttpError(403, 'REGISTER_CLOSED', settings.registration.disabledMessage || '当前暂未开放用户注册');
 
   const adminCount = await env.DB.prepare(`
     SELECT COUNT(*) AS count FROM users WHERE role='admin' AND status='active'
@@ -679,12 +732,26 @@ async function register(request: Request, env: Env): Promise<Response> {
   if (Number(adminCount?.count || 0) < 1) throw new HttpError(503, 'SETUP_REQUIRED', '系统尚未完成管理员初始化');
   // 用户注册默认开放；前端注册入口不再因为历史 KV 设置关闭而失效。
 
-  if (isEnabled(env.TURNSTILE_ENABLE_REGISTER, false) && String(body.turnstileToken || '').trim()) {
+  const requireRegisterTurnstile = isEnabled(env.TURNSTILE_ENABLE_REGISTER, false) || Boolean(settings.registration.turnstileRegisterEnabled);
+  if (requireRegisterTurnstile) {
     await verifyTurnstile(env, request, body.turnstileToken, env.TURNSTILE_ACTION_REGISTER || 'register');
   }
 
   const username = normalizeUsername(body.username);
   const email = normalizeEmail(body.email);
+  if (email && email.includes('@') && settings.registration.blockTempEmail && isTempEmailDomain(email)) throw new HttpError(400, 'TEMP_EMAIL_BLOCKED', '不允许使用临时邮箱注册');
+  if (email && listMatches(email, settings.blacklist?.emails || [])) throw new HttpError(403, 'EMAIL_BLOCKED', '该邮箱/手机号已被禁止注册');
+
+  if (settings.registration.maxAccountsPerIp && settings.registration.maxAccountsPerIp > 0) {
+    const count = await env.DB.prepare(`SELECT COUNT(*) AS count FROM audit_logs WHERE action='auth.register' AND ip=?`).bind(ip).first<{ count: number }>();
+    if (Number(count?.count || 0) >= settings.registration.maxAccountsPerIp) throw new HttpError(429, 'IP_REGISTER_LIMIT', '当前 IP 注册账号数量已达到上限');
+  }
+  if (settings.registration.ipRegisterCooldownMinutes && settings.registration.ipRegisterCooldownMinutes > 0) {
+    const recent = await env.DB.prepare(`SELECT created_at FROM audit_logs WHERE action='auth.register' AND ip=? ORDER BY datetime(created_at) DESC LIMIT 1`).bind(ip).first<{ created_at: string }>();
+    const last = parseDate(recent?.created_at);
+    if (last && Date.now() - last.getTime() < settings.registration.ipRegisterCooldownMinutes * 60 * 1000) throw new HttpError(429, 'IP_REGISTER_COOLDOWN', '当前 IP 注册过于频繁，请稍后再试');
+  }
+
   const password = validatePassword(body.password);
   const duplicate = await env.DB.prepare(`
     SELECT id FROM users
@@ -695,7 +762,7 @@ async function register(request: Request, env: Env): Promise<Response> {
 
   const { hash, salt } = await hashPassword(password);
   const id = crypto.randomUUID();
-  const status = settings.registration.autoActivate ? 'active' : 'disabled';
+  const status = settings.registration.defaultStatus === 'manual' ? 'disabled' : (settings.registration.autoActivate ? 'active' : 'disabled');
 
   await env.DB.prepare(`
     INSERT INTO users (id, username, email, password_hash, password_salt, role, status, domain_quota, permissions_json)
@@ -739,6 +806,14 @@ async function login(request: Request, env: Env): Promise<Response> {
     throw new HttpError(401, 'INVALID_CREDENTIALS', '用户名或密码错误');
   }
   if (user.status !== 'active') throw new HttpError(403, 'ACCOUNT_DISABLED', '账户已被禁用');
+  const loginSettings = await loadSettings(env);
+  if (user.role === 'admin') {
+    const allowedIps = sanitizeStringList(loginSettings.security?.adminIpWhitelist || '');
+    if (allowedIps.length && !allowedIps.includes(clientIp(request))) {
+      await audit(env, request, user.id, 'auth.login_failed', 'user', user.id, { identity, reason: 'admin ip blocked' });
+      throw new HttpError(403, 'ADMIN_IP_BLOCKED', '当前 IP 不在管理员登录白名单内');
+    }
+  }
 
   try {
     await env.DB.prepare(`
@@ -1000,13 +1075,33 @@ async function createApplication(request: Request, env: Env): Promise<Response> 
   if (user.status !== 'active') throw new HttpError(403, 'ACCOUNT_DISABLED', '账户不可用');
 
   const prefix = normalizePrefix(body.prefix);
+  const prefixRules = settings.domain;
+  const p = prefix.unicode;
+  const minLen = prefixRules.prefixMinLength || 2;
+  const maxLen = prefixRules.prefixMaxLength || 36;
+  if (p.length < minLen || p.length > maxLen) throw new HttpError(400, 'INVALID_PREFIX_LENGTH', `域名前缀长度必须为 ${minLen}-${maxLen} 位`);
+  if (!prefixRules.allowUnderscorePrefix && p.includes('_')) throw new HttpError(400, 'UNDERSCORE_NOT_ALLOWED', '当前不允许使用下划线前缀');
+  if (!prefixRules.allowNumericPrefix && /^\d+$/.test(p)) throw new HttpError(400, 'NUMERIC_PREFIX_NOT_ALLOWED', '当前不允许使用纯数字前缀');
+
   const suffixInput = normalizeSuffix(String(body.suffix || ''));
   const suffix = settings.dns.suffixes.find(x => x.enabled && (x.suffix === suffixInput || x.suffixAscii === suffixInput));
   if (!suffix) throw new HttpError(400, 'SUFFIX_NOT_ALLOWED', '该根域名不可注册');
 
   const reserved = new Set(settings.dns.reservedPrefixes.map(x => x.toLowerCase()));
-  if (reserved.has(prefix.unicode) || reserved.has(prefix.ascii)) {
-    throw new HttpError(409, 'RESERVED_PREFIX', '该前缀为系统保留词');
+  const blacklistRules = [
+    ...sanitizeStringList(settings.domain.prefixBlacklistText || ''),
+    ...(settings.blacklist?.prefixes || []),
+  ];
+  if (reserved.has(prefix.unicode) || reserved.has(prefix.ascii) || prefixMatchesRule(prefix.unicode, blacklistRules) || prefixMatchesRule(prefix.ascii, blacklistRules)) {
+    throw new HttpError(409, 'RESERVED_PREFIX', '该前缀为系统保留词或黑名单关键词');
+  }
+
+  const platformCount = await env.DB.prepare(`
+    SELECT COUNT(*) AS count FROM domain_applications
+    WHERE status NOT IN ('rejected','revoked') AND (deleted_at IS NULL OR deleted_at='')
+  `).first<{ count: number }>();
+  if (Number(platformCount?.count || 0) >= (settings.domain.platformMaxDomains || 9999)) {
+    throw new HttpError(403, 'PLATFORM_DOMAIN_LIMIT', '平台二级域名总配额已满');
   }
 
   const fqdnUnicode = `${prefix.unicode}.${suffix.suffix}`;
@@ -1035,14 +1130,18 @@ async function createApplication(request: Request, env: Env): Promise<Response> 
 
   const id = crypto.randomUUID();
 
+  const autoApproved = settings.domain.approvalMode === 'auto';
+  const appStatus = autoApproved ? 'approved' : 'pending';
+  const expiresAt = autoApproved ? new Date(Date.now() + settings.domain.validDays * DAY).toISOString() : null;
+
   await env.DB.prepare(`
     INSERT INTO domain_applications (
       id,user_id,prefix_unicode,prefix_ascii,suffix_unicode,suffix_ascii,fqdn_unicode,fqdn_ascii,
-      record_type,record_content,proxied,ttl,status,expires_at
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,NULL)
+      record_type,record_content,proxied,ttl,status,expires_at,reviewed_at
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `).bind(
     id, user.id, prefix.unicode, prefix.ascii, suffix.suffix, suffix.suffixAscii, fqdnUnicode, fqdnAscii,
-    suffix.defaultType, '', suffix.proxied ? 1 : 0, suffix.ttl, 'pending',
+    suffix.defaultType, '', suffix.proxied ? 1 : 0, suffix.ttl, appStatus, expiresAt, autoApproved ? new Date().toISOString() : null,
   ).run();
 
   await audit(env, request, user.id, 'application.create', 'domain_application', id, { fqdnAscii });
@@ -1149,6 +1248,9 @@ async function createOwnDnsRecord(request: Request, env: Env, applicationId: str
   const host = normalizeDnsHost(body.host);
   const name = fullRecordName(host, app.fqdn_ascii);
   const type = normalizeRecordType(body.type || body.recordType, suffix.allowedTypes);
+  if (type === 'MX' && settings.dns.allowMxRecords === false) throw new HttpError(403, 'MX_DISABLED', '管理员已禁止用户创建 MX 解析记录');
+  const recordCount = await env.DB.prepare(`SELECT COUNT(*) AS count FROM dns_records WHERE application_id=? AND (deleted_at IS NULL OR deleted_at='')`).bind(applicationId).first<{ count: number }>();
+  if (Number(recordCount?.count || 0) >= (settings.domain.maxDnsRecordsPerDomain || 20)) throw new HttpError(403, 'DNS_RECORD_LIMIT', `单个域名最多可创建 ${settings.domain.maxDnsRecordsPerDomain || 20} 条 DNS 解析`);
   const content = normalizeDnsTarget(type, body.content || body.target, name);
   const priority = type === 'MX' ? clamp(Number(body.priority || 10), 0, 65535) : null;
   const ttl = clamp(Number(body.ttl || suffix.ttl || 1), 1, 86400);
@@ -1208,6 +1310,7 @@ async function updateOwnDnsRecordManaged(request: Request, env: Env, recordId: s
   const host = normalizeDnsHost(body.host ?? row.host);
   const name = fullRecordName(host, row.fqdn_ascii);
   const type = normalizeRecordType(body.type || body.recordType || row.type, suffix.allowedTypes);
+  if (type === 'MX' && settings.dns.allowMxRecords === false) throw new HttpError(403, 'MX_DISABLED', '管理员已禁止用户创建 MX 解析记录');
   const content = normalizeDnsTarget(type, body.content || body.target || row.content, name);
   const priority = type === 'MX' ? clamp(Number(body.priority || row.priority || 10), 0, 65535) : null;
   const ttl = clamp(Number(body.ttl || row.ttl || suffix.ttl || 1), 1, 86400);
@@ -1386,6 +1489,7 @@ async function renewOwnApplication(request: Request, env: Env, id: string): Prom
     SELECT * FROM domain_applications WHERE id=? AND user_id=? AND status='approved'
   `).bind(id, user.id).first<ApplicationRow>();
   if (!app) throw new HttpError(404, 'NOT_FOUND', '只有正常域名可以续期');
+  if (settings.domain.selfRenewEnabled === false) throw new HttpError(403, 'RENEW_DISABLED', '管理员未开放用户自助续期');
 
   const expiresAt = parseDate(app.expires_at);
   if (!expiresAt) throw new HttpError(400, 'NO_EXPIRY', '未设置到期时间，不能续期');
@@ -1412,12 +1516,14 @@ async function renewOwnApplication(request: Request, env: Env, id: string): Prom
 async function requestDeleteOwnApplication(request: Request, env: Env, id: string): Promise<Response> {
   const user = await requireUser(env, request);
   const body = await readJson<Record<string, unknown>>(request);
+  const settings = await loadSettings(env);
   const app = await env.DB.prepare(`
     SELECT * FROM domain_applications
     WHERE id=? AND user_id=? AND status='approved' AND (deleted_at IS NULL OR deleted_at='')
   `).bind(id, user.id).first<ApplicationRow>();
 
   if (!app) throw new HttpError(404, 'NOT_FOUND', '只有正常域名可以申请删除');
+  if (settings.domain.allowUserDeleteActive === false) throw new HttpError(403, 'DELETE_ACTIVE_DISABLED', '管理员未开放用户删除已生效域名');
   const confirmDomain = String(body.confirmDomain || '').trim();
   if (confirmDomain !== app.fqdn_unicode && confirmDomain !== app.fqdn_ascii) {
     throw new HttpError(400, 'CONFIRM_DOMAIN_MISMATCH', '请输入完整域名确认删除');
@@ -2349,36 +2455,115 @@ async function adminSettings(request: Request, env: Env): Promise<Response> {
   return ok({ settings: await loadSettings(env) });
 }
 
-async function adminUpdateSettings(request: Request, env: Env, group: 'site' | 'registration' | 'domain'): Promise<Response> {
+type AdminSettingGroup = 'site' | 'registration' | 'domain' | 'dns' | 'blacklist' | 'notification' | 'security' | 'automation';
+
+async function adminUpdateSettings(request: Request, env: Env, group: AdminSettingGroup): Promise<Response> {
   const admin = await requireAdmin(env, request);
-  const body = await readJson<Record<string, unknown>>(request, 256 * 1024);
+  const body = await readJson<Record<string, unknown>>(request, 1024 * 1024);
   const settings = await loadSettings(env);
 
   if (group === 'site') {
     settings.site = {
+      ...settings.site,
       title: cleanText(body.title, 80) || settings.site.title,
       subtitle: cleanText(body.subtitle, 140),
-      footer: cleanText(body.footer, 200),
-      accent: cleanText(body.accent, 20) || '#4f63f6',
-      accent2: cleanText(body.accent2, 20) || '#7c4dff',
-      logoText: cleanText(body.logoText, 6) || '域',
+      footer: cleanText(body.footer, 300),
+      accent: normalizeHexColor(body.accent, '#4f63f6'),
+      accent2: normalizeHexColor(body.accent2, '#7c4dff'),
+      logoText: cleanText(body.logoText, 12) || 'free',
+      logoImageUrl: cleanText(body.logoImageUrl, 500),
+      icp: cleanText(body.icp, 200),
+      homepageNotice: cleanText(body.homepageNotice, 5000),
+      notFoundText: cleanText(body.notFoundText, 500) || '页面不存在或已移动',
+      defaultLanguage: String(body.defaultLanguage || 'zh') === 'en' ? 'en' : 'zh',
+      showQuota: asBoolean(body.showQuota, true),
+      showExpiryReminder: asBoolean(body.showExpiryReminder, true),
     };
   }
 
   if (group === 'registration') {
     settings.registration = {
+      ...settings.registration,
       enabled: asBoolean(body.enabled, true),
       autoActivate: asBoolean(body.autoActivate, true),
+      blockTempEmail: asBoolean(body.blockTempEmail, false),
+      maxAccountsPerIp: clamp(Number(body.maxAccountsPerIp || 0), 0, 10000),
+      ipRegisterCooldownMinutes: clamp(Number(body.ipRegisterCooldownMinutes || 0), 0, 10080),
+      turnstileRegisterEnabled: asBoolean(body.turnstileRegisterEnabled, false),
+      defaultStatus: String(body.defaultStatus || 'auto') === 'manual' ? 'manual' : 'auto',
+      disabledMessage: cleanText(body.disabledMessage, 500) || '当前暂未开放用户注册',
     };
   }
 
   if (group === 'domain') {
     settings.domain = {
-      defaultQuota: clamp(Number(body.defaultQuota || 3), 1, 9999),
+      ...settings.domain,
+      defaultQuota: clamp(Number(body.defaultQuota || 3), 0, 999999),
       validDays: clamp(Number(body.validDays || 365), 1, 3650),
       renewWindowDays: clamp(Number(body.renewWindowDays || 60), 1, 3650),
       allowUserDeleteInvalid: asBoolean(body.allowUserDeleteInvalid, true),
       allowDnsEditAfterApproved: asBoolean(body.allowDnsEditAfterApproved, true),
+      prefixMinLength: clamp(Number(body.prefixMinLength || 2), 1, 63),
+      prefixMaxLength: clamp(Number(body.prefixMaxLength || 36), 1, 63),
+      prefixBlacklistText: cleanText(body.prefixBlacklistText, 10000),
+      allowNumericPrefix: asBoolean(body.allowNumericPrefix, true),
+      allowUnderscorePrefix: asBoolean(body.allowUnderscorePrefix, false),
+      selfRenewEnabled: asBoolean(body.selfRenewEnabled, true),
+      expiryReminderDays: clamp(Number(body.expiryReminderDays || 30), 0, 3650),
+      expiredDnsCleanupDays: clamp(Number(body.expiredDnsCleanupDays || 30), 0, 3650),
+      allowUserDeleteActive: asBoolean(body.allowUserDeleteActive, true),
+      allowDomainTransfer: asBoolean(body.allowDomainTransfer, false),
+      maxDnsRecordsPerDomain: clamp(Number(body.maxDnsRecordsPerDomain || 20), 1, 1000),
+      approvalMode: String(body.approvalMode || 'manual') === 'auto' ? 'auto' : 'manual',
+      platformMaxDomains: clamp(Number(body.platformMaxDomains || 9999), 1, 9999999),
+    };
+    if ((settings.domain.prefixMinLength || 2) > (settings.domain.prefixMaxLength || 36)) {
+      const min = settings.domain.prefixMinLength || 2;
+      settings.domain.prefixMinLength = settings.domain.prefixMaxLength || 36;
+      settings.domain.prefixMaxLength = min;
+    }
+  }
+
+  if (group === 'dns') {
+    const suffixesInput = Array.isArray((body as any).suffixes) ? (body as any).suffixes : parseJsonArray(body.suffixesJson);
+    settings.dns = {
+      ...settings.dns,
+      defaultProxied: asBoolean(body.defaultProxied, settings.dns.defaultProxied ?? false),
+      allowMxRecords: asBoolean(body.allowMxRecords, settings.dns.allowMxRecords ?? true),
+      reservedPrefixes: sanitizeStringList(body.reservedPrefixes || settings.dns.reservedPrefixes.join('\n')).slice(0, 500),
+      suffixes: sanitizeDnsSuffixes(suffixesInput, settings.dns.suffixes),
+    };
+  }
+
+  if (group === 'blacklist') {
+    settings.blacklist = {
+      prefixes: sanitizeStringList(body.prefixes).slice(0, 2000),
+      ips: sanitizeStringList(body.ips).slice(0, 2000),
+      emails: sanitizeStringList(body.emails).slice(0, 2000),
+    };
+  }
+
+  if (group === 'notification') {
+    settings.notification = {
+      events: sanitizeNotificationEvents((body as any).events),
+      expiryTemplate: cleanText(body.expiryTemplate, 5000) || '您的域名即将到期，请及时续期。',
+    };
+  }
+
+  if (group === 'security') {
+    settings.security = {
+      adminSessionTimeoutHours: clamp(Number(body.adminSessionTimeoutHours || 24), 1, 24 * 365),
+      adminIpWhitelist: cleanText(body.adminIpWhitelist, 10000),
+      auditRetentionDays: clamp(Number(body.auditRetentionDays || 7), 1, 3650),
+    };
+  }
+
+  if (group === 'automation') {
+    settings.automation = {
+      enabled: asBoolean(body.enabled, false),
+      scanCycleMinutes: clamp(Number(body.scanCycleMinutes || 60), 5, 1440),
+      checkExpiringDomains: asBoolean(body.checkExpiringDomains, true),
+      cleanupExpiredDns: asBoolean(body.cleanupExpiredDns, true),
     };
   }
 
@@ -2395,12 +2580,41 @@ async function loadSettings(env: Env): Promise<AppSettings> {
     if (raw) saved = JSON.parse(raw);
   } catch {}
 
+  const site = { ...defaults.site, ...(saved.site || {}) };
+  const registration = { ...defaults.registration, ...(saved.registration || {}) };
+  const domain = { ...defaults.domain, ...(saved.domain || {}) };
+  const dnsSaved = (saved as any).dns || {};
+  const dns = {
+    ...defaults.dns,
+    ...dnsSaved,
+    reservedPrefixes: sanitizeStringList(dnsSaved.reservedPrefixes || defaults.dns.reservedPrefixes).slice(0, 500),
+    suffixes: sanitizeDnsSuffixes(dnsSaved.suffixes, defaults.dns.suffixes),
+  };
+
   return {
-    site: { ...defaults.site, ...(saved.site || {}) },
-    registration: { ...defaults.registration, ...(saved.registration || {}) },
-    domain: { ...defaults.domain, ...(saved.domain || {}) },
+    site,
+    registration,
+    domain,
     help: { categories: Array.isArray((saved as any).help?.categories) ? sanitizeHelpCategories((saved as any).help.categories) : defaults.help.categories },
-    dns: defaults.dns,
+    dns,
+    blacklist: {
+      prefixes: sanitizeStringList((saved as any).blacklist?.prefixes),
+      ips: sanitizeStringList((saved as any).blacklist?.ips),
+      emails: sanitizeStringList((saved as any).blacklist?.emails),
+    },
+    notification: {
+      events: sanitizeNotificationEvents((saved as any).notification?.events),
+      expiryTemplate: cleanText((saved as any).notification?.expiryTemplate, 5000) || defaults.notification!.expiryTemplate,
+    },
+    security: {
+      ...defaults.security!,
+      ...((saved as any).security || {}),
+      auditRetentionDays: clamp(Number((saved as any).security?.auditRetentionDays || defaults.security!.auditRetentionDays), 1, 3650),
+    },
+    automation: {
+      ...defaults.automation!,
+      ...((saved as any).automation || {}),
+    },
   };
 }
 
@@ -2426,11 +2640,24 @@ function defaultSettings(env: Env): AppSettings {
       footer: '请勿申请违法、侵权、仿冒或误导性域名。',
       accent: '#4f63f6',
       accent2: '#7c4dff',
-      logoText: '域',
+      logoText: 'free',
+      logoImageUrl: '',
+      icp: '',
+      homepageNotice: '',
+      notFoundText: '页面不存在或已移动',
+      defaultLanguage: 'zh',
+      showQuota: true,
+      showExpiryReminder: true,
     },
     registration: {
       enabled: true,
       autoActivate: true,
+      blockTempEmail: false,
+      maxAccountsPerIp: 0,
+      ipRegisterCooldownMinutes: 0,
+      turnstileRegisterEnabled: false,
+      defaultStatus: 'auto',
+      disabledMessage: '当前暂未开放用户注册',
     },
     domain: {
       defaultQuota: 3,
@@ -2438,18 +2665,33 @@ function defaultSettings(env: Env): AppSettings {
       renewWindowDays: 60,
       allowUserDeleteInvalid: true,
       allowDnsEditAfterApproved: true,
+      prefixMinLength: 2,
+      prefixMaxLength: 36,
+      prefixBlacklistText: reserved.join('\n'),
+      allowNumericPrefix: true,
+      allowUnderscorePrefix: false,
+      selfRenewEnabled: true,
+      expiryReminderDays: 30,
+      expiredDnsCleanupDays: 30,
+      allowUserDeleteActive: true,
+      allowDomainTransfer: false,
+      maxDnsRecordsPerDomain: 20,
+      approvalMode: 'manual',
+      platformMaxDomains: 9999,
     },
     help: defaultHelpSettings(),
     dns: {
       envManaged: true,
       reservedPrefixes: reserved,
+      defaultProxied: isEnabled(env.DNS_PROXIED, false),
+      allowMxRecords: true,
       suffixes: [{
         label: env.DNS_SUFFIX_LABEL || '免费二级域名',
         suffix,
         suffixAscii: suffix,
         zoneId: env.DNS_ZONE_ID || '',
         allowedTypes: allowedTypes.length ? allowedTypes : ['CNAME'],
-        defaultType: (['CNAME','A','AAAA'].includes(String(env.DNS_DEFAULT_TYPE || '').toUpperCase())
+        defaultType: (['CNAME','A','AAAA','TXT','MX'].includes(String(env.DNS_DEFAULT_TYPE || '').toUpperCase())
           ? String(env.DNS_DEFAULT_TYPE).toUpperCase()
           : 'CNAME') as DnsRecordType,
         ttl: clamp(Number(env.DNS_TTL || 1), 1, 86400),
@@ -2457,8 +2699,113 @@ function defaultSettings(env: Env): AppSettings {
         enabled: true,
       }],
     },
+    blacklist: { prefixes: [], ips: [], emails: [] },
+    notification: {
+      events: {
+        newUser: true,
+        newDomain: true,
+        domainExpiring: true,
+        domainExpiredDelete: true,
+        abnormalRegister: true,
+      },
+      expiryTemplate: '您的域名即将到期，请及时续期。',
+    },
+    security: {
+      adminSessionTimeoutHours: 24,
+      adminIpWhitelist: '',
+      auditRetentionDays: 7,
+    },
+    automation: {
+      enabled: false,
+      scanCycleMinutes: 60,
+      checkExpiringDomains: true,
+      cleanupExpiredDns: true,
+    },
   };
 }
+
+function normalizeHexColor(value: unknown, fallback: string): string {
+  const raw = String(value || '').trim();
+  return /^#[0-9a-fA-F]{6}$/.test(raw) ? raw : fallback;
+}
+
+function parseJsonArray(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  const raw = String(value || '').trim();
+  if (!raw) return [];
+  try { const parsed = JSON.parse(raw); return Array.isArray(parsed) ? parsed : []; } catch { return []; }
+}
+
+function sanitizeStringList(value: unknown): string[] {
+  if (Array.isArray(value)) return Array.from(new Set(value.map(x => String(x || '').trim()).filter(Boolean)));
+  return Array.from(new Set(String(value || '').split(/[\n,]+/).map(x => x.trim()).filter(Boolean)));
+}
+
+function sanitizeDnsSuffixes(value: unknown, fallback: AppSettings['dns']['suffixes']): AppSettings['dns']['suffixes'] {
+  const raw = Array.isArray(value) ? value : [];
+  const items = raw.map((x: any, index: number) => {
+    try {
+      const suffix = normalizeSuffix(String(x?.suffix || ''));
+      const allowedTypes = Array.from(new Set((Array.isArray(x?.allowedTypes) ? x.allowedTypes : String(x?.allowedTypes || 'A,AAAA,CNAME,TXT,MX').split(','))
+        .map((t: any) => String(t).trim().toUpperCase())
+        .filter((t: string) => ['A','AAAA','CNAME','TXT','MX'].includes(t))));
+      const defaultTypeRaw = String(x?.defaultType || allowedTypes[0] || 'CNAME').toUpperCase();
+      const defaultType = (allowedTypes.includes(defaultTypeRaw) ? defaultTypeRaw : (allowedTypes[0] || 'CNAME')) as DnsRecordType;
+      return {
+        label: cleanText(x?.label, 80) || suffix,
+        suffix,
+        suffixAscii: suffix,
+        zoneId: cleanText(x?.zoneId, 120),
+        allowedTypes: allowedTypes.length ? allowedTypes : ['CNAME'],
+        defaultType,
+        ttl: clamp(Number(x?.ttl || 1), 1, 86400),
+        proxied: asBoolean(x?.proxied, false),
+        enabled: asBoolean(x?.enabled, true),
+      };
+    } catch { return null; }
+  }).filter(Boolean) as AppSettings['dns']['suffixes'];
+  return items.length ? items : fallback;
+}
+
+function sanitizeNotificationEvents(value: unknown): Record<string, boolean> {
+  const raw: any = value && typeof value === 'object' ? value : {};
+  return {
+    newUser: asBoolean(raw.newUser, true),
+    newDomain: asBoolean(raw.newDomain, true),
+    domainExpiring: asBoolean(raw.domainExpiring, true),
+    domainExpiredDelete: asBoolean(raw.domainExpiredDelete, true),
+    abnormalRegister: asBoolean(raw.abnormalRegister, true),
+  };
+}
+
+function listMatches(value: string, list: string[] = []): boolean {
+  const target = String(value || '').toLowerCase();
+  return list.some(raw => {
+    const item = String(raw || '').trim().toLowerCase();
+    if (!item) return false;
+    if (item.includes('*')) {
+      const re = new RegExp('^' + item.split('*').map(x => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$', 'i');
+      return re.test(target);
+    }
+    return target === item || target.includes(item);
+  });
+}
+
+function prefixMatchesRule(prefix: string, rules: string[] = []): boolean {
+  return rules.some(raw => {
+    const item = String(raw || '').trim();
+    if (!item) return false;
+    try { return new RegExp(item, 'i').test(prefix); } catch { return prefix.toLowerCase().includes(item.toLowerCase()); }
+  });
+}
+
+function isTempEmailDomain(email: string): boolean {
+  const domain = String(email || '').split('@')[1]?.toLowerCase() || '';
+  if (!domain) return false;
+  const tempDomains = ['mailinator.com','10minutemail.com','guerrillamail.com','tempmail.com','temp-mail.org','yopmail.com','dispostable.com','trashmail.com','sharklasers.com','getnada.com'];
+  return tempDomains.includes(domain);
+}
+
 
 function serializeUser(user: UserRow) {
   return {
@@ -2760,8 +3107,13 @@ async function requireAdmin(env: Env, request: Request): Promise<UserRow> {
 async function createSession(env: Env, request: Request, userId: string, remember: boolean): Promise<string> {
   const token = randomToken(32);
   const tokenHash = await sha256(token);
-  const days = remember ? 30 : 1;
-  const expires = new Date(Date.now() + days * DAY).toISOString();
+  const settings = await loadSettings(env);
+  let sessionHours = remember ? 30 * 24 : 24;
+  try {
+    const sessionUser = await env.DB.prepare(`SELECT role FROM users WHERE id=?`).bind(userId).first<{ role: string }>();
+    if (sessionUser?.role === 'admin') sessionHours = settings.security?.adminSessionTimeoutHours || 24;
+  } catch {}
+  const expires = new Date(Date.now() + sessionHours * 60 * 60 * 1000).toISOString();
   const id = crypto.randomUUID();
   const ua = String(request.headers.get('user-agent') || '').slice(0, 300);
   const ip = clientIp(request);
@@ -2814,7 +3166,7 @@ async function createSession(env: Env, request: Request, userId: string, remembe
   }
 
   return cookieString('sid', token, {
-    maxAge: days * DAY / 1000,
+    maxAge: sessionHours * 60 * 60,
     httpOnly: true,
     sameSite: 'Lax',
     secure: true,
@@ -2906,11 +3258,10 @@ function validatePassword(raw: unknown): string {
 
 function normalizePrefix(raw: unknown): { unicode: string; ascii: string } {
   const unicode = String(raw || '').trim().toLowerCase();
-  if (!/^[a-z0-9](?:[a-z0-9-]{0,34}[a-z0-9])?$/.test(unicode) || unicode.length < 2 || unicode.length > 36) {
-    throw new HttpError(400, 'INVALID_PREFIX', '域名前缀需为 2-36 位，只支持字母、数字和连字符，且不能以连字符开头或结尾');
+  if (!/^[a-z0-9](?:[a-z0-9_-]{0,61}[a-z0-9])?$/.test(unicode) || unicode.length < 1 || unicode.length > 63) {
+    throw new HttpError(400, 'INVALID_PREFIX', '域名前缀格式不正确，需以字母或数字开头结尾');
   }
-  let ascii = unicode;
-  try { ascii = new URL(`https://${unicode}.example.com`).hostname.replace('.example.com', ''); } catch {}
+  const ascii = unicode;
   return { unicode, ascii };
 }
 
