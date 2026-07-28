@@ -1,4 +1,4 @@
-const app = document.querySelector('#app');
+ app = document.querySelector(const app = document.querySelector('#app');
 const toastRoot = document.querySelector('#toast-root');
 const modalRoot = document.querySelector('#modal-root');
 
@@ -686,7 +686,7 @@ Object.assign(I18N_EN, {
 
 Object.assign(I18N_EN, {
   '操作日志':'Operation Logs','最近操作记录':'Recent Operation Logs','仅显示最近 7 天内的账号注册域名、解析等部分操作记录。':'Only account, domain, DNS and related operations from the last 7 days are shown.','管理员可查看近 7 天内未注销账号的操作记录；普通用户仅查看自己的记录。':'Admins can view logs for non-deleted accounts from the last 7 days. Regular users can only view their own logs.','暂无操作记录。':'No operation logs.','操作类型':'Action','操作人':'Operator','操作说明':'Description','目标对象':'Target','IP 地址':'IP Address','保留时间':'Retention','7 天':'7 days','日志会自动清理：超过 7 天、或账号注销后的记录会从 D1 中删除。':'Logs are automatically cleaned from D1 after 7 days or when the account is cancelled.','正在读取操作日志…':'Loading operation logs…','系统':'System','未知用户':'Unknown User',
-  '方式一：站内消息':'Method 1: In-site message','在下方填写标题和内容，消息会直接进入管理员的消息中心，适合已经登录后反馈域名、DNS、额度、审核等问题。':'Fill in the title and content below. The message will go directly to the admin Message Center. Use it for domain, DNS, quota, and review issues after login.','方式二：外部联系':'Method 2: External contact','点击右上角“其他：联系我们”会打开外部反馈页面，适合无法登录、无法收到消息、需要提交截图或更详细资料的情况。':'Click “Other: Contact Us” in the upper right to open the external contact form. Use it when you cannot log in, cannot receive messages, or need to submit screenshots/details.','其他：联系我们':'Other: Contact Us','直接发消息给管理员':'Send a message to admin','发送给管理员':'Send to Admin','请填写要反馈的问题标题':'Enter the issue title','请详细描述您遇到的问题、页面位置、操作步骤和错误提示':'Describe the issue, page, steps, and error message in detail','消息已发送到管理员消息中心':'Message sent to admin Message Center','请填写标题和内容':'Please enter title and content','回复':'Reply','撤销':'Withdraw','撤销消息':'Withdraw Message','确认撤销这条已发送消息？撤销后对方将无法继续查看。':'Withdraw this sent message? The recipient will no longer be able to view it.','消息已撤销':'Message withdrawn','已超过 15 分钟，不能撤销':'More than 15 minutes have passed; this message cannot be withdrawn.','回复消息':'Reply Message','回复内容':'Reply Content','请输入回复内容':'Enter reply content','发送回复':'Send Reply','消息已回复':'Reply sent','原信息':'Original Message','已转到消息中心':'Moved to Message Center','资料已保存':'Profile saved','账号已复制':'Account copied','复制账号':'Copy account','手机号':'Phone','保存账户资料':'Save Account Info','未注销域名':'Uncancelled Domains','账户下还有未注销域名':'Uncancelled domains remain'
+  '方式一：站内消息':'Method 1: In-site message','在下方填写标题和内容，消息会直接进入管理员的消息中心，适合已经登录后反馈域名、DNS、额度、审核等问题。':'Fill in the title and content below. The message will go directly to the admin Message Center. Use it for domain, DNS, quota, and review issues after login.','方式二：外部联系':'Method 2: External contact','点击右上角“其他：联系我们”会打开外部反馈页面，适合无法登录、无法收到消息、需要提交截图或更详细资料的情况。':'Click “Other: Contact Us” in the upper right to open the external contact form. Use it when you cannot log in, cannot receive messages, or need to submit screenshots/details.','其他：联系我们':'Other: Contact Us','直接发消息给管理员':'Send a message to admin','发送给管理员':'Send to Admin','请填写要反馈的问题标题':'Enter the issue title','请详细描述您遇到的问题、页面位置、操作步骤和错误提示':'Describe the issue, page, steps, and error message in detail','消息已发送到管理员消息中心':'Message sent to admin Message Center','请填写标题和内容':'Please enter title and content','回复':'Reply','撤销':'Withdraw','撤销消息':'Withdraw Message','确认撤销这条已发送消息？撤销后对方将无法继续查看。':'Withdraw this sent message? The recipient will no longer be able to view it.','消息已撤销':'Message withdrawn','已超过 15 分钟，不能撤销':'More than 15 minutes have passed; this message cannot be withdrawn.','回复消息':'Reply Message','回复内容':'Reply Content','请输入回复内容':'Enter reply content','发送回复':'Send Reply','消息已回复':'Reply sent','原信息':'Original Message','已转到消息中心':'Moved to Message Center','资料已保存':'Profile saved','账号已复制':'Account copied','复制账号':'Copy account','手机号':'Phone','保存账户资料':'Save Account Info','未注销域名':'Uncancelled Domains','账户下还有未注销域名':'Uncancelled domains remain','请选择要回复的消息':'Select messages to reply','已引用':'Quoted','条消息，请在发送消息中填写回复内容':'messages. Please write the reply in Send Message','客服回复':'Support Reply'
 });
 
 Object.assign(I18N_EN, {
@@ -1546,8 +1546,8 @@ function messageStatusBadgeText(status) {
   const map = { sent:'已发送', draft:'草稿', template:'模板' };
   return map[status] || status;
 }
-function messageTargetOptions(users = []) {
-  return users.map(u => `<option value="${attr(u.id)}">${esc(u.username)}${u.email ? ' / '+esc(u.email) : ''}</option>`).join('');
+function messageTargetOptions(users = [], selectedId = '') {
+  return users.map(u => `<option value="${attr(u.id)}" ${String(u.id) === String(selectedId || '') ? 'selected' : ''}>${esc(u.username)}${u.email ? ' / '+esc(u.email) : ''}</option>`).join('');
 }
 function messageComposeForm(users = [], preset = {}) {
   const status = preset.status || 'sent';
@@ -1556,8 +1556,8 @@ function messageComposeForm(users = [], preset = {}) {
   return `<form id="message-compose-form" class="message-compose form-grid" data-edit-id="${attr(preset.id || '')}">
     <label class="field"><span>接收对象</span><select name="targetType" id="msg-target-type"><option value="none" ${targetType==='none'?'selected':''}>暂不选择</option><option value="all" ${targetType==='all'?'selected':''}>全部用户</option><option value="role" ${targetType==='role'?'selected':''}>按角色</option><option value="user" ${targetType==='user'?'selected':''}>指定用户</option></select></label>
     <label class="field msg-target-role"><span>角色</span><select name="targetRole"><option value="user" ${targetRole==='user'?'selected':''}>普通用户</option><option value="admin" ${targetRole==='admin'?'selected':''}>管理员</option></select></label>
-    <label class="field msg-target-user"><span>用户</span><select name="targetUserId"><option value="">请选择用户</option>${messageTargetOptions(users)}</select></label>
-    <label class="field"><span>消息类型</span><select name="level"><option value="" ${!preset.level?'selected':''}>暂不选择</option><option value="info" ${(preset.level||'info')==='info'?'selected':''}>普通通知</option><option value="important" ${preset.level==='important'?'selected':''}>重要通知</option><option value="system" ${preset.level==='system'?'selected':''}>系统通知</option><option value="success" ${preset.level==='success'?'selected':''}>成功提示</option><option value="warning" ${preset.level==='warning'?'selected':''}>警告提醒</option><option value="danger" ${preset.level==='danger'?'selected':''}>重要警告</option></select></label>
+    <label class="field msg-target-user"><span>用户</span><select name="targetUserId"><option value="">请选择用户</option>${messageTargetOptions(users, preset.targetUserId || '')}</select></label>
+    <label class="field"><span>消息类型</span><select name="level"><option value="" ${!preset.level?'selected':''}>暂不选择</option><option value="info" ${(preset.level||'info')==='info'?'selected':''}>普通通知</option><option value="important" ${preset.level==='important'?'selected':''}>重要通知</option><option value="system" ${preset.level==='system'?'selected':''}>系统通知</option><option value="support_reply" ${preset.level==='support_reply'?'selected':''}>客服回复</option><option value="success" ${preset.level==='success'?'selected':''}>成功提示</option><option value="warning" ${preset.level==='warning'?'selected':''}>警告提醒</option><option value="danger" ${preset.level==='danger'?'selected':''}>重要警告</option></select></label>
     <label class="field wide"><span>消息标题</span><input name="title" placeholder="请输入消息标题" maxlength="120" required value="${attr(preset.title || '')}"></label>
     <label class="field wide"><span>消息内容</span><textarea name="body" placeholder="请输入消息内容" rows="8" required>${esc(preset.body || '')}</textarea></label>
     <div class="message-compose-actions wide">
@@ -1911,6 +1911,46 @@ function showReplyMessageModal(message) {
   });
 }
 
+
+function adminReplyQuoteText(message, index = 1) {
+  const number = index ? ` ${index}` : '';
+  const sender = message.senderUsername || '系统管理员';
+  const target = message.targetLabel || '';
+  const time = fmtDate(message.sentAt || message.createdAt, true);
+  const body = String(message.body || '').trim();
+  return [`【引用原信息${number}】`, `标题：${message.title || '无标题'}`, `发送人：${sender}`, target ? `发送对象：${target}` : '', `时间：${time}`, '内容：', body || '（无内容）'].filter(Boolean).join('\n');
+}
+function buildAdminReplyPreset(messages = [], users = []) {
+  const selected = messages.filter(Boolean);
+  const senderIds = Array.from(new Set(selected.map(m => m.senderUserId).filter(id => id && id !== state.me?.id)));
+  const targetUser = senderIds.length === 1 ? users.find(u => String(u.id) === String(senderIds[0])) : null;
+  const first = selected[0] || {};
+  const quoted = selected.map((m, index) => adminReplyQuoteText(m, selected.length > 1 ? index + 1 : 0)).join('\n\n');
+  const targetHint = selected.length > 1 && senderIds.length > 1
+    ? '【提示】您选择了多位发送人的消息，请先确认接收对象，避免把某个用户的问题发送给其他用户。\n\n'
+    : '';
+  return {
+    targetType: targetUser ? 'user' : 'none',
+    targetUserId: targetUser?.id || '',
+    targetRole: 'user',
+    level: 'support_reply',
+    status: 'sent',
+    title: selected.length === 1 ? `回复：${first.title || '消息'}` : `回复 ${selected.length} 条消息`,
+    body: `${targetHint}请在这里输入回复内容。\n\n----- 以下为引用信息 -----\n${quoted}`,
+    replyPreset: true,
+  };
+}
+function scrollToMessageComposer() {
+  const form = document.querySelector('#message-compose-form');
+  if (!form) return;
+  form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const textarea = form.querySelector('textarea[name="body"]');
+  if (textarea) {
+    textarea.focus();
+    textarea.setSelectionRange(0, 0);
+  }
+}
+
 async function renderMessageCenter(preset = null) {
   shell('消息中心', `<div class="loading-card">正在读取消息…</div>`);
   try {
@@ -1931,7 +1971,7 @@ async function renderMessageCenter(preset = null) {
     const sent = adminMessages.filter(m => m.status === 'sent');
     shell('消息中心', `
       <section class="message-hero card"><div><h2>消息中心</h2><p>${isAdmin ? '管理员可以在这里发送系统通知、保存草稿和维护常用模板。' : '用户可以在这里查看系统通知、管理员消息、域名处理结果和维护提醒。'}</p></div><div class="message-count"><strong>${mine.unread || 0}</strong><span>未读</span></div></section>
-      <section class="card"><div class="section-head"><div><h2>我的消息</h2><p>系统消息、管理员通知和域名处理结果都会显示在这里。</p></div><div class="message-toolbar"><button class="btn small soft" id="mark-selected-read">批量已读</button><button class="btn small secondary" id="mark-all-read">全部已读</button></div></div><div class="message-list">${messageListHtml(inbox, false)}</div></section>
+      <section class="card"><div class="section-head"><div><h2>我的消息</h2><p>系统消息、管理员通知和域名处理结果都会显示在这里。</p></div><div class="message-toolbar"><button class="btn small soft" id="mark-selected-read">批量已读</button><button class="btn small secondary" id="mark-all-read">全部已读</button>${isAdmin ? '<button class="btn small primary" id="reply-selected-message">回复</button>' : ''}</div></div><div class="message-list">${messageListHtml(inbox, false)}</div></section>
       ${isAdmin ? `<section class="card"><div class="section-head"><div><h2>发送消息</h2><p>可以发送给全部用户、普通用户、管理员或指定用户。</p></div></div>${messageComposeForm(users, preset || {})}</section>
       <section class="card"><div class="section-head"><div><h2>草稿信息</h2><p>未发送的消息可以继续编辑或直接发送。</p></div></div><div class="message-list">${messageListHtml(drafts, true)}</div></section>
       <section class="card"><div class="section-head"><div><h2>消息模板</h2><p>保存常用通知，下次可以直接套用。</p></div></div><div class="message-list">${messageListHtml(templates, true)}</div></section>
@@ -1960,6 +2000,16 @@ async function renderMessageCenter(preset = null) {
     document.querySelector('#mark-all-read')?.addEventListener('click', async () => {
       const ids = inbox.filter(m => !m.isRead).map(m => m.id);
       await markMessagesRead(ids);
+    });
+    document.querySelector('#reply-selected-message')?.addEventListener('click', async () => {
+      const ids = [...document.querySelectorAll('.message-check:checked')].map(x => x.value);
+      if (!ids.length) { toast('请选择要回复的消息', 'error'); return; }
+      const selectedMessages = ids.map(id => inbox.find(m => m.id === id)).filter(Boolean);
+      if (!selectedMessages.length) { toast('请选择要回复的消息', 'error'); return; }
+      const presetReply = buildAdminReplyPreset(selectedMessages, users);
+      await renderMessageCenter(presetReply);
+      setTimeout(scrollToMessageComposer, 80);
+      toast(`已引用 ${selectedMessages.length} 条消息，请在发送消息中填写回复内容`, 'success');
     });
     if (isAdmin) {
       bindMessageCompose(users, preset);
