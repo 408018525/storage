@@ -1,6 +1,29 @@
- app = document.querySelector(const app = document.querySelector('#app');
-const toastRoot = document.querySelector('#toast-root');
-const modalRoot = document.querySelector('#modal-root');
+let app = document.querySelector('#app');
+let toastRoot = document.querySelector('#toast-root');
+let modalRoot = document.querySelector('#modal-root');
+
+function ensureMountRoots() {
+  if (!document.body) return;
+  app = document.querySelector('#app');
+  if (!app) {
+    app = document.createElement('div');
+    app.id = 'app';
+    document.body.appendChild(app);
+  }
+  modalRoot = document.querySelector('#modal-root');
+  if (!modalRoot) {
+    modalRoot = document.createElement('div');
+    modalRoot.id = 'modal-root';
+    document.body.appendChild(modalRoot);
+  }
+  toastRoot = document.querySelector('#toast-root');
+  if (!toastRoot) {
+    toastRoot = document.createElement('div');
+    toastRoot.id = 'toast-root';
+    document.body.appendChild(toastRoot);
+  }
+}
+ensureMountRoots();
 
 const state = {
   config: null,
@@ -624,6 +647,8 @@ function appDnsDisplay(a) {
   return '未配置';
 }
 function toast(message, type = '') {
+  ensureMountRoots();
+  if (!toastRoot) { try { console.log(message); } catch {} return; }
   const el = document.createElement('div');
   el.className = `toast ${type}`;
   el.textContent = translateTextValue(message);
@@ -631,10 +656,13 @@ function toast(message, type = '') {
   setTimeout(() => el.remove(), 3600);
 }
 function closeModal() {
-  modalRoot.innerHTML = '';
+  ensureMountRoots();
+  if (modalRoot) modalRoot.innerHTML = '';
   state.widgetId = null;
 }
 function openModal(title, subtitle, content, size = '') {
+  ensureMountRoots();
+  if (!modalRoot) return;
   modalRoot.innerHTML = `
     <div class="modal-backdrop">
       <div class="modal ${size}">
@@ -713,8 +741,13 @@ async function init() {
     await renderRoute();
     startAutoRefresh();
   } catch (error) {
-    app.innerHTML = `<div class="center-screen"><h2>应用加载失败</h2><p>${esc(error.message)}</p><button class="btn primary" id="retry">重试</button></div>`;
-    document.querySelector('#retry')?.addEventListener('click', () => location.reload());
+    ensureMountRoots();
+    if (app) {
+      app.innerHTML = `<div class="center-screen"><h2>应用加载失败</h2><p>${esc(error.message)}</p><button class="btn primary" id="retry">重试</button></div>`;
+      document.querySelector('#retry')?.addEventListener('click', () => location.reload());
+    } else {
+      console.error(error);
+    }
   }
 }
 
@@ -2991,6 +3024,8 @@ function resetTurnstile() {
 
 
 function startLiveI18nObserver() {
+  if (!document.body) { document.addEventListener('DOMContentLoaded', startLiveI18nObserver, { once: true }); return; }
+  ensureMountRoots();
   if (window.__storageI18nObserverStarted) return;
   window.__storageI18nObserverStarted = true;
   let timer = null;
@@ -3008,7 +3043,25 @@ function startLiveI18nObserver() {
   run();
 }
 
-startLiveI18nObserver();
-init().then?.(() => { try { afterRender(); } catch(e) {} });
+function bootStorageApp() {
+  ensureMountRoots();
+  if (app && !app.innerHTML.trim()) app.innerHTML = '<div class="loading-card boot-loading">正在加载系统…</div>';
+  startLiveI18nObserver();
+  Promise.resolve(init()).then(() => { try { afterRender(); } catch(e) {} });
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bootStorageApp, { once: true });
+} else {
+  bootStorageApp();
+}
+
+setTimeout(() => {
+  try {
+    ensureMountRoots();
+    if (app && !app.textContent.trim()) bootStorageApp();
+  } catch (e) { console.error(e); }
+}, 1200);
 
 // v54: help center answers are rewritten per question and old repeated KV content is ignored.
+// v62: robust boot/index fix for blank page after frontend-only deploy.
