@@ -1,4 +1,4 @@
- app = document.querySelector('#app')let app = document.querySelector('#app');
+let app = document.querySelector('#app');
 let toastRoot = document.querySelector('#toast-root');
 let modalRoot = document.querySelector('#modal-root');
 
@@ -1472,8 +1472,16 @@ function renderHelpCenter() {
   const categories = helpCategories();
   shell('帮助中心', `
     <section class="help-hero card"><div><h2>帮助中心</h2><p>查看使用提示、DNS 教程、域名管理说明与支持入口</p></div></section>
-    <section class="help-search-row"><input id="help-search" class="help-search" placeholder="可以输入自然语言，例如：网站打不开、解析没生效、想删除域名、额度不够"><button class="btn primary" id="help-search-btn">智能搜索/问答</button></section>
-    <div id="help-search-status" class="help-search-status"></div>
+    <section class="help-search-card card">
+      <div class="help-search-title"><h2>问题搜索</h2><p>只检索帮助中心文章标题、正文、标签和摘要，支持中英文、错别字、近义词和自然问句。</p></div>
+      <div class="help-search-box">
+        <input id="help-search" class="help-search" autocomplete="off" placeholder="可以输入自然语言，例如：网站打不开、解析没生效、想删除域名、额度不够">
+        <button class="btn primary" id="help-search-btn" type="button">搜索/问答</button>
+        <div id="help-suggest" class="help-suggest hidden"></div>
+      </div>
+      <div id="help-search-status" class="help-search-status"></div>
+      <div id="help-results" class="help-results hidden"></div>
+    </section>
     <section class="help-category-wrap">
       ${categories.map(cat => renderHelpCategory(cat.title, cat.subtitle, cat.items)).join('')}
     </section>
@@ -1493,152 +1501,348 @@ function renderHelpCenter() {
       </form>
     </section>
   `);
+
   const search = document.querySelector('#help-search');
   const status = document.querySelector('#help-search-status');
-  const categoryData = [...document.querySelectorAll('.help-category')].map(category => {
-    const body = category.querySelector('.help-category-body');
-    const items = [...category.querySelectorAll('.help-item')];
-    items.forEach((item, index) => { item.dataset.originalIndex = String(index); });
-    return { category, body, items };
-  });
+  const suggest = document.querySelector('#help-suggest');
+  const resultsWrap = document.querySelector('#help-results');
+  const categoryWrap = document.querySelector('.help-category-wrap');
 
-  const normalizeHelpText = value => String(value || '')
-    .toLowerCase()
-    .replace(/[Ａ-Ｚａ-ｚ０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
-    .replace(/cloudflare/g, ' cloudflare ')
-    .replace(/dns/g, ' dns ')
-    .replace(/cname/g, ' cname ')
-    .replace(/aaaa/g, ' aaaa ')
-    .replace(/txt/g, ' txt ')
-    .replace(/mx/g, ' mx ')
-    .replace(/ipv4/g, ' ipv4 ')
-    .replace(/ipv6/g, ' ipv6 ')
-    .replace(/[，。！？、；：,.!?;:()（）【】\[\]<>《》"'“”‘’`~\/|]+/g, ' ')
-    .replace(/[\s　]+/g, ' ')
-    .trim();
+  const SEARCH_HISTORY_KEY = 'helpSearchHistoryV66';
+  const SEARCH_FREQ_KEY = 'helpSearchFrequencyV66';
 
-  const compactHelpText = value => normalizeHelpText(value).replace(/[\s\-_.]+/g, '');
-
-  const helpSynonyms = [
-    ['dns', '解析', '解析记录', '记录值', '域名解析', 'record', 'records'],
-    ['不生效', '没生效', '打不开', '访问不了', '无法访问', '解析失败', '解析报错', '生效慢', 'ttl', '缓存', '传播'],
-    ['登录', '登陆', '登不上', '进不去', '回到登录页', '密码', '账号', '账户', '邮箱', '手机号'],
-    ['注册', '申请', '提交', '前缀', '根域名', '待审核', '审核'],
-    ['删除', '删掉', '撤销', '申请删除', '误删', '注销', '取消'],
-    ['续期', '到期', '过期', '有效期', '剩余时间', '期限'],
-    ['额度', '配额', '名额', '数量', '上限', '限制', '不够'],
-    ['代理', 'proxied', 'proxy', '小云朵', '仅dns', '仅 dns', '橙云', '灰云'],
-    ['cname', '别名', 'pages', 'vercel', 'ddns', '跳转到域名'],
-    ['a记录', 'a 记录', 'ipv4', 'ip地址', 'ip'],
-    ['aaaa', 'aaaa记录', 'ipv6'],
-    ['txt', '验证', '校验', '所有权', '备案', 'spf', 'dkim'],
-    ['mx', '邮箱解析', '邮件', 'mail', '优先级'],
-    ['管理员', '批准', '拒绝', '禁用', '撤销', '留言', '审核'],
-    ['消息', '通知', '草稿', '模板', '消息中心'],
-    ['操作日志', '日志', '记录', '筛选', '操作人']
+  const normalizeWidth = value => String(value || '').replace(/[！-～]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0));
+  const escapeRegExp = value => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const typoPairs = [
+    ['密马', '密码'], ['蜜码', '密码'], ['码密', '密码'], ['注消', '注销'], ['注销号', '注销账号'],
+    ['帐户', '账户'], ['帐号', '账号'], ['登入', '登录'], ['登陆', '登录'], ['登不上去', '登录不了'],
+    ['人机验正', '人机验证'], ['解析没用', '解析没生效'], ['解淅', '解析'], ['域明', '域名'],
+    ['续费', '续期'], ['过期时间', '到期时间'], ['删出', '删除'], ['撤消', '撤销'],
+    ['cloundflare', 'cloudflare'], ['cloudfare', 'cloudflare'], ['cnmae', 'cname'], ['c nam e', 'cname'],
+    ['a记录', 'a 记录'], ['mx记录', 'mx 记录'], ['txt记录', 'txt 记录'], ['aaaa记录', 'aaaa 记录']
+  ];
+  const stopWords = [
+    '请问','麻烦','帮我','帮忙','一下','这个','那个','就是','是不是','有没有','为什么','怎么弄','怎么搞','怎么办','怎么','如何','哪里','哪个','可以','需要','不能','无法','一直','还是','已经','出现','问题','情况','啊','哦','呢','吗','吧','呀','的','了','我','你','他','她','它','请'
+  ];
+  const synonymGroups = [
+    ['登录','登入','登陆','登不上','登录不了','无法登录','进不去','login','sign in'],
+    ['账号','账户','帐号','帐户','用户名','user','account'],
+    ['密码','密马','修改密码','重置密码','忘记密码','找回密码','password'],
+    ['注册','创建账号','开户','新账号','register','signup'],
+    ['手机号','手机','电话号码','电话','phone','mobile'],
+    ['邮箱','电子邮箱','邮件地址','email','mail'],
+    ['人机验证','turnstile','验证码','验证失败','captcha'],
+    ['域名','二级域名','子域名','前缀','后缀','root domain','subdomain'],
+    ['申请','提交申请','注册域名','待审核','审核','审批','批准','拒绝'],
+    ['额度','配额','数量','上限','名额','quota','limit'],
+    ['到期','过期','有效期','剩余时间','续期','续费','renew','expire'],
+    ['删除','申请删除','撤销删除','注销','清理','remove','delete','withdraw'],
+    ['dns','解析','解析记录','记录值','目标地址','记录类型','dns record'],
+    ['a 记录','ipv4','ip 地址','服务器 ip','a record'],
+    ['aaaa','ipv6','aaaa 记录'],
+    ['cname','别名','github pages','pages','vercel','cloudflare pages'],
+    ['txt','所有权验证','spf','dkim','验证记录','txt 记录'],
+    ['mx','邮箱解析','邮件服务器','优先级','mx 记录'],
+    ['代理','小云朵','橙云','灰云','仅 dns','proxied','proxy','dns only'],
+    ['缓存','生效慢','ttl','传播','dns 缓存','刷新缓存'],
+    ['消息中心','通知','管理员消息','未读','已读','回复','feedback'],
+    ['网站打不开','无法访问','访问不了','打不开','404','502','503','site down'],
+    ['手机端','移动端','手机显示','响应式','mobile'],
+    ['复制','复制账号','已复制','copy'],
+    ['反馈','联系平台','联系我们','mailform','support']
+  ];
+  const tagRules = [
+    ['登录', ['登录','密码','账号','账户','邮箱','手机号','turnstile']], ['注册', ['注册','创建账号','手机号','邮箱','人机验证']],
+    ['域名申请', ['申请','前缀','后缀','待审核','审核','额度']], ['域名管理', ['管理域名','删除','续期','到期','正常域名']],
+    ['DNS', ['dns','解析','a 记录','aaaa','cname','txt','mx','代理','ttl']], ['访问故障', ['打不开','无法访问','404','502','生效']],
+    ['消息中心', ['消息','通知','反馈','已读','未读','回复']], ['手机端', ['手机','移动端','显示']],
+    ['账号资料', ['用户名','手机号','邮箱','复制账号','注销账号']]
   ];
 
-  const buildHelpTerms = raw => {
-    const normalized = normalizeHelpText(raw);
-    const compact = compactHelpText(raw);
-    const parts = normalized.split(/[\s\-_/]+/).map(compactHelpText).filter(Boolean);
-    const terms = new Set([compact, ...parts].filter(Boolean));
-    for (const group of helpSynonyms) {
-      const normalizedGroup = group.map(compactHelpText).filter(Boolean);
-      if (normalizedGroup.some(term => compact.includes(term) || term.includes(compact) || parts.some(part => term.includes(part) || part.includes(term)))) {
+  const normalizeSearchText = value => {
+    let text = normalizeWidth(value).toLowerCase();
+    typoPairs.forEach(([bad, good]) => { text = text.replace(new RegExp(escapeRegExp(bad.toLowerCase()), 'g'), good.toLowerCase()); });
+    return text
+      .replace(/https?:\/\/\S+/g, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/[`~!@#$%^&*()+=\[\]{}\\|;:'",.<>/?，。！？、；：【】（）《》“”‘’…·]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+  const compactText = value => normalizeSearchText(value).replace(/[\s\-_.]+/g, '');
+  const stripStopWords = value => {
+    let text = normalizeSearchText(value);
+    stopWords.forEach(word => {
+      const w = normalizeSearchText(word);
+      if (w) text = text.replace(new RegExp(`(^|\\s)${escapeRegExp(w)}(?=\\s|$)`, 'g'), ' ');
+      const c = compactText(word);
+      if (c && c.length > 1) text = text.replace(new RegExp(escapeRegExp(c), 'g'), ' ');
+    });
+    return text.replace(/\s+/g, ' ').trim();
+  };
+  const tokenize = raw => {
+    const cleaned = stripStopWords(raw);
+    const compact = compactText(cleaned || raw);
+    const terms = new Set();
+    normalizeSearchText(cleaned).split(/[\s\-_/]+/).forEach(part => {
+      const c = compactText(part);
+      if (c) terms.add(c);
+    });
+    if (compact) terms.add(compact);
+    synonymGroups.forEach(group => {
+      const normalizedGroup = group.map(compactText).filter(Boolean);
+      if (normalizedGroup.some(term => compact.includes(term) || term.includes(compact) || [...terms].some(t => term.includes(t) || t.includes(term)))) {
         normalizedGroup.forEach(term => terms.add(term));
       }
+    });
+    if (/^[\u4e00-\u9fa5]{3,}$/.test(compact)) {
+      for (let len of [4, 3, 2]) {
+        for (let i = 0; i <= compact.length - len; i += 1) terms.add(compact.slice(i, i + len));
+      }
     }
-    if (/^[一-龥]{3,}$/.test(compact)) {
-      for (let i = 0; i < compact.length - 1; i += 1) terms.add(compact.slice(i, i + 2));
-    }
-    return [...terms].filter(term => term.length >= 1);
+    return [...terms].filter(term => term && !['问题','可以','需要','什么'].includes(term));
   };
 
-  const helpCoverageScore = (textCompact, queryCompact) => {
-    const chars = [...new Set([...queryCompact].filter(Boolean))];
+  const readJsonStore = (key, fallback) => {
+    try { return JSON.parse(localStorage.getItem(key) || '') || fallback; } catch { return fallback; }
+  };
+  const saveJsonStore = (key, value) => {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+  };
+  const getHistory = () => readJsonStore(SEARCH_HISTORY_KEY, []);
+  const getFrequency = () => readJsonStore(SEARCH_FREQ_KEY, {});
+  const recordSearch = (raw, terms) => {
+    const q = normalizeSearchText(raw);
+    if (!q) return;
+    const history = [q, ...getHistory().filter(x => x !== q)].slice(0, 10);
+    saveJsonStore(SEARCH_HISTORY_KEY, history);
+    const freq = getFrequency();
+    [compactText(q), ...terms].filter(Boolean).forEach(term => { freq[term] = Math.min(999, Number(freq[term] || 0) + 1); });
+    saveJsonStore(SEARCH_FREQ_KEY, freq);
+  };
+  const extractSummary = text => {
+    const clean = normalizeWidth(text).replace(/\s+/g, ' ').trim();
+    const first = clean.split(/[。！？.!?]/).find(x => x.trim().length >= 12) || clean;
+    return first.slice(0, 120);
+  };
+  const extractTags = (title, body, categoryTitle, categorySubtitle) => {
+    const all = compactText(`${title} ${body} ${categoryTitle} ${categorySubtitle}`);
+    const tags = new Set();
+    tagRules.forEach(([label, keys]) => {
+      if (keys.some(key => all.includes(compactText(key)))) tags.add(label);
+    });
+    synonymGroups.forEach(group => {
+      const label = group[0].replace(/\s+/g, '');
+      if (group.some(key => all.includes(compactText(key)))) tags.add(label);
+    });
+    return [...tags].slice(0, 10);
+  };
+  const categoryData = [...document.querySelectorAll('.help-category')].map((category, catIndex) => {
+    const body = category.querySelector('.help-category-body');
+    const categoryTitle = category.querySelector('.help-category-title strong')?.textContent || category.querySelector('summary')?.textContent || '';
+    const categorySubtitle = category.querySelector('.help-category-title em')?.textContent || '';
+    const items = [...category.querySelectorAll('.help-item')];
+    items.forEach((item, index) => { item.dataset.originalIndex = String(index); item.dataset.helpId = `help-${catIndex}-${index}`; });
+    return { category, body, items, categoryTitle, categorySubtitle, catIndex };
+  });
+  const articles = categoryData.flatMap(({ category, body, items, categoryTitle, categorySubtitle, catIndex }) => items.map((item, index) => {
+    const rawTitle = item.querySelector('summary')?.textContent || '';
+    const title = rawTitle.replace(/^\s*\d+\.\s*/, '').trim();
+    const bodyText = plainHelpAnswer(item.querySelector('.help-detail')?.innerHTML || item.textContent || '');
+    const summary = extractSummary(bodyText);
+    const tags = extractTags(title, bodyText, categoryTitle, categorySubtitle);
+    const allText = `${title} ${summary} ${tags.join(' ')} ${bodyText}`;
+    const id = item.dataset.helpId || `help-${catIndex}-${index}`;
+    return {
+      id, item, category, categoryBody: body, categoryTitle, categorySubtitle, title, bodyText, summary, tags,
+      titleNorm: normalizeSearchText(title), titleCompact: compactText(title), bodyNorm: normalizeSearchText(bodyText), bodyCompact: compactText(bodyText),
+      summaryNorm: normalizeSearchText(summary), summaryCompact: compactText(summary), tagsNorm: tags.map(normalizeSearchText), tagsCompact: tags.map(compactText),
+      allCompact: compactText(allText), recency: 10000 - (catIndex * 1000 + index), originalIndex: index
+    };
+  }));
+
+  const termAppears = (text, term) => Boolean(term && text.includes(term));
+  const fuzzyRatio = (text, term) => {
+    const chars = [...new Set([...String(term || '')])].filter(Boolean);
     if (!chars.length) return 0;
-    const hit = chars.filter(ch => textCompact.includes(ch)).length;
-    return hit / chars.length;
+    return chars.filter(ch => text.includes(ch)).length / chars.length;
   };
-
-  const helpScoreItem = (item, rawQuery, terms) => {
-    const title = compactHelpText(item.querySelector('summary')?.textContent || '');
-    const text = compactHelpText(item.textContent || '');
-    const queryCompact = compactHelpText(rawQuery);
+  const scoreArticle = (article, rawQuery, terms) => {
+    const rawNorm = normalizeSearchText(rawQuery);
+    const rawCompact = compactText(rawQuery);
+    if (!rawCompact || !terms.length) return { score: 0, reason: '' };
     let score = 0;
-    if (!queryCompact) return 1;
-    if (title.includes(queryCompact)) score += 120;
-    if (text.includes(queryCompact)) score += 80;
+    const reasons = [];
+    if (article.titleCompact === rawCompact || article.titleNorm === rawNorm) { score += 1000; reasons.push('标题精准匹配'); }
+    else if (article.titleCompact.includes(rawCompact) || rawCompact.includes(article.titleCompact)) { score += 760; reasons.push('标题包含关键词'); }
+    for (const tag of article.tagsCompact) {
+      if (tag === rawCompact) { score += 620; reasons.push('标签精准匹配'); }
+      else if (tag.includes(rawCompact) || rawCompact.includes(tag)) { score += 480; reasons.push('标签相关匹配'); }
+    }
+    if (article.bodyCompact.includes(rawCompact) || article.summaryCompact.includes(rawCompact)) { score += 360; reasons.push('正文短语匹配'); }
+    let titleHits = 0, tagHits = 0, bodyHits = 0, allHits = 0;
     for (const term of terms) {
       if (!term) continue;
-      if (title.includes(term)) score += term.length >= 2 ? 22 : 8;
-      else if (text.includes(term)) score += term.length >= 2 ? 12 : 4;
+      const lenWeight = Math.min(16, Math.max(2, term.length));
+      if (article.titleCompact.includes(term)) { score += 60 + lenWeight * 5; titleHits += 1; }
+      if (article.tagsCompact.some(tag => tag.includes(term) || term.includes(tag))) { score += 44 + lenWeight * 4; tagHits += 1; }
+      if (article.summaryCompact.includes(term)) { score += 28 + lenWeight * 3; bodyHits += 1; }
+      if (article.bodyCompact.includes(term)) { score += 20 + lenWeight * 2; bodyHits += 1; }
+      if (article.allCompact.includes(term)) allHits += 1;
     }
-    const coverage = helpCoverageScore(text, queryCompact);
-    if (coverage >= 0.72) score += 35;
-    else if (coverage >= 0.55) score += 18;
-    else if (coverage >= 0.42) score += 8;
-    return score;
+    const coverage = terms.length ? allHits / terms.length : 0;
+    if (coverage >= 0.8 && terms.length > 1) { score += 160; reasons.push('多个关键词同时出现'); }
+    else if (coverage >= 0.5) score += 70;
+    if (!allHits) {
+      const fuzzy = Math.max(...terms.map(term => fuzzyRatio(article.allCompact, term)), 0);
+      if (fuzzy >= 0.72) { score += 48; reasons.push('错别字/模糊匹配'); }
+      else if (fuzzy >= 0.55) score += 16;
+    }
+    const freq = getFrequency();
+    const freqBoost = Math.min(40, terms.reduce((sum, term) => sum + Number(freq[term] || 0), 0));
+    score += freqBoost;
+    score += Math.max(0, article.recency / 100000);
+    if (titleHits) reasons.push('标题关键词命中');
+    else if (tagHits) reasons.push('标签命中');
+    else if (bodyHits) reasons.push('正文关键词命中');
+    return { score, reason: reasons[0] || '相关内容' };
   };
-
-  const resetHelpSearch = () => {
-    categoryData.forEach(({ category, body, items }) => {
-      category.style.display = '';
-      category.open = false;
-      [...items]
-        .sort((a, b) => Number(a.dataset.originalIndex || 0) - Number(b.dataset.originalIndex || 0))
-        .forEach(item => { item.style.display = ''; item.open = false; body.appendChild(item); });
-    });
-    if (status) status.innerHTML = '';
+  const highlightText = (text, terms) => {
+    let html = esc(text || '');
+    const list = [...new Set(terms)].filter(t => t && t.length >= 2).sort((a,b) => b.length - a.length).slice(0, 10);
+    for (const term of list) {
+      const safeTerm = esc(term);
+      try { html = html.replace(new RegExp(escapeRegExp(safeTerm), 'ig'), match => `<mark>${match}</mark>`); } catch {}
+    }
+    return html;
   };
-
-  const runFilter = () => {
-    const raw = (search?.value || '').trim();
-    if (!raw) { resetHelpSearch(); return; }
-    const terms = buildHelpTerms(raw);
-    let total = 0;
-    let bestItems = [];
-    categoryData.forEach(({ category, body, items }) => {
-      const scored = items
-        .map(item => ({ item, score: helpScoreItem(item, raw, terms) }))
-        .filter(row => row.score > 0)
-        .sort((a, b) => b.score - a.score || Number(a.item.dataset.originalIndex || 0) - Number(b.item.dataset.originalIndex || 0));
-      bestItems.push(...scored.map(row => ({ ...row, category, body })));
-      items.forEach(item => { item.style.display = 'none'; item.open = false; });
-      const visibleRows = scored.slice(0, 18);
-      visibleRows.forEach((row, index) => {
-        row.item.style.display = '';
-        row.item.open = index < 3;
-        body.appendChild(row.item);
-      });
-      category.style.display = visibleRows.length ? '' : 'none';
-      category.open = visibleRows.length > 0;
-      total += visibleRows.length;
-    });
-
-    if (total === 0) {
-      bestItems = categoryData.flatMap(({ category, body, items }) => items.slice(0, 3).map(item => ({ item, category, body, score: 0 })));
-      categoryData.forEach(({ category, body, items }) => {
-        items.forEach(item => { item.style.display = 'none'; item.open = false; });
-        const fallback = items.slice(0, 3);
-        fallback.forEach((item, index) => { item.style.display = ''; item.open = index === 0; body.appendChild(item); });
-        category.style.display = '';
-        category.open = true;
-      });
-      total = bestItems.length;
-      if (status) status.innerHTML = `<span class="help-search-warning">没有精准命中，已根据关键词显示相关问题。可以换成“打不开 / DNS / 删除 / 额度 / 登录”等词继续搜。</span>`;
+  const makeSnippet = (article, terms, rawQuery) => {
+    const source = article.bodyText || article.summary || article.title;
+    const rawTerms = [normalizeSearchText(rawQuery), ...terms].filter(Boolean).sort((a,b) => b.length - a.length);
+    const lower = source.toLowerCase();
+    let idx = -1;
+    for (const term of rawTerms) {
+      if (term.length < 2) continue;
+      idx = lower.indexOf(term.toLowerCase());
+      if (idx >= 0) break;
+    }
+    if (idx < 0) idx = 0;
+    const start = Math.max(0, idx - 45);
+    const end = Math.min(source.length, start + 170);
+    const prefix = start > 0 ? '…' : '';
+    const suffix = end < source.length ? '…' : '';
+    return `${prefix}${highlightText(source.slice(start, end), rawTerms)}${suffix}`;
+  };
+  const searchArticles = raw => {
+    const terms = tokenize(raw);
+    if (!terms.length || !/[\u4e00-\u9fa5a-z0-9]/i.test(normalizeSearchText(raw))) return { terms, rows: [] };
+    const seen = new Set();
+    const rows = articles.map(article => ({ article, ...scoreArticle(article, raw, terms) }))
+      .filter(row => row.score > 12 && !seen.has(row.article.id) && seen.add(row.article.id))
+      .sort((a, b) => b.score - a.score || b.article.recency - a.article.recency || a.article.originalIndex - b.article.originalIndex);
+    return { terms, rows };
+  };
+  const popularArticles = () => {
+    const titles = ['网站打不开时先查什么？','为什么申请后一直显示待审核？','为什么审核通过前不能设置 DNS？','为什么提示域名额度不足？','为什么登录后还是回到登录页？'];
+    const picked = titles.map(t => articles.find(a => a.title === t)).filter(Boolean);
+    return [...picked, ...articles].filter((a, i, arr) => a && arr.findIndex(x => x.id === a.id) === i).slice(0, 3);
+  };
+  const renderResults = (rows, terms, raw) => {
+    resultsWrap?.classList.remove('hidden');
+    if (!rows.length) {
+      const recs = popularArticles();
+      resultsWrap.innerHTML = `
+        <div class="help-no-results">
+          <strong>没有找到完全匹配的文章</strong>
+          <p>建议把问题简化成 1-3 个核心词，例如“登录”“DNS”“删除域名”“额度”“网站打不开”。下面是可能有帮助的热门问题。</p>
+        </div>
+        <div class="help-result-list">
+          ${recs.map(article => `
+            <button class="help-result" type="button" data-help-jump="${esc(article.id)}">
+              <span class="help-result-title">${esc(article.title)}</span>
+              <span class="help-result-meta">热门推荐 · ${esc(article.categoryTitle)}</span>
+              <span class="help-result-snippet">${esc(article.summary)}</span>
+            </button>`).join('')}
+        </div>`;
       return;
     }
-
-    if (status) {
-      const readableTerms = terms.slice(0, 8).map(t => `<span>${esc(t)}</span>`).join('');
-      status.innerHTML = `<strong>智能匹配到 ${total} 条相关问题</strong><em>已按相关度排序，不要求完全一致。</em><div class="help-search-tags">${readableTerms}</div>`;
+    const visible = rows.slice(0, 30);
+    resultsWrap.innerHTML = `
+      <div class="help-results-head"><strong>搜索结果 ${rows.length} 条</strong><span>已按标题、标签、短语、正文匹配度排序</span></div>
+      <div class="help-result-list">
+        ${visible.map(row => `
+          <button class="help-result" type="button" data-help-jump="${esc(row.article.id)}">
+            <span class="help-result-title">${highlightText(row.article.title, terms.concat([raw]))}</span>
+            <span class="help-result-meta">${esc(row.reason)} · ${esc(row.article.categoryTitle)} ${row.article.tags.slice(0,4).map(tag => `<i>${esc(tag)}</i>`).join('')}</span>
+            <span class="help-result-snippet">${makeSnippet(row.article, terms, raw)}</span>
+          </button>`).join('')}
+      </div>`;
+  };
+  const jumpToArticle = id => {
+    const article = articles.find(a => a.id === id);
+    if (!article) return;
+    categoryWrap?.classList.remove('help-category-muted');
+    categoryData.forEach(({ category, items }) => { category.style.display = ''; category.open = category === article.category; items.forEach(item => { item.style.display = ''; }); });
+    article.item.open = true;
+    article.item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    article.item.classList.add('help-item-highlight');
+    setTimeout(() => article.item.classList.remove('help-item-highlight'), 1800);
+  };
+  const renderSuggestions = raw => {
+    if (!suggest) return;
+    const query = normalizeSearchText(raw || '');
+    if (!query) {
+      const history = getHistory();
+      if (!history.length) { suggest.classList.add('hidden'); suggest.innerHTML = ''; return; }
+      suggest.innerHTML = `<div class="help-suggest-title">近期搜索</div>${history.map(item => `<button type="button" data-suggest-query="${esc(item)}">${esc(item)}</button>`).join('')}`;
+      suggest.classList.remove('hidden');
+      return;
     }
+    const { terms, rows } = searchArticles(raw);
+    const top = rows.slice(0, 8);
+    if (!top.length) { suggest.classList.add('hidden'); suggest.innerHTML = ''; return; }
+    suggest.innerHTML = top.map(row => `<button type="button" data-suggest-query="${esc(row.article.title)}"><strong>${highlightText(row.article.title, terms)}</strong><span>${esc(row.reason)}</span></button>`).join('');
+    suggest.classList.remove('hidden');
+  };
+  const doSearch = () => {
+    const raw = (search?.value || '').trim();
+    suggest?.classList.add('hidden');
+    const normalized = normalizeSearchText(raw);
+    if (!normalized || !/[\u4e00-\u9fa5a-z0-9]/i.test(normalized)) {
+      if (status) status.innerHTML = `<span class="help-search-warning">请输入具体问题或关键词，例如“登录失败”“DNS 不生效”“删除域名”。空白内容或纯符号不会发起搜索。</span>`;
+      resultsWrap?.classList.add('hidden');
+      return;
+    }
+    const { terms, rows } = searchArticles(raw);
+    recordSearch(raw, terms);
+    if (status) {
+      const readableTerms = terms.slice(0, 10).map(t => `<span>${esc(t)}</span>`).join('');
+      status.innerHTML = rows.length
+        ? `<strong>已检索帮助中心文章</strong><em>范围：标题、正文、标签、摘要；同一文章不会重复展示。</em><div class="help-search-tags">${readableTerms}</div>`
+        : `<span class="help-search-warning">没有完全命中。已给出热门问题和关键词简化建议。</span>`;
+    }
+    renderResults(rows, terms, raw);
   };
 
-  search?.addEventListener('input', runFilter);
-  document.querySelector('#help-search-btn')?.addEventListener('click', runFilter);
+  search?.addEventListener('input', event => renderSuggestions(event.currentTarget.value));
+  search?.addEventListener('focus', event => renderSuggestions(event.currentTarget.value));
+  search?.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); doSearch(); } });
+  document.addEventListener('click', event => {
+    if (!event.target.closest?.('.help-search-box')) suggest?.classList.add('hidden');
+  });
+  suggest?.addEventListener('click', event => {
+    const btn = event.target.closest('button[data-suggest-query]');
+    if (!btn || !search) return;
+    search.value = btn.dataset.suggestQuery || '';
+    suggest.classList.add('hidden');
+    doSearch();
+  });
+  resultsWrap?.addEventListener('click', event => {
+    const btn = event.target.closest('button[data-help-jump]');
+    if (btn) jumpToArticle(btn.dataset.helpJump);
+  });
+  document.querySelector('#help-search-btn')?.addEventListener('click', doSearch);
+
   document.querySelector('#help-contact-form')?.addEventListener('submit', async event => {
     event.preventDefault();
     const form = event.currentTarget;
