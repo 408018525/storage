@@ -1562,3 +1562,30 @@ html, body {
 
 .site-notice { margin: 18px 24px 0; background: #eef6ff; border: 1px solid #bfdbfe; border-radius: 18px; padding: 16px 18px; color: #1d4ed8; font-weight: 700; }
 .app-footer { margin: 0 24px 24px; padding: 18px; color: var(--muted); text-align: center; font-size: 14px; }
+
+
+/* v63 Turnstile login visibility */
+.turnstile-holder {
+  margin: 10px 0 14px;
+  min-height: 72px;
+}
+.turnstile-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 72px;
+  border: 1px dashed rgba(84, 104, 255, .35);
+  border-radius: 14px;
+  color: #65728a;
+  font-weight: 700;
+  background: rgba(246, 248, 255, .8);
+}
+.notice.small.turnstile-missing {
+  margin: 10px 0 14px;
+  font-size: 13px;
+}
+.notice.small.danger {
+  border-color: rgba(239, 68, 68, .28);
+  background: #fff5f5;
+  color: #b91c1c;
+}
