@@ -738,9 +738,12 @@ async function register(request: Request, env: Env): Promise<Response> {
   }
 
   const username = normalizeUsername(body.username);
-  const email = normalizeEmail(body.email);
-  if (email && email.includes('@') && settings.registration.blockTempEmail && isTempEmailDomain(email)) throw new HttpError(400, 'TEMP_EMAIL_BLOCKED', '不允许使用临时邮箱注册');
-  if (email && listMatches(email, settings.blacklist?.emails || [])) throw new HttpError(403, 'EMAIL_BLOCKED', '该邮箱/手机号已被禁止注册');
+  const email = normalizeOptionalEmailStrict(body.email);
+  const phone = normalizeOptionalPhone(body.phone);
+  if (!email && !phone) throw new HttpError(400, 'CONTACT_REQUIRED', '手机号和邮箱至少填写一个');
+  if (email && settings.registration.blockTempEmail && isTempEmailDomain(email)) throw new HttpError(400, 'TEMP_EMAIL_BLOCKED', '不允许使用临时邮箱注册');
+  if (email && listMatches(email, settings.blacklist?.emails || [])) throw new HttpError(403, 'EMAIL_BLOCKED', '该邮箱已被禁止注册');
+  if (phone && listMatches(phone, settings.blacklist?.emails || [])) throw new HttpError(403, 'PHONE_BLOCKED', '该手机号已被禁止注册');
 
   if (settings.registration.maxAccountsPerIp && settings.registration.maxAccountsPerIp > 0) {
     const count = await env.DB.prepare(`SELECT COUNT(*) AS count FROM audit_logs WHERE action='auth.register' AND ip=?`).bind(ip).first<{ count: number }>();
@@ -755,19 +758,21 @@ async function register(request: Request, env: Env): Promise<Response> {
   const password = validatePassword(body.password);
   const duplicate = await env.DB.prepare(`
     SELECT id FROM users
-    WHERE username=? COLLATE NOCASE OR (? IS NOT NULL AND email=? COLLATE NOCASE)
+    WHERE username=? COLLATE NOCASE
+      OR (? IS NOT NULL AND email=? COLLATE NOCASE)
+      OR (? IS NOT NULL AND phone=? COLLATE NOCASE)
     LIMIT 1
-  `).bind(username, email, email).first<{ id: string }>();
-  if (duplicate) throw new HttpError(409, 'USER_EXISTS', '账号或邮箱/手机号已被使用');
+  `).bind(username, email, email, phone, phone).first<{ id: string }>();
+  if (duplicate) throw new HttpError(409, 'USER_EXISTS', '账号、邮箱或手机号已被使用');
 
   const { hash, salt } = await hashPassword(password);
   const id = crypto.randomUUID();
   const status = settings.registration.defaultStatus === 'manual' ? 'disabled' : (settings.registration.autoActivate ? 'active' : 'disabled');
 
   await env.DB.prepare(`
-    INSERT INTO users (id, username, email, password_hash, password_salt, role, status, domain_quota, permissions_json)
-    VALUES (?, ?, ?, ?, ?, 'user', ?, ?, ?)
-  `).bind(id, username, email, hash, salt, status, settings.domain.defaultQuota, JSON.stringify({ canApply: true })).run();
+    INSERT INTO users (id, username, email, phone, password_hash, password_salt, role, status, domain_quota, permissions_json)
+    VALUES (?, ?, ?, ?, ?, ?, 'user', ?, ?, ?)
+  `).bind(id, username, email, phone, hash, salt, status, settings.domain.defaultQuota, JSON.stringify({ canApply: true })).run();
 
   await audit(env, request, id, 'auth.register', 'user', id, { status });
 
