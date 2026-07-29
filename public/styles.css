@@ -1630,24 +1630,28 @@ html, body {
   }
 }
 
-/* v65 login feedback link */
+/* v67 login feedback link */
 .login-feedback-row {
-  margin: 12px 0 0;
+  margin: 22px 0 0;
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   font-weight: 800;
   color: var(--muted);
 }
 .login-feedback-row a {
-  color: #2563eb;
+  color: inherit;
   text-decoration: none;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: rgba(37, 99, 235, .08);
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  border-bottom: 1px dashed currentColor;
 }
-.login-feedback-row a:hover { background: rgba(37, 99, 235, .14); }
+.login-feedback-row a:hover {
+  color: var(--ink);
+  background: transparent;
+}
 
 
 /* v66 help center advanced search */
@@ -1836,4 +1840,47 @@ html, body {
   .help-result{padding:12px;border-radius:16px}
   .help-result-title{font-size:15px}
   .help-result-snippet{font-size:13px}
+}
+
+/* v67 admin color picker */
+.color-field .color-picker-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) 56px 52px;
+  align-items: center;
+  gap: 10px;
+}
+.color-field .color-picker-row .color-text {
+  width: 100%;
+}
+.color-native {
+  width: 56px;
+  height: 44px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+  cursor: pointer;
+}
+.color-preview.color-open {
+  width: 52px;
+  height: 44px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  box-shadow: inset 0 0 0 3px rgba(255,255,255,.65), 0 10px 24px rgba(15,23,42,.12);
+  cursor: pointer;
+  margin: 0;
+}
+.color-preview.color-open:focus-visible,
+.color-native:focus-visible {
+  outline: 3px solid rgba(79,99,246,.25);
+  outline-offset: 2px;
+}
+@media (max-width: 720px) {
+  .color-field .color-picker-row {
+    grid-template-columns: 1fr 50px 48px;
+    gap: 8px;
+  }
+  .color-native, .color-preview.color-open {
+    height: 40px;
+  }
 }
