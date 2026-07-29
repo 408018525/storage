@@ -3163,8 +3163,8 @@ async function renderAdminSettings() {
           <label class="field"><span>站点 Logo 图片 URL</span><input name="logoImageUrl" value="${fieldValue(site.logoImageUrl)}" placeholder="https://example.com/logo.png"><em>填写后优先显示图片 Logo。</em></label>
           <label class="field"><span>ICP 备案信息</span><input name="icp" value="${fieldValue(site.icp)}" placeholder="例如：粤ICP备xxxx号"></label>
           <label class="field"><span>前台默认语言</span><select name="defaultLanguage"><option value="zh" ${site.defaultLanguage !== 'en' ? 'selected' : ''}>中文</option><option value="en" ${site.defaultLanguage === 'en' ? 'selected' : ''}>英文</option></select></label>
-          <label class="field"><span>主色</span><input name="accent" class="color-text" value="${fieldValue(site.accent || '#4f63f6')}" placeholder="#4f63f6"><b class="color-preview" style="background:${attr(site.accent || '#4f63f6')}"></b></label>
-          <label class="field"><span>辅助色</span><input name="accent2" class="color-text" value="${fieldValue(site.accent2 || '#7c4dff')}" placeholder="#7c4dff"><b class="color-preview" style="background:${attr(site.accent2 || '#7c4dff')}"></b></label>
+          <label class="field color-field"><span>主色</span><div class="color-picker-row"><input name="accent" class="color-text" value="${fieldValue(site.accent || '#4f63f6')}" placeholder="#4f63f6"><input type="color" class="color-native" value="${fieldValue(site.accent || '#4f63f6')}"><button type="button" class="color-preview color-open" style="background:${attr(site.accent || '#4f63f6')}" aria-label="选择主色"></button></div><em>可直接输入十六进制色值，也可点击色块打开选色框。</em></label>
+          <label class="field color-field"><span>辅助色</span><div class="color-picker-row"><input name="accent2" class="color-text" value="${fieldValue(site.accent2 || '#7c4dff')}" placeholder="#7c4dff"><input type="color" class="color-native" value="${fieldValue(site.accent2 || '#7c4dff')}"><button type="button" class="color-preview color-open" style="background:${attr(site.accent2 || '#7c4dff')}" aria-label="选择辅助色"></button></div><em>可直接输入十六进制色值，也可点击色块打开选色框。</em></label>
           <label class="field wide"><span>页脚文字</span><input name="footer" value="${fieldValue(site.footer)}"></label>
           <label class="field wide"><span>前台首页公告 Markdown</span><textarea name="homepageNotice" rows="5" placeholder="支持 Markdown 文本，作为前台顶部横幅通知">${esc(site.homepageNotice || '')}</textarea></label>
           <label class="field wide"><span>404 自定义提示文本</span><textarea name="notFoundText" rows="3">${esc(site.notFoundText || '')}</textarea></label>
@@ -3270,7 +3270,7 @@ async function renderAdminSettings() {
       btn.classList.add('active');
       document.querySelector(`[data-page="${btn.dataset.tab}"]`)?.classList.add('active');
     }));
-    document.querySelectorAll('.color-text').forEach(input => input.addEventListener('input', () => { const p = input.parentElement.querySelector('.color-preview'); if (/^#[0-9a-fA-F]{6}$/.test(input.value)) p.style.background = input.value; }));
+    bindColorPickers();
 
     bindSettingForm('#site-form', 'site', f => Object.fromEntries(f));
     bindSettingForm('#registration-form', 'registration', f => ({ enabled:f.get('enabled')==='on', autoActivate:f.get('autoActivate')==='on', blockTempEmail:f.get('blockTempEmail')==='on', turnstileRegisterEnabled:f.get('turnstileRegisterEnabled')==='on', defaultStatus:f.get('defaultStatus'), maxAccountsPerIp:f.get('maxAccountsPerIp'), ipRegisterCooldownMinutes:f.get('ipRegisterCooldownMinutes'), disabledMessage:f.get('disabledMessage') }));
@@ -3282,6 +3282,40 @@ async function renderAdminSettings() {
     bindSettingForm('#automation-form', 'automation', f => ({ enabled:f.get('enabled')==='on', scanCycleMinutes:f.get('scanCycleMinutes'), checkExpiringDomains:f.get('checkExpiringDomains')==='on', cleanupExpiredDns:f.get('cleanupExpiredDns')==='on' }));
   } catch (error) { toast(error.message, 'error'); }
 }
+
+function normalizeHexColor(value, fallback = '#4f63f6') {
+  const raw = String(value || '').trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(raw)) return raw.toUpperCase();
+  if (/^[0-9a-fA-F]{6}$/.test(raw)) return `#${raw}`.toUpperCase();
+  return fallback;
+}
+
+function bindColorPickers() {
+  document.querySelectorAll('.color-field').forEach(field => {
+    const text = field.querySelector('.color-text');
+    const native = field.querySelector('.color-native');
+    const preview = field.querySelector('.color-preview');
+    if (!text || !native || !preview) return;
+    const fallback = native.value || '#4F63F6';
+    const apply = value => {
+      const hex = normalizeHexColor(value, fallback);
+      text.value = hex;
+      native.value = hex;
+      preview.style.background = hex;
+    };
+    apply(text.value || native.value || fallback);
+    text.addEventListener('input', () => {
+      const raw = String(text.value || '').trim();
+      if (/^#?[0-9a-fA-F]{6}$/.test(raw)) apply(raw);
+    });
+    native.addEventListener('input', () => apply(native.value));
+    preview.addEventListener('click', () => {
+      if (typeof native.showPicker === 'function') native.showPicker();
+      else native.click();
+    });
+  });
+}
+
 function bindSettingForm(selector, group, mapper) {
   const form = document.querySelector(selector);
   if (!form) return;
