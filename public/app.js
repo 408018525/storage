@@ -50,6 +50,44 @@ function suffixList() {
   return state.config?.suffixes || state.config?.dns?.suffixes || [];
 }
 
+function hasTurnstileSiteKey() {
+  return Boolean(String(state.config?.turnstile?.siteKey || '').trim());
+}
+
+function shouldShowTurnstile(kind) {
+  const turn = state.config?.turnstile || {};
+  if (!hasTurnstileSiteKey()) return false;
+  if (kind === 'login') return true;
+  if (kind === 'register') return Boolean(turn.enabledRegister);
+  if (kind === 'apply') return Boolean(turn.enabledApply);
+  return false;
+}
+
+let turnstileApiPromise = null;
+function ensureTurnstileApi() {
+  if (window.turnstile) return Promise.resolve();
+  if (turnstileApiPromise) return turnstileApiPromise;
+  turnstileApiPromise = new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[data-turnstile-api]') || document.querySelector('script[src*="challenges.cloudflare.com/turnstile"]');
+    if (existing) {
+      existing.addEventListener('load', () => resolve(), { once:true });
+      existing.addEventListener('error', () => reject(new Error('Turnstile 加载失败')), { once:true });
+      setTimeout(() => window.turnstile ? resolve() : reject(new Error('Turnstile 加载超时')), 8000);
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+    script.async = true;
+    script.defer = true;
+    script.dataset.turnstileApi = '1';
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Turnstile 加载失败'));
+    document.head.appendChild(script);
+    setTimeout(() => window.turnstile ? resolve() : reject(new Error('Turnstile 加载超时')), 10000);
+  });
+  return turnstileApiPromise;
+}
+
 
 const I18N_EN = {
   '初始化管理员':'Bootstrap Admin','首次部署需要创建管理员账户。':'Create the first admin account for this deployment.','初始化令牌':'Setup Token','管理员用户名':'Admin Username','邮箱':'Email','邮箱/手机号':'Email / Phone','请输入邮箱/手机号':'Enter email or phone number','管理员密码':'Admin Password','至少 8 位。':'At least 8 characters.','创建管理员':'Create Admin',
@@ -881,14 +919,14 @@ async function renderLogin() {
             <label class="login-check"><input name="remember" type="checkbox"> <span>记住我</span></label>
             <button type="button" id="forgot-password" class="login-link-btn">忘记密码？</button>
           </div>
-          ${turn.enabledLogin ? '<div class="turnstile-holder"><div id="turnstile-box"></div></div>' : ''}
+          ${shouldShowTurnstile('login') ? '<div class="turnstile-holder"><div id="turnstile-box"></div></div>' : '<div class="notice small turnstile-missing">人机验证未显示：请检查 TURNSTILE_SITE_KEY 是否配置。</div>'}
           <button class="btn primary login-submit" type="submit">登录账户</button>
         </form>
         <div class="login-divider"></div>
         <p class="login-register-row"><span>还没有账号？</span> <a href="#/register">立即注册</a></p>
       </section>
     </main>`;
-  if (turn.enabledLogin) await mountTurnstile('#turnstile-box', turn.actionLogin);
+  if (shouldShowTurnstile('login')) await mountTurnstile('#turnstile-box', turn.actionLogin || 'login');
   document.querySelector('#toggle-password')?.addEventListener('click', () => {
     const input = document.querySelector('#login-password');
     input.type = input.type === 'password' ? 'text' : 'password';
@@ -3009,10 +3047,22 @@ function bindSettingForm(selector, group, mapper) {
 
 async function mountTurnstile(selector, action) {
   const config = state.config.turnstile || {};
-  if (!window.turnstile || !config.siteKey) return;
   const el = document.querySelector(selector);
   if (!el) return;
-  state.widgetId = window.turnstile.render(el, { sitekey: config.siteKey, action, language: lang() === 'en' ? 'en' : 'zh-cn' });
+  if (!config.siteKey) {
+    el.innerHTML = '<div class="notice small">Turnstile Site Key 未配置，无法显示人机验证。</div>';
+    return;
+  }
+  el.innerHTML = '<div class="turnstile-loading">正在加载人机验证…</div>';
+  try {
+    await ensureTurnstileApi();
+    if (!window.turnstile) throw new Error('Turnstile 对象未就绪');
+    el.innerHTML = '';
+    if (state.widgetId !== null) { try { window.turnstile.remove(state.widgetId); } catch {} }
+    state.widgetId = window.turnstile.render(el, { sitekey: config.siteKey, action: action || 'login', language: lang() === 'en' ? 'en' : 'zh-cn' });
+  } catch (error) {
+    el.innerHTML = '<div class="notice small danger">人机验证加载失败，请刷新页面或关闭广告拦截插件。</div>';
+  }
 }
 function turnstileToken() {
   if (window.turnstile && state.widgetId !== null) return window.turnstile.getResponse(state.widgetId);
