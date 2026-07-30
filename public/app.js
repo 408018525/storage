@@ -901,17 +901,81 @@ async function renderSetup() {
 
 
 function serviceAgreementHtml() {
-  return `<div class="agreement-full-text">
+  return `<div class="agreement-full-text agreement-long-text">
     <h2>Flore 免费二级域名系统服务协议</h2>
-    <p><strong>一、服务说明：</strong>本系统为用户提供免费二级域名申请、审核、DNS 解析管理、消息通知和帮助反馈服务。用户申请的二级域名必须遵守平台规则和所在地法律法规。</p>
-    <p><strong>二、账号责任：</strong>用户应妥善保管账号、密码、手机号和邮箱等资料。使用账号提交域名申请、解析记录、删除申请、消息反馈等操作，均视为该账号本人操作。</p>
-    <p><strong>三、域名使用限制：</strong>禁止申请或使用违法、侵权、仿冒、钓鱼、欺诈、垃圾邮件、恶意跳转、误导用户、危害网络安全或影响主域名信誉的二级域名。平台有权拒绝、禁用、撤销或删除违规域名。</p>
-    <p><strong>四、审核与删除：</strong>域名可能需要管理员人工审核。审核通过前不能设置 DNS 解析。已生效域名申请删除后，可能需要管理员批准；为避免误删，系统可能要求输入完整域名或账号确认。</p>
-    <p><strong>五、DNS 解析：</strong>用户应正确填写 A、AAAA、CNAME、TXT、MX 等记录。解析是否生效受 Cloudflare、DNS 缓存、目标服务器、代理状态、TTL 等因素影响。错误解析可能导致网站无法访问。</p>
-    <p><strong>六、到期与续期：</strong>域名有效期、续期窗口、删除清理周期以后台设置为准。用户应关注到期提醒，未及时续期或长期违规使用的域名可能被清理。</p>
-    <p><strong>七、消息与反馈：</strong>系统消息、管理员通知、用户反馈和客服回复会进入消息中心。无法登录或需要提交截图时，可以使用外部反馈入口。</p>
-    <p><strong>八、免责声明：</strong>免费二级域名服务不承诺永久可用。因第三方 DNS、Cloudflare、目标服务器、浏览器缓存、网络运营商或用户配置错误造成的访问异常，平台会协助排查，但不承担由此产生的间接损失。</p>
-    <p><strong>九、协议变更：</strong>平台可根据安全、风控、功能升级和运营需要调整协议和规则。继续使用本系统即表示接受最新协议。</p>
+    <h3>前言</h3>
+    <p>欢迎使用 Flore 免费二级域名系统（以下简称 “本系统”）。在注册账号、提交二级域名申请、使用 DNS 解析管理及平台全部相关功能前，请您仔细完整阅读本服务协议全部条款。您完成账号注册、域名提交申请、登录操作系统功能等任意使用行为，即代表您已充分知晓、理解并无条件同意接受本协议全部约束。若您不认可本协议任意条款，请立即停止一切使用行为。本协议构成您与 Flore 平台之间具备约束力的服务约定。</p>
+
+    <h3>一、服务说明</h3>
+    <p>本系统面向符合条件的互联网使用者，提供免费二级域名相关配套服务，服务内容包含但不限于：免费二级域名提交申请、域名资质人工 / 自动审核、域名 DNS 解析记录可视化管理、平台站内消息推送通知、用户问题帮助通道与意见反馈服务。</p>
+    <p>用户通过本系统申领获得的二级域名，域名使用权仅限协议允许范围内使用。用户承诺，在使用二级域名、配置解析、搭建站点、对外提供网络服务全过程中，严格遵守中华人民共和国及用户实际所在地适用的全部法律、行政法规、行业管理规范、互联网信息管理相关规定。</p>
+    <p>平台仅提供二级域名技术托管与解析服务，不代替用户履行网络备案、内容合规、资质办理等法定义务。若法律法规要求站点完成备案、许可等手续，由用户独立负责办理，相关责任不由平台承担。</p>
+
+    <h3>二、账号安全与用户责任</h3>
+    <p>用户注册账号时提交的手机号码、电子邮箱、登录密码、身份信息等账号资料，由用户本人承担全部保管义务。用户应当采取安全措施，定期修改密码，不向第三方转借、出租、出售账号，防范账号被盗、泄露。</p>
+    <p>凡是通过您的账号登录本系统发起的全部操作，包括但不限于二级域名新增申请、修改 / 新增 / 删除 DNS 解析记录、提交域名注销申请、发起问题反馈、查看站内消息等行为，全部视为账号实名持有人本人主动操作，由此产生一切法律后果、技术后果均由账号使用者独立承担。</p>
+    <p>一旦发现账号存在异常登录、被盗风险，用户应当第一时间修改登录凭证，并通过平台反馈通道告知管理员。平台无义务主动监测每一位用户账号安全，仅在收到有效风险通知后视情况提供有限协助。</p>
+
+    <h3>三、二级域名使用规范与使用限制</h3>
+    <p>用户在申请命名、日常运营二级域名期间，严禁将域名用于以下任何场景：</p>
+    <ol>
+      <li>承载、传播违法违规内容，包含色情、暴力、赌博、毒品、政治敏感、谣言信息；</li>
+      <li>侵犯第三方合法权益，包括商标侵权、著作权侵权、肖像侵权、企业名称仿冒；</li>
+      <li>搭建钓鱼网站、仿冒官网，诱导访客泄露账号、密码、银行卡、身份等隐私信息；</li>
+      <li>实施网络欺诈、虚假宣传、诱导转账、虚假商品交易等各类诈骗行为；</li>
+      <li>大量发送垃圾邮件、恶意爬虫、DDoS 攻击、端口扫描、漏洞探测等危害网络安全行为；</li>
+      <li>恶意跳转、多层伪装跳转，误导互联网访客；</li>
+      <li>利用二级域名从事任何会损害 Flore 平台主域名品牌声誉、平台信誉的活动；</li>
+      <li>其他违反法律法规、互联网公序良俗以及平台补充管理规则的行为。</li>
+    </ol>
+    <p>平台拥有独立判定域名是否违规的权限。针对存在违规风险、已经核实违规的二级域名，平台有权单方面采取驳回申请、临时锁定域名、暂停 DNS 解析、永久禁用、直接撤销并删除该二级域名等处置措施，且视违规情况无需事先通知用户。</p>
+    <p>域名被平台封禁、撤销后，用户不得重复使用高度相似名称再次提交申请。</p>
+
+    <h3>四、域名审核、注销与删除规则</h3>
+    <p>用户提交二级域名申请后，根据平台风控策略，域名将进入人工审核流程。<strong>在管理员审核正式通过之前，该域名无法添加、启用任何 DNS 解析记录，不对外生效。</strong>审核时长受管理员工作量、申请数量、风险核查复杂度影响，平台不承诺固定审核时效。</p>
+    <p>用户主动申请注销、删除已审核通过的生效二级域名时，部分场景需要经过管理员复核批准方可完成删除操作。</p>
+    <p>为最大限度防止用户误操作导致域名意外删除，系统将设置二次校验机制，可能要求用户手动输入完整二级域名名称、验证账号身份信息作为确认条件，未完成校验则无法发起删除流程，请用户谨慎执行删除操作。</p>
+    <p>域名一旦成功删除，对应的所有解析记录将同步清除；域名释放后不保证原持有人可以再次重新申请同名二级域名。</p>
+
+    <h3>五、DNS 解析相关约定</h3>
+    <p>用户可自主在后台配置各类标准解析记录类型，包含 A 记录、AAAA 记录、CNAME 记录、TXT 记录、MX 记录等。所有解析参数、目标地址均由用户自行填写、自行核对，平台不对用户填写内容的正确性负责。</p>
+    <p>二级域名解析正常访问，受到多重外部因素共同影响：Cloudflare CDN 节点状态、全球 DNS 递归服务器缓存、目标源服务器运行状态、Cloudflare 代理开关、解析 TTL 生存时间、本地运营商 DNS 缓存、用户本地网络环境等。上述第三方环节引发的访问波动、延迟、无法打开问题，均不属于平台服务故障。</p>
+    <p>若用户填写错误解析地址、错误代理配置、不合理 TTL 参数，将会直接造成网站无法访问、访问异常，相关故障排查工作由用户优先自查。平台可在能力范围内提供基础排查指引，但不承担因配置失误产生的各类损失。</p>
+    <p>用户不得利用解析功能配置反向代理、负载均衡用于发起网络攻击，不得将解析指向恶意 IP、恶意站点，否则平台有权直接冻结对应域名。</p>
+
+    <h3>六、域名有效期、到期提醒与清理机制</h3>
+    <p>每一个二级域名的有效使用期限、开放续期的时间窗口、域名过期后的等待清理周期、回收释放规则，全部以平台管理后台实时生效的配置参数为准，平台可根据运营策略动态调整相关时间规则。</p>
+    <p>平台会通过系统站内消息推送域名到期提醒，但消息推送可能受缓存、系统波动影响存在延迟。不能将到期通知作为唯一续期依据，用户有义务主动定期登录账号查看名下域名有效期。</p>
+    <p>域名到达有效期且用户未在规定续期窗口期完成续期操作，或是域名长期处于违规使用状态、长期闲置无有效解析记录，平台有权按照规则对域名进行清理回收。域名回收后，域名使用权随即终止，解析数据全部清除。</p>
+
+    <h3>七、站内消息、问题反馈机制</h3>
+    <p>平台推送的系统公告、管理员处置通知、域名审核结果、到期预警、违规处罚通知，以及用户提交的咨询反馈、客服回复内容，统一存放于系统消息中心内，用户需要定期登录账号查阅。</p>
+    <p>如遇账号无法正常登录、无法进入消息中心，或是需要上传截图、提供日志材料进行问题申诉、故障反馈，用户可以使用平台提供的外部独立反馈入口提交诉求。</p>
+    <p>平台将尽可能及时响应用户合理反馈，但不承诺固定回复时限；针对恶意骚扰、重复无意义申诉、违规域名申诉，平台有权不予回复。</p>
+
+    <h3>八、免责声明</h3>
+    <p>Flore 提供的二级域名属于免费公益性质服务，<strong>平台不向用户收取域名使用费，同时不承诺本服务永久不间断运营、永久持续开放。</strong>平台保留未来调整服务模式、缩减功能、暂停运营、终止免费二级域名业务的权利。</p>
+    <p>因以下第三方因素或用户自身原因引发网站访问异常、业务中断、数据丢失，平台仅可在技术能力限度内协助用户开展问题排查，不承担任何直接损失、商业利润损失、间接经济损失：</p>
+    <ol>
+      <li>Cloudflare 平台服务中断、节点故障、风控拦截；</li>
+      <li>第三方 DNS 服务器故障、全球 DNS 缓存污染；</li>
+      <li>用户自身源服务器宕机、防火墙拦截、带宽故障；</li>
+      <li>浏览器缓存、本地网络运营商限制、IP 屏蔽；</li>
+      <li>用户自身解析配置错误、网站程序故障；</li>
+      <li>不可抗力、网络大范围故障、政策监管要求导致服务临时受限。</li>
+    </ol>
+    <p>用户理解，免费服务不存在商业级 SLA 服务保障标准，不得依据商业付费服务器、域名服务商标准向 Flore 平台主张赔偿、履约要求。</p>
+    <p>若因用户违规使用二级域名，引发第三方投诉、行政机关调查、民事诉讼，全部责任由用户自行承担；若平台因用户违规行为遭受损失，平台保留向该用户追偿的权利。</p>
+
+    <h3>九、服务协议修订与生效规则</h3>
+    <p>平台基于网络安全风控、反违规治理、系统功能迭代、长期运营规划、法律法规更新等合理需求，有权随时修订、增补、调整本服务协议内容、平台配套管理规则。</p>
+    <p>协议发生变更之后，平台会以站内公告形式公示最新版本协议内容，新版本自公示设定生效时间起正式执行。</p>
+    <p>在协议更新生效后，您继续登录系统、申请域名、使用解析等任意操作，即代表您已经阅读并自愿接受修改后的全部协议条款。若不认同更新后的协议，您应当停止使用本系统，并可以申请注销名下账号、删除所有二级域名。</p>
+
+    <h3>十、其他补充条款</h3>
+    <p>本协议条款如存在部分内容被认定为无效，不影响其余条款继续生效执行。</p>
+    <p>针对本协议产生的争议，优先由用户与平台友好协商解决。</p>
+    <p>平台配套发布的公告、域名命名规范、违规处置标准，均为本协议有效补充文件，与本协议具备同等约束力。</p>
   </div>`;
 }
 function openServiceAgreement() {
@@ -922,6 +986,23 @@ function authAgreementHtml(name = 'agreeTerms') {
 }
 function bindAgreementLinks() {
   document.querySelectorAll('[data-open-agreement]').forEach(btn => btn.addEventListener('click', openServiceAgreement));
+}
+
+function bindAuthAgreementState(formSelector, buttonSelector = 'button[type="submit"]') {
+  const form = document.querySelector(formSelector);
+  if (!form) return;
+  const checkbox = form.querySelector('input[name="agreeTerms"]');
+  const button = form.querySelector(buttonSelector);
+  if (!checkbox || !button) return;
+  const sync = () => {
+    const checked = checkbox.checked;
+    button.disabled = !checked;
+    button.classList.toggle('is-disabled', !checked);
+    button.title = checked ? '' : '请先阅读并同意服务协议';
+  };
+  checkbox.addEventListener('change', sync);
+  checkbox.addEventListener('input', sync);
+  sync();
 }
 
 async function renderLogin() {
@@ -955,7 +1036,7 @@ async function renderLogin() {
           </div>
           ${hasTurnstileSiteKey() ? '<div class="turnstile-holder"><div id="turnstile-box"></div></div>' : '<div class="notice small turnstile-missing">人机验证未显示：请检查 TURNSTILE_SITE_KEY 是否配置。</div>'}
           ${authAgreementHtml('agreeTerms')}
-          <button class="btn primary login-submit" type="submit">登录账户</button>
+          <button class="btn primary login-submit" type="submit" disabled>登录账户</button>
         </form>
         <div class="login-divider"></div>
         <p class="login-register-row"><span>还没有账号？</span> <a href="#/register">立即注册</a></p>
@@ -964,6 +1045,7 @@ async function renderLogin() {
     </main>`;
   if (hasTurnstileSiteKey()) await mountTurnstile('#turnstile-box', turn.actionLogin || 'login');
   bindAgreementLinks();
+  bindAuthAgreementState('#login-form', '.login-submit');
   document.querySelector('#toggle-password')?.addEventListener('click', () => {
     const input = document.querySelector('#login-password');
     input.type = input.type === 'password' ? 'text' : 'password';
@@ -985,7 +1067,7 @@ async function renderLogin() {
     } catch (error) {
       toast(error.message, 'error');
       resetTurnstile();
-      btn.disabled = false;
+      btn.disabled = document.querySelector('#login-form input[name=\"agreeTerms\"]')?.checked ? false : true;
     }
   });
   afterRender();
@@ -1002,11 +1084,12 @@ async function renderRegister() {
       <label class="field wide"><span>密码</span><input name="password" type="password" required minlength="8"><em>手机号和邮箱至少填写一个；密码至少 8 位。</em></label>
       ${hasTurnstileSiteKey() ? '<div class="wide"><div id="turnstile-box"></div></div>' : '<div class="notice small wide turnstile-missing">人机验证未显示：请检查 TURNSTILE_SITE_KEY 是否配置。</div>'}
       <div class="wide">${authAgreementHtml('agreeTerms')}</div>
-      <button class="btn primary wide" type="submit">注册</button>
+      <button class="btn primary wide" type="submit" disabled>注册</button>
     </form>
     <p class="auth-link">已有账户？ <a href="#/login">登录</a></p>`);
   if (hasTurnstileSiteKey()) await mountTurnstile('#turnstile-box', turn.actionRegister || 'register');
   bindAgreementLinks();
+  bindAuthAgreementState('#register-form', 'button[type="submit"]');
   document.querySelector('#register-form').addEventListener('submit', async e => {
     e.preventDefault();
     const btn = e.submitter;
@@ -1034,7 +1117,7 @@ async function renderRegister() {
     } catch (error) {
       toast(error.message, 'error');
       resetTurnstile();
-      btn.disabled = false;
+      btn.disabled = document.querySelector('#register-form input[name=\"agreeTerms\"]')?.checked ? false : true;
     }
   });
 }
