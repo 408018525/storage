@@ -355,7 +355,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   match = pathname.match(/^\/api\/admin\/users\/([^/]+)\/devices$/);
   if (match && method === 'GET') return adminUserLoginDevices(request, env, decodeURIComponent(match[1]));
 
-  match = pathname.match(/^\/api\/admin\/applications\/([^/]+)\/(approve|reject|revoke|disable|delete|approve-delete|reject-delete)$/);
+  match = pathname.match(/^\/api\/admin\/applications\/([^/]+)\/(approve|reject|revoke|disable|enable|delete|approve-delete|reject-delete)$/);
   if (match && method === 'POST') return adminReviewApplication(request, env, decodeURIComponent(match[1]), match[2]);
 
   throw new HttpError(404, 'NOT_FOUND', '接口不存在');
@@ -559,7 +559,7 @@ async function cleanupOperationLogs(env: Env): Promise<void> {
   // 操作日志只保留最近 7 天；账号注销或被标记删除后，自动清理该账号相关日志。
   try {
     const settings = await loadSettings(env);
-    await env.DB.prepare(`DELETE FROM audit_logs WHERE datetime(created_at) < datetime('now','-' || ? || ' days')`).bind(settings.security?.auditRetentionDays || 7).run();
+    await env.DB.prepare(`DELETE FROM audit_logs WHERE datetime(created_at) < datetime('now','-' || ? || ' days')`).bind(settings.security?.auditRetentionDays || 4).run();
   } catch (error) { console.error('cleanup old audit logs failed', error); }
   try {
     await env.DB.prepare(`
@@ -589,7 +589,7 @@ async function cleanupHardDeletedRows(env: Env): Promise<void> {
     `DELETE FROM users WHERE status='deleted'`,
     `DELETE FROM domain_applications WHERE deleted_at IS NOT NULL AND deleted_at!=''`,
     `DELETE FROM sessions WHERE user_id NOT IN (SELECT id FROM users)`,
-    `DELETE FROM audit_logs WHERE datetime(created_at) < datetime('now','-7 days')`,
+    `DELETE FROM audit_logs WHERE datetime(created_at) < datetime('now','-4 days')`,
   ];
   for (const sql of statements) {
     try { await env.DB.prepare(sql).run(); } catch (error) { console.error('cleanup hard deleted rows failed', sql, error); }
@@ -1696,26 +1696,26 @@ async function listOperationLogs(request: Request, env: Env): Promise<Response> 
     SELECT l.*, u.username AS actor_username
     FROM audit_logs l
     LEFT JOIN users u ON u.id=l.actor_user_id
-    WHERE datetime(l.created_at) >= datetime('now','-7 days')
+    WHERE datetime(l.created_at) >= datetime('now','-4 days')
       AND (u.status IS NULL OR u.status!='deleted')
     ORDER BY datetime(l.created_at) DESC
-    LIMIT 300
+    LIMIT 1000
   ` : `
     SELECT l.*, u.username AS actor_username
     FROM audit_logs l
     LEFT JOIN users u ON u.id=l.actor_user_id
     WHERE l.actor_user_id=?
-      AND datetime(l.created_at) >= datetime('now','-7 days')
+      AND datetime(l.created_at) >= datetime('now','-4 days')
       AND (u.status IS NULL OR u.status!='deleted')
     ORDER BY datetime(l.created_at) DESC
-    LIMIT 200
+    LIMIT 500
   `;
 
   const rows = isAdmin
     ? await env.DB.prepare(sql).all<OperationLogRow>()
     : await env.DB.prepare(sql).bind(user.id).all<OperationLogRow>();
 
-  return ok({ logs: (rows.results || []).map(serializeOperationLog), retentionDays: 7, scope: isAdmin ? 'admin' : 'self' });
+  return ok({ logs: (rows.results || []).map(serializeOperationLog), retentionDays: 4, scope: isAdmin ? 'admin' : 'self' });
 }
 
 function serializeOperationLog(row: OperationLogRow) {
@@ -1758,6 +1758,7 @@ function operationActionText(action: string): string {
     'application.reject': '拒绝域名申请',
     'application.approve': '批准域名申请',
     'application.disable': '禁用域名',
+    'application.enable': '取消禁用域名',
     'application.revoke': '撤销域名',
     'admin.application_delete': '管理员删除域名',
     'admin.application_delete_approve': '批准删除域名',
@@ -1786,6 +1787,7 @@ function operationDescription(action: string, targetType: string, targetId: stri
   if (action === 'application.create' && fqdn) return `提交域名申请：${fqdn}`;
   if (action === 'application.approve') return `管理员批准域名申请${targetId ? `（ID：${targetId}）` : ''}`;
   if (action === 'application.reject') return `管理员拒绝域名申请${targetId ? `（ID：${targetId}）` : ''}`;
+  if (action === 'application.enable') return `管理员取消禁用域名${targetId ? `（ID：${targetId}）` : ''}`;
   if (action === 'application.disable') return `管理员禁用域名并移除解析${targetId ? `（ID：${targetId}）` : ''}`;
   if (action === 'application.revoke') return `管理员撤销域名并移除解析${targetId ? `（ID：${targetId}）` : ''}`;
   if (action === 'dns_record.create') return `添加 DNS 解析${fqdn ? `：${fqdn}` : ''}${type ? `（${type}${content ? ` → ${content}` : ''}）` : ''}`;
@@ -1860,7 +1862,7 @@ async function listOwnMessages(request: Request, env: Env): Promise<Response> {
         OR m.sender_user_id=?
       )
     ORDER BY COALESCE(m.sent_at, m.created_at) DESC
-    LIMIT 300
+    LIMIT 1000
   `).bind(user.id, user.id, user.role, user.id).all<MessageRow>();
   const messages = (rows.results || []).map(row => {
     const msg = serializeMessage(row) as ReturnType<typeof serializeMessage> & Record<string, unknown>;
@@ -2295,6 +2297,20 @@ async function adminReviewApplication(request: Request, env: Env, id: string, ac
     return ok({ status: 'revoked', statusText: '已禁用' });
   }
 
+  if (action === 'enable') {
+    const disabledByAdmin = app.status === 'revoked' && String(app.review_note || '').startsWith('【已禁用】');
+    if (!disabledByAdmin) throw new HttpError(409, 'NOT_DISABLED_DOMAIN', '该域名当前不是管理员禁用状态');
+    const expires = app.expires_at || new Date(Date.now() + settings.domain.validDays * DAY).toISOString();
+    await env.DB.prepare(`
+      UPDATE domain_applications
+      SET status='approved',review_note=?,reviewed_at=datetime('now'),reviewed_by=?,expires_at=?,error_message=NULL,updated_at=datetime('now')
+      WHERE id=?
+    `).bind(note || '管理员已取消禁用，您可以重新添加 DNS 解析。', admin.id, expires, id).run();
+    await audit(env, request, admin.id, 'application.enable', 'domain_application', id, { note });
+    await sendDomainStatusMessage(env, admin.id, app, '域名已取消禁用', note || '管理员已取消禁用该域名，域名恢复正常；DNS 记录需要重新添加。', 'success');
+    return ok({ status: 'approved', statusText: '正常' });
+  }
+
   if (action === 'revoke') {
     if (app.status !== 'approved') throw new HttpError(409, 'INVALID_STATE', '只有正常域名可以撤销');
     try { await deleteAllDnsRecordsForApp(env, app, suffix); }
@@ -2559,7 +2575,7 @@ async function adminUpdateSettings(request: Request, env: Env, group: AdminSetti
     settings.security = {
       adminSessionTimeoutHours: clamp(Number(body.adminSessionTimeoutHours || 24), 1, 24 * 365),
       adminIpWhitelist: cleanText(body.adminIpWhitelist, 10000),
-      auditRetentionDays: clamp(Number(body.auditRetentionDays || 7), 1, 3650),
+      auditRetentionDays: clamp(Number(body.auditRetentionDays || 4), 1, 3650),
     };
   }
 
@@ -2718,7 +2734,7 @@ function defaultSettings(env: Env): AppSettings {
     security: {
       adminSessionTimeoutHours: 24,
       adminIpWhitelist: '',
-      auditRetentionDays: 7,
+      auditRetentionDays: 4,
     },
     automation: {
       enabled: false,
