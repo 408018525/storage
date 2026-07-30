@@ -1,4 +1,4 @@
-let app = document.querySelector('#app');
+ app = document.querySelector('#app')let app = document.querySelector('#app');
 let toastRoot = document.querySelector('#toast-root');
 let modalRoot = document.querySelector('#modal-root');
 
@@ -1189,7 +1189,7 @@ function shell(title, content) {
         <h1>${esc(title)}</h1>
         <div class="topbar-actions">${langButton()}${statusBadge(state.me.status || 'active')}</div>
       </header>
-      ${site.homepageNotice && !isAdmin ? `<div class="site-notice">${markdownLite(site.homepageNotice)}</div>` : ``}<section class="content">${content}</section>${(site.icp || site.footer || site.copyright) ? `<footer class="app-footer">${site.footer ? `<div class="footer-line footer-text">${esc(site.footer)}</div>` : ``}${site.icp ? `<div class="footer-line footer-icp">${esc(site.icp)}</div>` : ``}${site.copyright ? `<div class="footer-line footer-copyright">${esc(site.copyright)}</div>` : ``}</footer>` : ``}
+      ${site.homepageNotice && !isAdmin ? `<div class="site-notice">${markdownLite(site.homepageNotice)}</div>` : ``}<section class="content">${content}</section>${(site.icp || site.footer || site.copyright) ? `<footer class="app-footer">${site.footer ? `<div class="footer-line footer-text">${esc(site.footer)}</div>` : ``}${site.copyright ? `<div class="footer-line footer-copyright">${esc(site.copyright)}</div>` : ``}${site.icp ? `<div class="footer-line footer-icp">${esc(site.icp)}</div>` : ``}</footer>` : ``}
     </main>
   </div>`;
   updateMessageBadgeDom();
@@ -3200,7 +3200,7 @@ async function renderAdminSettings() {
           <label class="field"><span>Logo 文字</span><input name="logoText" maxlength="12" value="${fieldValue(site.logoText)}"><em>不使用图片 Logo 时显示。</em></label>
           <label class="field"><span>站点 Logo 图片 URL</span><input name="logoImageUrl" value="${fieldValue(site.logoImageUrl)}" placeholder="https://example.com/logo.png"><em>填写后优先显示图片 Logo。</em></label>
           <label class="field"><span>ICP 备案信息</span><input name="icp" value="${fieldValue(site.icp)}" placeholder="例如：粤ICP备xxxx号"></label>
-          <label class="field"><span>版权信息</span><input name="copyright" value="${fieldValue(site.copyright)}" placeholder="例如：© 2026 Flore. All rights reserved."><em>显示在 ICP 备案信息下方。</em></label>
+          <label class="field"><span>版权信息</span><textarea name="copyright" rows="3" placeholder="例如：© 2026 Flore. All rights reserved.&#10;免费二级域名系统，仅限合规用途使用。">${esc(site.copyright || '')}</textarea><em>支持换行显示，前台显示在 ICP 备案信息上方。</em></label>
           <label class="field"><span>前台默认语言</span><select name="defaultLanguage"><option value="zh" ${site.defaultLanguage !== 'en' ? 'selected' : ''}>中文</option><option value="en" ${site.defaultLanguage === 'en' ? 'selected' : ''}>英文</option></select></label>
           <label class="field color-field"><span>主色</span><div class="color-picker-row"><input name="accent" class="color-text" value="${fieldValue(site.accent || '#4f63f6')}" placeholder="#4f63f6"><input type="color" class="color-native" value="${fieldValue(site.accent || '#4f63f6')}"><button type="button" class="color-preview color-open" style="background:${attr(site.accent || '#4f63f6')}" aria-label="选择主色"></button></div><em>可直接输入十六进制色值，也可点击色块打开选色框。</em></label>
           <label class="field color-field"><span>辅助色</span><div class="color-picker-row"><input name="accent2" class="color-text" value="${fieldValue(site.accent2 || '#7c4dff')}" placeholder="#7c4dff"><input type="color" class="color-native" value="${fieldValue(site.accent2 || '#7c4dff')}"><button type="button" class="color-preview color-open" style="background:${attr(site.accent2 || '#7c4dff')}" aria-label="选择辅助色"></button></div><em>可直接输入十六进制色值，也可点击色块打开选色框。</em></label>
