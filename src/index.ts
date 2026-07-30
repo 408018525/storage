@@ -154,6 +154,7 @@ interface AppSettings {
     title: string;
     subtitle: string;
     footer: string;
+    copyright?: string;
     accent: string;
     accent2: string;
     logoText: string;
@@ -2489,6 +2490,7 @@ async function adminUpdateSettings(request: Request, env: Env, group: AdminSetti
       title: cleanText(body.title, 80) || settings.site.title,
       subtitle: cleanText(body.subtitle, 140),
       footer: cleanText(body.footer, 300),
+      copyright: cleanText(body.copyright, 300),
       accent: normalizeHexColor(body.accent, '#4f63f6'),
       accent2: normalizeHexColor(body.accent2, '#7c4dff'),
       logoText: cleanText(body.logoText, 12) || 'free',
@@ -2659,6 +2661,7 @@ function defaultSettings(env: Env): AppSettings {
       title: '免费二级域名注册中心',
       subtitle: '快速注册并管理您的专属免费域名',
       footer: '请勿申请违法、侵权、仿冒或误导性域名。',
+      copyright: '',
       accent: '#4f63f6',
       accent2: '#7c4dff',
       logoText: 'free',
