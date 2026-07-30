@@ -2190,3 +2190,54 @@ html, body {
     height: 34px !important;
   }
 }
+
+
+/* v69 agreement exact text + submit disabled until checked */
+.auth-agreement {
+  align-items: center;
+}
+.auth-agreement input[type="checkbox"] {
+  border: 2px solid #94a3b8;
+}
+.auth-agreement .agreement-link {
+  color: var(--ink, #0f172a) !important;
+}
+.login-submit[disabled],
+#register-form button[type="submit"][disabled],
+.btn.primary.is-disabled {
+  background: #cbd5e1 !important;
+  color: #64748b !important;
+  box-shadow: none !important;
+  opacity: 1 !important;
+  cursor: not-allowed !important;
+}
+.agreement-modal .modal {
+  max-height: 88vh;
+}
+.agreement-modal .modal-body,
+.modal.agreement-modal .modal-body {
+  max-height: min(72vh, 760px) !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+}
+.agreement-long-text h3 {
+  margin: 22px 0 8px;
+  font-size: 1.12em;
+}
+.agreement-long-text p,
+.agreement-long-text li {
+  margin: 0 0 10px;
+}
+.agreement-long-text ol {
+  padding-left: 1.4em;
+  margin: 8px 0 14px;
+}
+@media (max-width: 700px) {
+  .agreement-modal .modal {
+    width: min(94vw, 760px);
+  }
+  .agreement-modal .modal-body,
+  .modal.agreement-modal .modal-body {
+    max-height: 66vh !important;
+  }
+}
