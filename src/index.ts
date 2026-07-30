@@ -1,4 +1,4 @@
-/// <reference types="@cloudflare/workers-types" />
+1/// <reference types="@cloudflare/workers-types" />
 
 interface D1Result<T = unknown> { results?: T[]; meta?: { changes?: number } }
 interface D1PreparedStatement {
