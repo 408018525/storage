@@ -2328,3 +2328,22 @@ html, body {
     min-height: 58px !important;
   }
 }
+
+
+/* v71 copyright multiline footer */
+.admin-settings textarea[name="copyright"] {
+  min-height: 92px;
+  resize: vertical;
+}
+.app-footer .footer-line {
+  white-space: pre-line;
+}
+.app-footer .footer-copyright {
+  order: 2;
+}
+.app-footer .footer-icp {
+  order: 3;
+}
+.app-footer .footer-text {
+  order: 1;
+}
