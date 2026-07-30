@@ -31,6 +31,8 @@ const state = {
   applications: [],
   quota: { used: 0, total: 3, remaining: 3 },
   widgetId: null,
+  turnstileTokenValue: '',
+  turnstileWidgetAction: '',
   operationLogFilters: { dateMode: 'all', day: '', hour: '', sort: 'desc', type: 'all', actor: 'all' },
   messageUnread: 0,
 };
@@ -58,7 +60,7 @@ function shouldShowTurnstile(kind) {
   const turn = state.config?.turnstile || {};
   if (!hasTurnstileSiteKey()) return false;
   if (kind === 'login') return true;
-  if (kind === 'register') return Boolean(turn.enabledRegister);
+  if (kind === 'register') return true;
   if (kind === 'apply') return Boolean(turn.enabledApply);
   return false;
 }
@@ -1058,8 +1060,9 @@ async function renderLogin() {
     const f = new FormData(e.currentTarget);
     try {
       if (f.get('agreeTerms') !== 'on') throw new Error('请先阅读并同意服务协议');
+      const token = await stableTurnstileToken('login');
       const result = await api('/api/auth/login', { method:'POST', body:{
-        identity:f.get('identity'), password:f.get('password'), remember:f.get('remember') === 'on', turnstileToken:turnstileToken(),
+        identity:f.get('identity'), password:f.get('password'), remember:f.get('remember') === 'on', turnstileToken:token,
       }});
       state.me = result.user;
       toast('登录成功', 'success');
@@ -1105,8 +1108,8 @@ async function renderRegister() {
       btn.disabled = false;
       return;
     }
-    body.turnstileToken = turnstileToken();
     try {
+      body.turnstileToken = await stableTurnstileToken('register');
       const result = await api('/api/auth/register', { method:'POST', body });
       if (result.pendingActivation) {
         toast('注册成功，请等待管理员启用账户', 'success');
@@ -1186,7 +1189,7 @@ function shell(title, content) {
         <h1>${esc(title)}</h1>
         <div class="topbar-actions">${langButton()}${statusBadge(state.me.status || 'active')}</div>
       </header>
-      ${site.homepageNotice && !isAdmin ? `<div class="site-notice">${markdownLite(site.homepageNotice)}</div>` : ``}<section class="content">${content}</section>${!isAdmin && (site.icp || site.footer) ? `<footer class="app-footer">${esc(site.footer || '')}${site.icp ? `<br>${esc(site.icp)}` : ``}</footer>` : ``}
+      ${site.homepageNotice && !isAdmin ? `<div class="site-notice">${markdownLite(site.homepageNotice)}</div>` : ``}<section class="content">${content}</section>${(site.icp || site.footer || site.copyright) ? `<footer class="app-footer">${site.footer ? `<div class="footer-line footer-text">${esc(site.footer)}</div>` : ``}${site.icp ? `<div class="footer-line footer-icp">${esc(site.icp)}</div>` : ``}${site.copyright ? `<div class="footer-line footer-copyright">${esc(site.copyright)}</div>` : ``}</footer>` : ``}
     </main>
   </div>`;
   updateMessageBadgeDom();
@@ -1770,7 +1773,7 @@ function renderHelpCenter() {
   function renderHistory() {
     const h = getHistory();
     if (!h.length || document.activeElement !== search) { historyWrap.classList.add('hidden'); historyWrap.innerHTML=''; return; }
-    historyWrap.innerHTML = `<h4>近期搜索</h4><div class="help-history-list">${h.map(q => `<button type="button" data-history-use="${attr(q)}">${esc(q)}</button><button type="button" class="help-history-remove" data-history-remove="${attr(q)}">×</button>`).join('')}</div>`;
+    historyWrap.innerHTML = `<h4>近期搜索</h4><div class="help-history-list">${h.map(q => `<span class="help-history-item"><button type="button" class="help-history-word" data-history-use="${attr(q)}">${esc(q)}</button><button type="button" class="help-history-remove" aria-label="删除 ${attr(q)}" data-history-remove="${attr(q)}">×</button></span>`).join('')}</div>`;
     historyWrap.classList.remove('hidden');
   }
   function renderSuggest(value) {
@@ -3197,6 +3200,7 @@ async function renderAdminSettings() {
           <label class="field"><span>Logo 文字</span><input name="logoText" maxlength="12" value="${fieldValue(site.logoText)}"><em>不使用图片 Logo 时显示。</em></label>
           <label class="field"><span>站点 Logo 图片 URL</span><input name="logoImageUrl" value="${fieldValue(site.logoImageUrl)}" placeholder="https://example.com/logo.png"><em>填写后优先显示图片 Logo。</em></label>
           <label class="field"><span>ICP 备案信息</span><input name="icp" value="${fieldValue(site.icp)}" placeholder="例如：粤ICP备xxxx号"></label>
+          <label class="field"><span>版权信息</span><input name="copyright" value="${fieldValue(site.copyright)}" placeholder="例如：© 2026 Flore. All rights reserved."><em>显示在 ICP 备案信息下方。</em></label>
           <label class="field"><span>前台默认语言</span><select name="defaultLanguage"><option value="zh" ${site.defaultLanguage !== 'en' ? 'selected' : ''}>中文</option><option value="en" ${site.defaultLanguage === 'en' ? 'selected' : ''}>英文</option></select></label>
           <label class="field color-field"><span>主色</span><div class="color-picker-row"><input name="accent" class="color-text" value="${fieldValue(site.accent || '#4f63f6')}" placeholder="#4f63f6"><input type="color" class="color-native" value="${fieldValue(site.accent || '#4f63f6')}"><button type="button" class="color-preview color-open" style="background:${attr(site.accent || '#4f63f6')}" aria-label="选择主色"></button></div><em>可直接输入十六进制色值，也可点击色块打开选色框。</em></label>
           <label class="field color-field"><span>辅助色</span><div class="color-picker-row"><input name="accent2" class="color-text" value="${fieldValue(site.accent2 || '#7c4dff')}" placeholder="#7c4dff"><input type="color" class="color-native" value="${fieldValue(site.accent2 || '#7c4dff')}"><button type="button" class="color-preview color-open" style="background:${attr(site.accent2 || '#7c4dff')}" aria-label="选择辅助色"></button></div><em>可直接输入十六进制色值，也可点击色块打开选色框。</em></label>
@@ -3391,7 +3395,19 @@ async function mountTurnstile(selector, action) {
     if (!window.turnstile) throw new Error('Turnstile 对象未就绪');
     el.innerHTML = '';
     if (state.widgetId !== null) { try { window.turnstile.remove(state.widgetId); } catch {} }
-    state.widgetId = window.turnstile.render(el, { sitekey: config.siteKey, action: action || 'login', language: lang() === 'en' ? 'en' : 'zh-cn', retry: 'auto', 'refresh-expired': 'auto' });
+    state.turnstileTokenValue = '';
+    state.turnstileWidgetAction = action || 'login';
+    state.widgetId = window.turnstile.render(el, {
+      sitekey: config.siteKey,
+      action: action || 'login',
+      language: lang() === 'en' ? 'en' : 'zh-cn',
+      retry: 'auto',
+      'refresh-expired': 'auto',
+      callback: token => { state.turnstileTokenValue = token || ''; },
+      'expired-callback': () => { state.turnstileTokenValue = ''; resetTurnstile(); },
+      'timeout-callback': () => { state.turnstileTokenValue = ''; },
+      'error-callback': () => { state.turnstileTokenValue = ''; }
+    });
   };
   try { await render(false); }
   catch (error) {
@@ -3403,11 +3419,25 @@ async function mountTurnstile(selector, action) {
   }
 }
 function turnstileToken() {
-  if (window.turnstile && state.widgetId !== null) return window.turnstile.getResponse(state.widgetId);
+  const cached = String(state.turnstileTokenValue || '').trim();
+  if (cached) return cached;
+  if (window.turnstile && state.widgetId !== null) return window.turnstile.getResponse(state.widgetId) || '';
   return '';
 }
+async function stableTurnstileToken(kind = 'login') {
+  if (!hasTurnstileSiteKey()) return '';
+  let token = turnstileToken();
+  if (token) return token;
+  await new Promise(resolve => setTimeout(resolve, 180));
+  token = turnstileToken();
+  if (token) return token;
+  throw new Error('请先完成人机验证，若验证框已显示成功，请点击“重新加载人机验证”后再试');
+}
 function resetTurnstile() {
-  if (window.turnstile && state.widgetId !== null) window.turnstile.reset(state.widgetId);
+  state.turnstileTokenValue = '';
+  if (window.turnstile && state.widgetId !== null) {
+    try { window.turnstile.reset(state.widgetId); } catch {}
+  }
 }
 
 
