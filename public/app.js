@@ -1,4 +1,4 @@
- app = document.querySelector('#app')let app = document.querySelector('#app');
+let app = document.querySelector('#app');
 let toastRoot = document.querySelector('#toast-root');
 let modalRoot = document.querySelector('#modal-root');
 
@@ -778,22 +778,100 @@ window.addEventListener('unhandledrejection', event => {
   toast(message, 'error');
 });
 
+
+const DEFAULT_BOOT_CONFIG = {
+  needsBootstrap: false,
+  site: {
+    title: '免费二级域名注册中心',
+    subtitle: '快速注册并管理您的专属域名',
+    logoText: 'free',
+    footer: '',
+    icp: '',
+    copyright: '',
+    defaultLanguage: 'zh'
+  },
+  turnstile: {
+    siteKey: '0x4AAAAAAD1yD8g5IE44JADq',
+    enabledLogin: true,
+    enabledRegister: true,
+    enabledApply: true
+  },
+  domain: DEFAULT_DOMAIN_CONFIG,
+  dns: {
+    suffix: 'flore.top',
+    suffixLabel: '免费二级域名',
+    allowedTypes: ['A','AAAA','CNAME','TXT','MX'],
+    defaultType: 'CNAME',
+    ttl: 1,
+    proxied: false,
+    suffixes: [{ label: '免费二级域名', suffix: 'flore.top', allowedTypes: ['A','AAAA','CNAME','TXT','MX'], defaultType: 'CNAME', ttl: 1, proxied: false, enabled: true }]
+  },
+  suffixes: [{ label: '免费二级域名', suffix: 'flore.top', allowedTypes: ['A','AAAA','CNAME','TXT','MX'], defaultType: 'CNAME', ttl: 1, proxied: false, enabled: true }]
+};
+
+function withBootTimeout(promise, ms, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(label || '请求超时')), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+function normalizeBootConfig(config) {
+  const safe = { ...DEFAULT_BOOT_CONFIG, ...(config || {}) };
+  safe.site = { ...DEFAULT_BOOT_CONFIG.site, ...(config?.site || {}) };
+  safe.turnstile = { ...DEFAULT_BOOT_CONFIG.turnstile, ...(config?.turnstile || {}) };
+  safe.domain = { ...DEFAULT_DOMAIN_CONFIG, ...(config?.domain || {}) };
+  safe.dns = { ...DEFAULT_BOOT_CONFIG.dns, ...(config?.dns || {}) };
+  const suffixes = config?.suffixes || config?.dns?.suffixes || safe.dns.suffixes || DEFAULT_BOOT_CONFIG.suffixes;
+  safe.suffixes = Array.isArray(suffixes) && suffixes.length ? suffixes.filter(x => x && x.enabled !== false) : DEFAULT_BOOT_CONFIG.suffixes;
+  return safe;
+}
+
+async function loadPublicConfigSafely() {
+  try {
+    const data = await withBootTimeout(api('/api/public/config'), 9000, '配置接口加载超时');
+    return normalizeBootConfig(data.config || data);
+  } catch (error) {
+    console.error('public config failed:', error);
+    setTimeout(() => toast('配置接口暂时无响应，已使用基础配置进入页面', 'warn'), 300);
+    return normalizeBootConfig(DEFAULT_BOOT_CONFIG);
+  }
+}
+
+async function loadMeSafely() {
+  try {
+    const me = await withBootTimeout(api('/api/auth/me'), 7000, '登录状态接口加载超时');
+    return me || { user: null };
+  } catch (error) {
+    return { user: null };
+  }
+}
+
 async function init() {
   try {
-    const [{ config }, me] = await Promise.all([
-      api('/api/public/config'),
-      api('/api/auth/me').catch(() => ({ user:null })),
+    const [config, me] = await Promise.all([
+      loadPublicConfigSafely(),
+      loadMeSafely(),
     ]);
     state.config = config;
-    state.me = me.user;
+    state.me = me.user || null;
     applyTheme();
-    await renderRoute();
+    await withBootTimeout(renderRoute(), 12000, '页面渲染超时');
     startAutoRefresh();
   } catch (error) {
     ensureMountRoots();
+    console.error('boot failed:', error);
     if (app) {
-      app.innerHTML = `<div class="center-screen"><h2>应用加载失败</h2><p>${esc(error.message)}</p><button class="btn primary" id="retry">重试</button></div>`;
+      app.innerHTML = `<div class="center-screen"><h2>应用加载失败</h2><p>${esc(error.message || '启动异常')}</p><button class="btn primary" id="retry">重试</button><a class="btn" href="#/login" id="safe-login">进入登录页</a></div>`;
       document.querySelector('#retry')?.addEventListener('click', () => location.reload());
+      document.querySelector('#safe-login')?.addEventListener('click', async e => {
+        e.preventDefault();
+        state.config = normalizeBootConfig(state.config || DEFAULT_BOOT_CONFIG);
+        state.me = null;
+        location.hash = '#/login';
+        await renderRoute();
+      });
     } else {
       console.error(error);
     }
@@ -3482,4 +3560,4 @@ setTimeout(() => {
 }, 1200);
 
 // v54: help center answers are rewritten per question and old repeated KV content is ignored.
-// v62: robust boot/index fix for blank page after frontend-only deploy.
+// v72: boot timeout fallback prevents permanent loading screen.
