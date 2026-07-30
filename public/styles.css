@@ -2241,3 +2241,90 @@ html, body {
     max-height: 66vh !important;
   }
 }
+
+
+/* v70 search width, history style, footer, and Turnstile stability UI */
+.help-search-box-v68 {
+  display: grid !important;
+  grid-template-columns: minmax(520px, 1fr) auto auto !important;
+  align-items: stretch !important;
+  column-gap: 14px !important;
+}
+.help-search-input-wrap {
+  width: 100% !important;
+  min-width: 0 !important;
+}
+.help-search-input-wrap .help-search {
+  width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+  padding-right: 70px !important;
+}
+.help-input-clear {
+  right: 22px !important;
+  width: 38px !important;
+  height: 38px !important;
+  font-size: 26px !important;
+}
+.help-history-list {
+  gap: 14px 18px !important;
+}
+.help-history-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.help-history-list .help-history-word,
+.help-history-list [data-history-use] {
+  background: transparent !important;
+  color: #0f172a !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  padding: 2px 0 !important;
+  font-weight: 900 !important;
+  cursor: pointer;
+}
+.help-history-list .help-history-word:hover,
+.help-history-list [data-history-use]:hover {
+  color: var(--accent, #4f63f6) !important;
+  text-decoration: underline;
+}
+.help-history-remove {
+  margin-left: 0 !important;
+  width: 26px !important;
+  height: 26px !important;
+  display: inline-grid !important;
+  place-items: center !important;
+}
+.app-footer {
+  display: grid;
+  gap: 4px;
+}
+.app-footer .footer-icp,
+.app-footer .footer-copyright {
+  font-weight: 750;
+}
+.app-footer .footer-copyright {
+  color: #64748b;
+}
+.turnstile-holder,
+#turnstile-box {
+  min-height: 72px;
+}
+.turnstile-loading {
+  min-height: 66px;
+  display: grid;
+  place-items: center;
+  color: #64748b;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  background: rgba(248,250,252,.75);
+}
+@media (max-width: 760px) {
+  .help-search-box-v68 {
+    grid-template-columns: 1fr !important;
+  }
+  .help-search-input-wrap .help-search {
+    min-height: 58px !important;
+  }
+}
