@@ -3394,44 +3394,157 @@ async function showRegistrationKeyUsages(key) {
   } catch (error) { toast(error.message, 'error'); }
 }
 
-function analyticsCard(title, value, sub) {
-  return `<section class="analytics-card"><div><span>${esc(title)}</span><strong>${esc(value)}</strong><em>${esc(sub || '无上期数据')}</em></div><div class="analytics-icon">⌁</div></section>`;
+
+function analyticsChange(meta) {
+  if (!meta) return '<em>无上期数据</em>';
+  if (meta.noPrevious && Number(meta.current || 0) === 0) return '<em>无上期数据</em>';
+  if (meta.noPrevious) return `<em class="trend up">↑ 新增 ${esc(meta.current || 0)}</em>`;
+  const pct = Number(meta.pct || 0);
+  const cls = pct > 0 ? 'up' : pct < 0 ? 'down' : 'flat';
+  const mark = pct > 0 ? '↑' : pct < 0 ? '↓' : '—';
+  return `<em class="trend ${cls}">${mark} ${Math.abs(pct)}%</em>`;
 }
-function simpleBars(rows, labelKey='day', valueKey='created') {
-  const max = Math.max(1, ...rows.map(r => Number(r[valueKey] || 0)));
-  return `<div class="mini-bars">${rows.map(r => `<div class="mini-bar"><b style="height:${Math.max(4, Number(r[valueKey] || 0)/max*100)}%"></b><span>${esc(String(r[labelKey] || '').slice(5))}</span></div>`).join('')}</div>`;
+function analyticsMetricCard(title, metric, sub, icon) {
+  const value = metric?.total ?? 0;
+  return `<section class="analytics-card v75"><div><span>${esc(title)}</span><strong>${esc(value)}</strong>${analyticsChange(metric)}<p>${esc(sub || '')}</p></div><div class="analytics-icon">${esc(icon || '⌁')}</div></section>`;
 }
-function distributionList(rows, labelKey='status') {
-  const total = rows.reduce((sum,r)=>sum+Number(r.count||0),0) || 1;
-  return `<div class="distribution-list">${rows.map(r => `<p><span>${esc(r[labelKey] || '未知')}</span><b>${esc(r.count || 0)}</b><em style="width:${Math.round(Number(r.count||0)/total*100)}%"></em></p>`).join('') || '<p>暂无数据</p>'}</div>`;
+function analyticsRangeFromHash() {
+  const params = new URLSearchParams((location.hash.split('?')[1] || '').replace(/^\?/, ''));
+  return {
+    range: params.get('range') || params.get('days') || '30d',
+    start: params.get('start') || '',
+    end: params.get('end') || '',
+  };
+}
+function analyticsQueryString(range, start = '', end = '') {
+  const params = new URLSearchParams();
+  params.set('range', range);
+  if (range === 'custom') {
+    if (start) params.set('start', start);
+    if (end) params.set('end', end);
+  }
+  return params.toString();
+}
+function analyticsToolbar(rangeState) {
+  const presets = [
+    ['12h','12小时'], ['1d','1天'], ['3d','3天'], ['7d','7天'], ['30d','30天'], ['90d','90天'], ['custom','自定义']
+  ];
+  const buttons = presets.map(([value,label]) => `<button type="button" class="range-chip ${rangeState.range===value || (['7','30','90'].includes(rangeState.range) && value===rangeState.range+'d') ? 'active' : ''}" data-analytics-range="${value}">${label}</button>`).join('');
+  return `<div class="analytics-toolbar-v75">
+    <div class="range-switch">${buttons}</div>
+    <div class="custom-range ${rangeState.range==='custom' ? '' : 'hidden'}">
+      <input id="analytics-start" type="datetime-local" value="${attr(rangeState.start)}">
+      <span>至</span>
+      <input id="analytics-end" type="datetime-local" value="${attr(rangeState.end)}">
+      <button class="btn soft" id="apply-custom-analytics" type="button">应用</button>
+    </div>
+    <button class="btn soft" id="refresh-analytics" type="button">手动刷新</button>
+  </div>`;
+}
+function formatAnalyticsLabel(value, bucket) {
+  const raw = String(value || '');
+  if (bucket === 'hour') return raw.slice(5, 13).replace('-', '/');
+  return raw.slice(5).replace('-', '/');
+}
+function multiLineChart(rows, series, bucket='day') {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  const values = [];
+  safeRows.forEach(row => series.forEach(s => values.push(Number(row[s.key] || 0))));
+  const max = Math.max(1, ...values, 10);
+  const W = 900, H = 260, L = 46, R = 24, T = 20, B = 40;
+  const x = i => safeRows.length <= 1 ? L : L + i * ((W - L - R) / (safeRows.length - 1));
+  const y = v => T + (H - T - B) * (1 - Number(v || 0) / max);
+  const grid = [0, .25, .5, .75, 1].map(k => {
+    const yy = T + (H - T - B) * k;
+    const val = Math.round(max * (1-k));
+    return `<g><line x1="${L}" x2="${W-R}" y1="${yy}" y2="${yy}" class="chart-grid-line"/><text x="${L-10}" y="${yy+4}" text-anchor="end" class="chart-axis-text">${val}</text></g>`;
+  }).join('');
+  const lines = series.map((s, idx) => {
+    const pts = safeRows.map((row, i) => `${x(i)},${y(row[s.key] || 0)}`).join(' ');
+    const dots = safeRows.map((row,i) => Number(row[s.key]||0) ? `<circle cx="${x(i)}" cy="${y(row[s.key]||0)}" r="3" class="line-dot line-${idx}"/>` : '').join('');
+    return `<polyline points="${pts}" class="line-series line-${idx}"/>${dots}`;
+  }).join('');
+  const labelEvery = Math.max(1, Math.ceil(safeRows.length / 8));
+  const xLabels = safeRows.map((row,i) => i % labelEvery === 0 || i === safeRows.length - 1 ? `<text x="${x(i)}" y="${H-12}" text-anchor="middle" class="chart-axis-text">${esc(formatAnalyticsLabel(row.bucket || row.day, bucket))}</text>` : '').join('');
+  const legend = series.map((s, idx) => `<span><i class="legend-dot line-${idx}"></i>${esc(s.label)}</span>`).join('');
+  return `<div class="chart-legend">${legend}</div><svg class="analytics-svg" viewBox="0 0 ${W} ${H}" role="img">${grid}<line x1="${L}" x2="${L}" y1="${T}" y2="${H-B}" class="chart-axis"/><line x1="${L}" x2="${W-R}" y1="${H-B}" y2="${H-B}" class="chart-axis"/>${lines}${xLabels}</svg>`;
+}
+function donutChart(rows, labelKey='status') {
+  const list = Array.isArray(rows) ? rows.filter(r => Number(r.count || 0) > 0) : [];
+  const total = list.reduce((sum,r)=>sum+Number(r.count||0),0);
+  if (!total) return '<div class="empty small">暂无数据</div>';
+  let offset = 25;
+  const circles = list.map((r, idx) => {
+    const pct = Number(r.count || 0) / total * 100;
+    const el = `<circle class="donut-seg donut-${idx%8}" cx="90" cy="90" r="58" stroke-dasharray="${pct} ${100-pct}" stroke-dashoffset="${offset}"></circle>`;
+    offset -= pct;
+    return el;
+  }).join('');
+  const legend = list.map((r, idx) => `<p><i class="donut-color donut-${idx%8}"></i><span>${esc(statusText[r[labelKey]] || r[labelKey] || '未知')}</span><b>${esc(r.count || 0)}</b></p>`).join('');
+  return `<div class="donut-wrap"><svg class="donut-svg" viewBox="0 0 180 180"><circle class="donut-bg" cx="90" cy="90" r="58"></circle>${circles}<text x="90" y="88" text-anchor="middle" class="donut-total">${total}</text><text x="90" y="108" text-anchor="middle" class="donut-caption">总数</text></svg><div class="donut-legend">${legend}</div></div>`;
+}
+function cfApiMonitor(apiInfo) {
+  const total = Number(apiInfo?.total || 0);
+  const failed = Number(apiInfo?.failed || 0);
+  const success = Number(apiInfo?.success || 0);
+  const rate = total ? Math.round(failed / total * 1000) / 10 : 0;
+  return `<div class="cf-monitor">
+    <div><span>总调用次数</span><strong>${total}</strong></div>
+    <div><span>成功次数</span><strong>${success}</strong></div>
+    <div><span>失败次数</span><strong>${failed}</strong></div>
+    <div><span>失败率</span><strong>${rate}%</strong></div>
+  </div>${donutChart(apiInfo?.failures || [], 'reason')}`;
 }
 async function renderAdminAnalytics() {
   shell('分析页', `<div class="loading-card">正在读取分析数据…</div>`);
   try {
-    const days = Number(new URLSearchParams(location.hash.split('?')[1] || '').get('days') || 30);
-    const { analytics } = await api(`/api/admin/analytics?days=${days}`);
+    const rangeState = analyticsRangeFromHash();
+    const qs = analyticsQueryString(rangeState.range, rangeState.start, rangeState.end);
+    const { analytics } = await api(`/api/admin/analytics?${qs}`);
     const m = analytics.metrics || {};
-    shell('分析页', `<section class="card analytics-page">
-      <div class="section-head"><div><h2>分析页</h2><p>统计二级域名、用户、DNS 记录、申请趋势和 Cloudflare API 调用状态。</p></div><div class="toolbar-actions"><select id="analytics-days"><option value="7" ${days===7?'selected':''}>最近7天</option><option value="30" ${days===30?'selected':''}>最近30天</option><option value="90" ${days===90?'selected':''}>最近90天</option></select><button class="btn soft" id="refresh-analytics">手动刷新</button></div></div>
-      <div class="analytics-grid">
-        ${analyticsCard('二级域名总数', m.totalDomains?.total || 0, `有效 ${m.activeDomains?.total || 0} / 已注销 ${m.totalDomains?.deleted || 0}`)}
-        ${analyticsCard('活跃二级域名', m.activeDomains?.total || 0, '最近30天正常启用/未过期')}
-        ${analyticsCard('注册用户总数', m.users?.total || 0, '系统注册用户数量')}
-        ${analyticsCard('DNS记录总数', m.dnsRecords?.total || 0, '程序托管的解析记录')}
-        ${analyticsCard('申请总量', m.applications?.total || 0, '通过/驳回/待审核均包含')}
+    const bucket = analytics.range?.bucket || 'day';
+    shell('分析页', `<section class="card analytics-page analytics-v75">
+      <div class="section-head analytics-head"><div><h2>分析页</h2><p>参考邮箱分析页的卡片、趋势和环形统计样式，专门统计二级域名系统运行状态。</p></div>${analyticsToolbar(rangeState)}</div>
+      <div class="analytics-grid metric-row-v75">
+        ${analyticsMetricCard('二级域名总数', m.totalDomains, `有效 ${m.activeDomains?.total || 0}　已注销 ${m.totalDomains?.deleted || 0}`, '▣')}
+        ${analyticsMetricCard('活跃二级域名', m.activeDomains, '最近30天正常启用 / 未过期', '◎')}
+        ${analyticsMetricCard('注册用户总数', m.users, '系统注册用户数量', '♙')}
+        ${analyticsMetricCard('DNS记录总数', m.dnsRecords, '程序托管的解析记录', '@')}
+        ${analyticsMetricCard('申请总量', m.applications, '通过 / 驳回 / 待审核均包含', '+')}
       </div>
-      <div class="chart-grid">
-        <section class="chart-card"><h3>二级域名申请&审批趋势</h3>${simpleBars(analytics.domainTrend || [], 'day', 'created')}</section>
-        <section class="chart-card"><h3>DNS 变更趋势</h3>${simpleBars(analytics.dnsTrend || [], 'day', 'added')}</section>
-        <section class="chart-card"><h3>二级域名状态分布</h3>${distributionList(analytics.statusDistribution || [], 'status')}</section>
-        <section class="chart-card"><h3>DNS 记录类型占比</h3>${distributionList(analytics.dnsTypeDistribution || [], 'type')}</section>
-        <section class="chart-card"><h3>Cloudflare API 调用统计</h3><p>总调用：${esc(analytics.cfApi?.total || 0)}　成功：${esc(analytics.cfApi?.success || 0)}　失败：${esc(analytics.cfApi?.failed || 0)}　失败率：${analytics.cfApi?.total ? Math.round((analytics.cfApi.failed || 0) / analytics.cfApi.total * 100) : 0}%</p></section>
-        <section class="chart-card"><h3>API 失败原因</h3>${distributionList(analytics.cfApi?.failures || [], 'reason')}</section>
+      <div class="chart-grid analytics-charts-v75">
+        <section class="chart-card wide-chart"><div class="chart-titlebar"><h3>二级域名申请 & 审批趋势</h3><small>${esc(analytics.range?.label || '')}</small></div>${multiLineChart(analytics.domainTrend || [], [{key:'created',label:'新增申请'}, {key:'approved',label:'审核通过'}, {key:'rejected',label:'驳回/注销'}], bucket)}</section>
+        <section class="chart-card wide-chart"><div class="chart-titlebar"><h3>DNS 变更趋势</h3><small>${esc(analytics.range?.label || '')}</small></div>${multiLineChart(analytics.dnsTrend || [], [{key:'added',label:'新增DNS'}, {key:'removed',label:'删除DNS'}], bucket)}</section>
+        <section class="chart-card"><h3>二级域名状态分布</h3>${donutChart(analytics.statusDistribution || [], 'status')}</section>
+        <section class="chart-card"><h3>DNS 记录类型占比</h3>${donutChart(analytics.dnsTypeDistribution || [], 'type')}</section>
+        <section class="chart-card wide-chart"><h3>Cloudflare API 运行监控</h3>${cfApiMonitor(analytics.cfApi || {})}</section>
       </div>
     </section>`);
-    document.querySelector('#analytics-days')?.addEventListener('change', e => { location.hash = `#/admin/analytics?days=${e.target.value}`; renderAdminAnalytics(); });
-    document.querySelector('#refresh-analytics')?.addEventListener('click', renderAdminAnalytics);
+    bindAnalyticsControls(rangeState);
   } catch (error) { toast(error.message, 'error'); }
+}
+function bindAnalyticsControls(rangeState) {
+  document.querySelectorAll('[data-analytics-range]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const value = btn.dataset.analyticsRange || '30d';
+      if (value === 'custom') {
+        const start = document.querySelector('#analytics-start')?.value || '';
+        const end = document.querySelector('#analytics-end')?.value || '';
+        location.hash = `#/admin/analytics?${analyticsQueryString('custom', start, end)}`;
+      } else {
+        location.hash = `#/admin/analytics?${analyticsQueryString(value)}`;
+      }
+      renderAdminAnalytics();
+    });
+  });
+  document.querySelector('#apply-custom-analytics')?.addEventListener('click', () => {
+    const start = document.querySelector('#analytics-start')?.value || '';
+    const end = document.querySelector('#analytics-end')?.value || '';
+    if (!start || !end) return toast('请选择自定义开始和结束时间', 'error');
+    location.hash = `#/admin/analytics?${analyticsQueryString('custom', start, end)}`;
+    renderAdminAnalytics();
+  });
+  document.querySelector('#refresh-analytics')?.addEventListener('click', renderAdminAnalytics);
 }
 
 async function renderAdminSettings() {
