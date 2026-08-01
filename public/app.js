@@ -1,4 +1,4 @@
-let app = document.querySelector('#app');
+ app = document.querySelector('#app')let app = document.querySelector('#app');
 let toastRoot = document.querySelector('#toast-root');
 let modalRoot = document.querySelector('#modal-root');
 
@@ -3446,42 +3446,112 @@ function formatAnalyticsLabel(value, bucket) {
   if (bucket === 'hour') return raw.slice(5, 13).replace('-', '/');
   return raw.slice(5).replace('-', '/');
 }
+function analyticsSafeNumber(value) {
+  const n = Number(value || 0);
+  return Number.isFinite(n) ? n : 0;
+}
+function analyticsTooltipLabel(parts) {
+  return String(parts.filter(Boolean).join(' | ')).replace(/"/g, '&quot;');
+}
 function multiLineChart(rows, series, bucket='day') {
   const safeRows = Array.isArray(rows) ? rows : [];
+  const normalizedRows = safeRows.length ? safeRows : [{ bucket:'—', day:'—', ...Object.fromEntries(series.map(s => [s.key, 0])) }];
   const values = [];
-  safeRows.forEach(row => series.forEach(s => values.push(Number(row[s.key] || 0))));
+  normalizedRows.forEach(row => series.forEach(s => values.push(analyticsSafeNumber(row[s.key]))));
   const max = Math.max(1, ...values, 10);
-  const W = 900, H = 260, L = 46, R = 24, T = 20, B = 40;
-  const x = i => safeRows.length <= 1 ? L : L + i * ((W - L - R) / (safeRows.length - 1));
-  const y = v => T + (H - T - B) * (1 - Number(v || 0) / max);
+  const W = 980, H = 320, L = 58, R = 34, T = 26, B = 52;
+  const x = i => normalizedRows.length <= 1 ? L : L + i * ((W - L - R) / (normalizedRows.length - 1));
+  const y = v => T + (H - T - B) * (1 - analyticsSafeNumber(v) / max);
   const grid = [0, .25, .5, .75, 1].map(k => {
     const yy = T + (H - T - B) * k;
     const val = Math.round(max * (1-k));
-    return `<g><line x1="${L}" x2="${W-R}" y1="${yy}" y2="${yy}" class="chart-grid-line"/><text x="${L-10}" y="${yy+4}" text-anchor="end" class="chart-axis-text">${val}</text></g>`;
+    return `<g><line x1="${L}" x2="${W-R}" y1="${yy}" y2="${yy}" class="chart-grid-line"/><text x="${L-12}" y="${yy+4}" text-anchor="end" class="chart-axis-text">${val}</text></g>`;
   }).join('');
   const lines = series.map((s, idx) => {
-    const pts = safeRows.map((row, i) => `${x(i)},${y(row[s.key] || 0)}`).join(' ');
-    const dots = safeRows.map((row,i) => Number(row[s.key]||0) ? `<circle cx="${x(i)}" cy="${y(row[s.key]||0)}" r="3" class="line-dot line-${idx}"/>` : '').join('');
+    const pts = normalizedRows.map((row, i) => `${x(i)},${y(row[s.key] || 0)}`).join(' ');
+    const dots = normalizedRows.map((row,i) => `<circle cx="${x(i)}" cy="${y(row[s.key]||0)}" r="3.5" class="line-dot line-${idx}"/>`).join('');
     return `<polyline points="${pts}" class="line-series line-${idx}"/>${dots}`;
   }).join('');
-  const labelEvery = Math.max(1, Math.ceil(safeRows.length / 8));
-  const xLabels = safeRows.map((row,i) => i % labelEvery === 0 || i === safeRows.length - 1 ? `<text x="${x(i)}" y="${H-12}" text-anchor="middle" class="chart-axis-text">${esc(formatAnalyticsLabel(row.bucket || row.day, bucket))}</text>` : '').join('');
+  const labelEvery = Math.max(1, Math.ceil(normalizedRows.length / 8));
+  const xLabels = normalizedRows.map((row,i) => i % labelEvery === 0 || i === normalizedRows.length - 1 ? `<text x="${x(i)}" y="${H-16}" text-anchor="middle" class="chart-axis-text">${esc(formatAnalyticsLabel(row.bucket || row.day, bucket))}</text>` : '').join('');
+  const hitWidth = normalizedRows.length <= 1 ? W - L - R : Math.max(18, (W - L - R) / normalizedRows.length);
+  const hits = normalizedRows.map((row, i) => {
+    const label = formatAnalyticsLabel(row.bucket || row.day, bucket);
+    const parts = [label, ...series.map(s => `${s.label} ${analyticsSafeNumber(row[s.key])}`)];
+    const tooltip = analyticsTooltipLabel(parts);
+    return `<rect class="chart-hit" x="${Math.max(L, x(i)-hitWidth/2)}" y="${T}" width="${hitWidth}" height="${H-T-B}" data-chart-tip="${tooltip}" data-x="${x(i)}" data-y="${T+20}"></rect><line x1="${x(i)}" x2="${x(i)}" y1="${T}" y2="${H-B}" class="chart-hover-line"></line>`;
+  }).join('');
   const legend = series.map((s, idx) => `<span><i class="legend-dot line-${idx}"></i>${esc(s.label)}</span>`).join('');
-  return `<div class="chart-legend">${legend}</div><svg class="analytics-svg" viewBox="0 0 ${W} ${H}" role="img">${grid}<line x1="${L}" x2="${L}" y1="${T}" y2="${H-B}" class="chart-axis"/><line x1="${L}" x2="${W-R}" y1="${H-B}" y2="${H-B}" class="chart-axis"/>${lines}${xLabels}</svg>`;
+  return `<div class="interactive-chart line-chart-box"><div class="chart-legend">${legend}</div><svg class="analytics-svg analytics-line-svg" viewBox="0 0 ${W} ${H}" role="img">${grid}<line x1="${L}" x2="${L}" y1="${T}" y2="${H-B}" class="chart-axis"/><line x1="${L}" x2="${W-R}" y1="${H-B}" y2="${H-B}" class="chart-axis"/>${lines}${xLabels}${hits}</svg><div class="analytics-floating-tip" hidden></div></div>`;
 }
 function donutChart(rows, labelKey='status') {
-  const list = Array.isArray(rows) ? rows.filter(r => Number(r.count || 0) > 0) : [];
-  const total = list.reduce((sum,r)=>sum+Number(r.count||0),0);
+  const list = Array.isArray(rows) ? rows.filter(r => analyticsSafeNumber(r.count) > 0) : [];
+  const total = list.reduce((sum,r)=>sum+analyticsSafeNumber(r.count),0);
   if (!total) return '<div class="empty small">暂无数据</div>';
   let offset = 25;
   const circles = list.map((r, idx) => {
-    const pct = Number(r.count || 0) / total * 100;
-    const el = `<circle class="donut-seg donut-${idx%8}" cx="90" cy="90" r="58" stroke-dasharray="${pct} ${100-pct}" stroke-dashoffset="${offset}"></circle>`;
+    const label = statusText[r[labelKey]] || r[labelKey] || '未知';
+    const count = analyticsSafeNumber(r.count);
+    const pct = count / total * 100;
+    const pctText = Math.round(pct * 10) / 10;
+    const el = `<circle tabindex="0" class="donut-seg donut-${idx%8}" cx="110" cy="110" r="72" stroke-dasharray="${pct} ${100-pct}" stroke-dashoffset="${offset}" data-chart-tip="${attr(`${label}: ${count} (${pctText}%)`)}"></circle>`;
     offset -= pct;
     return el;
   }).join('');
-  const legend = list.map((r, idx) => `<p><i class="donut-color donut-${idx%8}"></i><span>${esc(statusText[r[labelKey]] || r[labelKey] || '未知')}</span><b>${esc(r.count || 0)}</b></p>`).join('');
-  return `<div class="donut-wrap"><svg class="donut-svg" viewBox="0 0 180 180"><circle class="donut-bg" cx="90" cy="90" r="58"></circle>${circles}<text x="90" y="88" text-anchor="middle" class="donut-total">${total}</text><text x="90" y="108" text-anchor="middle" class="donut-caption">总数</text></svg><div class="donut-legend">${legend}</div></div>`;
+  const legend = list.map((r, idx) => {
+    const label = statusText[r[labelKey]] || r[labelKey] || '未知';
+    const count = analyticsSafeNumber(r.count);
+    const pctText = Math.round(count / total * 1000) / 10;
+    return `<p data-chart-tip="${attr(`${label}: ${count} (${pctText}%)`)}"><i class="donut-color donut-${idx%8}"></i><span>${esc(label)}</span><b>${count}</b><em>${pctText}%</em></p>`;
+  }).join('');
+  return `<div class="interactive-chart donut-chart-box"><div class="donut-wrap email-style"><div class="donut-legend">${legend}</div><svg class="donut-svg" viewBox="0 0 220 220"><circle class="donut-bg" cx="110" cy="110" r="72"></circle>${circles}<text x="110" y="104" text-anchor="middle" class="donut-total">${total}</text><text x="110" y="126" text-anchor="middle" class="donut-caption">总数</text></svg></div><div class="analytics-floating-tip" hidden></div></div>`;
+}
+function bindAnalyticsChartInteractions(root=document) {
+  root.querySelectorAll('.interactive-chart').forEach(box => {
+    const tip = box.querySelector('.analytics-floating-tip');
+    if (!tip) return;
+    const show = (target, event) => {
+      const text = target?.dataset?.chartTip || target?.closest?.('[data-chart-tip]')?.dataset?.chartTip || '';
+      if (!text) return;
+      tip.textContent = text;
+      tip.hidden = false;
+      const boxRect = box.getBoundingClientRect();
+      let left = (event?.clientX || (boxRect.left + boxRect.width / 2)) - boxRect.left + 14;
+      let top = (event?.clientY || (boxRect.top + 80)) - boxRect.top + 14;
+      left = Math.max(12, Math.min(left, boxRect.width - 230));
+      top = Math.max(12, Math.min(top, boxRect.height - 56));
+      tip.style.left = left + 'px';
+      tip.style.top = top + 'px';
+      if (target.classList?.contains('chart-hit')) {
+        box.querySelectorAll('.chart-hover-line').forEach(l => l.classList.remove('active'));
+        const next = target.nextElementSibling;
+        if (next?.classList?.contains('chart-hover-line')) next.classList.add('active');
+      }
+    };
+    const hide = () => {
+      tip.hidden = true;
+      box.querySelectorAll('.chart-hover-line').forEach(l => l.classList.remove('active'));
+      box.querySelectorAll('.donut-seg.active').forEach(s => s.classList.remove('active'));
+    };
+    box.querySelectorAll('[data-chart-tip]').forEach(el => {
+      el.addEventListener('mouseenter', e => show(el, e));
+      el.addEventListener('mousemove', e => show(el, e));
+      el.addEventListener('mouseleave', hide);
+      el.addEventListener('focus', e => show(el, e));
+      el.addEventListener('blur', hide);
+      el.addEventListener('click', e => {
+        e.stopPropagation();
+        box.querySelectorAll('.donut-seg.active').forEach(s => s.classList.remove('active'));
+        if (el.classList.contains('donut-seg')) el.classList.add('active');
+        show(el, e);
+      });
+      el.addEventListener('touchstart', e => {
+        const touch = e.touches?.[0] || e.changedTouches?.[0];
+        show(el, touch || e);
+      }, { passive:true });
+    });
+    document.addEventListener('click', e => { if (!box.contains(e.target)) hide(); });
+  });
 }
 function cfApiMonitor(apiInfo) {
   const total = Number(apiInfo?.total || 0);
@@ -3503,24 +3573,27 @@ async function renderAdminAnalytics() {
     const { analytics } = await api(`/api/admin/analytics?${qs}`);
     const m = analytics.metrics || {};
     const bucket = analytics.range?.bucket || 'day';
-    shell('分析页', `<section class="card analytics-page analytics-v75">
-      <div class="section-head analytics-head"><div><h2>分析页</h2><p>参考邮箱分析页的卡片、趋势和环形统计样式，专门统计二级域名系统运行状态。</p></div>${analyticsToolbar(rangeState)}</div>
-      <div class="analytics-grid metric-row-v75">
+    shell('分析页', `<section class="card analytics-page analytics-v75 analytics-v76">
+      <div class="section-head analytics-head"><div><h2>分析页</h2><p>参考邮箱分析页布局，尽量铺满页面；卡片、折线图和环形图都支持鼠标悬停 / 触屏点击查看数据。</p></div>${analyticsToolbar(rangeState)}</div>
+      <div class="analytics-grid metric-row-v75 metric-row-v76">
         ${analyticsMetricCard('二级域名总数', m.totalDomains, `有效 ${m.activeDomains?.total || 0}　已注销 ${m.totalDomains?.deleted || 0}`, '▣')}
         ${analyticsMetricCard('活跃二级域名', m.activeDomains, '最近30天正常启用 / 未过期', '◎')}
         ${analyticsMetricCard('注册用户总数', m.users, '系统注册用户数量', '♙')}
         ${analyticsMetricCard('DNS记录总数', m.dnsRecords, '程序托管的解析记录', '@')}
         ${analyticsMetricCard('申请总量', m.applications, '通过 / 驳回 / 待审核均包含', '+')}
       </div>
-      <div class="chart-grid analytics-charts-v75">
-        <section class="chart-card wide-chart"><div class="chart-titlebar"><h3>二级域名申请 & 审批趋势</h3><small>${esc(analytics.range?.label || '')}</small></div>${multiLineChart(analytics.domainTrend || [], [{key:'created',label:'新增申请'}, {key:'approved',label:'审核通过'}, {key:'rejected',label:'驳回/注销'}], bucket)}</section>
-        <section class="chart-card wide-chart"><div class="chart-titlebar"><h3>DNS 变更趋势</h3><small>${esc(analytics.range?.label || '')}</small></div>${multiLineChart(analytics.dnsTrend || [], [{key:'added',label:'新增DNS'}, {key:'removed',label:'删除DNS'}], bucket)}</section>
-        <section class="chart-card"><h3>二级域名状态分布</h3>${donutChart(analytics.statusDistribution || [], 'status')}</section>
-        <section class="chart-card"><h3>DNS 记录类型占比</h3>${donutChart(analytics.dnsTypeDistribution || [], 'type')}</section>
-        <section class="chart-card wide-chart"><h3>Cloudflare API 运行监控</h3>${cfApiMonitor(analytics.cfApi || {})}</section>
+      <div class="analytics-section-stack">
+        <section class="chart-card trend-card"><div class="chart-titlebar"><h3>二级域名申请 & 审批趋势</h3><small>${esc(analytics.range?.label || '')}</small></div>${multiLineChart(analytics.domainTrend || [], [{key:'created',label:'新增申请'}, {key:'approved',label:'审核通过'}, {key:'rejected',label:'驳回/注销'}], bucket)}</section>
+        <section class="chart-card trend-card"><div class="chart-titlebar"><h3>DNS 变更趋势</h3><small>${esc(analytics.range?.label || '')}</small></div>${multiLineChart(analytics.dnsTrend || [], [{key:'added',label:'新增DNS'}, {key:'removed',label:'删除DNS'}], bucket)}</section>
+      </div>
+      <div class="analytics-two-col">
+        <section class="chart-card distribution-card"><h3>二级域名状态分布</h3>${donutChart(analytics.statusDistribution || [], 'status')}</section>
+        <section class="chart-card distribution-card"><h3>DNS 记录类型占比</h3>${donutChart(analytics.dnsTypeDistribution || [], 'type')}</section>
+        <section class="chart-card monitor-card"><h3>Cloudflare API 运行监控</h3>${cfApiMonitor(analytics.cfApi || {})}</section>
       </div>
     </section>`);
     bindAnalyticsControls(rangeState);
+    bindAnalyticsChartInteractions(document);
   } catch (error) { toast(error.message, 'error'); }
 }
 function bindAnalyticsControls(rangeState) {
