@@ -2585,11 +2585,20 @@ async function adminRegistrationKeyUsages(request: Request, env: Env, keyId: str
   })) });
 }
 
+
 async function adminAnalytics(request: Request, env: Env, url: URL): Promise<Response> {
   await requireAdmin(env, request);
-  const days = clamp(Number(url.searchParams.get('days') || 30), 7, 90);
-  const sinceExpr = `-${days - 1} days`;
-  const [domainTotals, activeDomains, users, dnsTotal, apps, statusRows, dnsTypeRows, cfRows, cfFails] = await Promise.all([
+  const range = normalizeAnalyticsRange(url);
+  const bucketFormat = range.bucket === 'hour' ? "%Y-%m-%d %H:00" : "%Y-%m-%d";
+  const startSql = sqlDate(range.start);
+  const endSql = sqlDate(range.end);
+  const prevStartSql = sqlDate(range.prevStart);
+  const prevEndSql = sqlDate(range.prevEnd);
+
+  const periodWhere = `datetime({field}) >= datetime(?) AND datetime({field}) < datetime(?)`;
+  const [domainTotals, activeDomains, users, dnsTotal, apps, statusRows, dnsTypeRows, cfRows, cfFails,
+    totalDomainsPeriod, totalDomainsPrev, activePeriod, activePrev, usersPeriod, usersPrev, dnsPeriod, dnsPrev, appsPeriod, appsPrev,
+    createdRows, approvedRows, rejectedRows, dnsAddedRows, dnsRemovedRows] = await Promise.all([
     env.DB.prepare(`SELECT COUNT(*) AS total, SUM(CASE WHEN deleted_at IS NOT NULL AND deleted_at!='' THEN 1 ELSE 0 END) AS deleted FROM domain_applications`).first<any>(),
     env.DB.prepare(`SELECT COUNT(*) AS count FROM domain_applications WHERE status='approved' AND (deleted_at IS NULL OR deleted_at='') AND (expires_at IS NULL OR datetime(expires_at)>datetime('now'))`).first<any>(),
     env.DB.prepare(`SELECT COUNT(*) AS total FROM users WHERE status!='deleted'`).first<any>(),
@@ -2597,47 +2606,147 @@ async function adminAnalytics(request: Request, env: Env, url: URL): Promise<Res
     env.DB.prepare(`SELECT COUNT(*) AS total FROM domain_applications`).first<any>(),
     env.DB.prepare(`SELECT status, COUNT(*) AS count FROM domain_applications GROUP BY status`).all<any>(),
     env.DB.prepare(`SELECT type, COUNT(*) AS count FROM dns_records WHERE (deleted_at IS NULL OR deleted_at='') GROUP BY type`).all<any>(),
-    env.DB.prepare(`SELECT COUNT(*) AS total, SUM(CASE WHEN action LIKE '%failed%' OR action LIKE '%error%' THEN 1 ELSE 0 END) AS failed FROM audit_logs WHERE action LIKE '%dns%' OR action LIKE '%cf_api%'`).first<any>(),
-    env.DB.prepare(`SELECT action AS reason, COUNT(*) AS count FROM audit_logs WHERE (action LIKE '%dns%' OR action LIKE '%cf_api%') AND (action LIKE '%failed%' OR action LIKE '%error%') GROUP BY action LIMIT 10`).all<any>(),
+    env.DB.prepare(`SELECT COUNT(*) AS total, SUM(CASE WHEN action LIKE '%failed%' OR action LIKE '%error%' THEN 1 ELSE 0 END) AS failed FROM audit_logs WHERE (action LIKE '%dns%' OR action LIKE '%cf_api%') AND datetime(created_at) >= datetime(?) AND datetime(created_at) < datetime(?)`).bind(startSql, endSql).first<any>(),
+    env.DB.prepare(`SELECT action AS reason, COUNT(*) AS count FROM audit_logs WHERE (action LIKE '%dns%' OR action LIKE '%cf_api%') AND (action LIKE '%failed%' OR action LIKE '%error%') AND datetime(created_at) >= datetime(?) AND datetime(created_at) < datetime(?) GROUP BY action LIMIT 10`).bind(startSql, endSql).all<any>(),
+
+    env.DB.prepare(`SELECT COUNT(*) AS count FROM domain_applications WHERE datetime(created_at) >= datetime(?) AND datetime(created_at) < datetime(?)`).bind(startSql, endSql).first<any>(),
+    env.DB.prepare(`SELECT COUNT(*) AS count FROM domain_applications WHERE datetime(created_at) >= datetime(?) AND datetime(created_at) < datetime(?)`).bind(prevStartSql, prevEndSql).first<any>(),
+    env.DB.prepare(`SELECT COUNT(*) AS count FROM domain_applications WHERE status='approved' AND datetime(COALESCE(reviewed_at, created_at)) >= datetime(?) AND datetime(COALESCE(reviewed_at, created_at)) < datetime(?)`).bind(startSql, endSql).first<any>(),
+    env.DB.prepare(`SELECT COUNT(*) AS count FROM domain_applications WHERE status='approved' AND datetime(COALESCE(reviewed_at, created_at)) >= datetime(?) AND datetime(COALESCE(reviewed_at, created_at)) < datetime(?)`).bind(prevStartSql, prevEndSql).first<any>(),
+    env.DB.prepare(`SELECT COUNT(*) AS count FROM users WHERE datetime(created_at) >= datetime(?) AND datetime(created_at) < datetime(?)`).bind(startSql, endSql).first<any>(),
+    env.DB.prepare(`SELECT COUNT(*) AS count FROM users WHERE datetime(created_at) >= datetime(?) AND datetime(created_at) < datetime(?)`).bind(prevStartSql, prevEndSql).first<any>(),
+    env.DB.prepare(`SELECT COUNT(*) AS count FROM dns_records WHERE datetime(created_at) >= datetime(?) AND datetime(created_at) < datetime(?)`).bind(startSql, endSql).first<any>(),
+    env.DB.prepare(`SELECT COUNT(*) AS count FROM dns_records WHERE datetime(created_at) >= datetime(?) AND datetime(created_at) < datetime(?)`).bind(prevStartSql, prevEndSql).first<any>(),
+    env.DB.prepare(`SELECT COUNT(*) AS count FROM domain_applications WHERE datetime(created_at) >= datetime(?) AND datetime(created_at) < datetime(?)`).bind(startSql, endSql).first<any>(),
+    env.DB.prepare(`SELECT COUNT(*) AS count FROM domain_applications WHERE datetime(created_at) >= datetime(?) AND datetime(created_at) < datetime(?)`).bind(prevStartSql, prevEndSql).first<any>(),
+
+    env.DB.prepare(`SELECT strftime('${bucketFormat}', created_at) AS bucket, COUNT(*) AS count FROM domain_applications WHERE datetime(created_at) >= datetime(?) AND datetime(created_at) < datetime(?) GROUP BY bucket`).bind(startSql, endSql).all<any>(),
+    env.DB.prepare(`SELECT strftime('${bucketFormat}', reviewed_at) AS bucket, COUNT(*) AS count FROM domain_applications WHERE status='approved' AND reviewed_at IS NOT NULL AND datetime(reviewed_at) >= datetime(?) AND datetime(reviewed_at) < datetime(?) GROUP BY bucket`).bind(startSql, endSql).all<any>(),
+    env.DB.prepare(`SELECT strftime('${bucketFormat}', COALESCE(deleted_at, reviewed_at, created_at)) AS bucket, COUNT(*) AS count FROM domain_applications WHERE (status IN ('rejected','revoked','deleted') OR deleted_at IS NOT NULL) AND datetime(COALESCE(deleted_at, reviewed_at, created_at)) >= datetime(?) AND datetime(COALESCE(deleted_at, reviewed_at, created_at)) < datetime(?) GROUP BY bucket`).bind(startSql, endSql).all<any>(),
+    env.DB.prepare(`SELECT strftime('${bucketFormat}', created_at) AS bucket, COUNT(*) AS count FROM dns_records WHERE datetime(created_at) >= datetime(?) AND datetime(created_at) < datetime(?) GROUP BY bucket`).bind(startSql, endSql).all<any>(),
+    env.DB.prepare(`SELECT strftime('${bucketFormat}', deleted_at) AS bucket, COUNT(*) AS count FROM dns_records WHERE deleted_at IS NOT NULL AND deleted_at!='' AND datetime(deleted_at) >= datetime(?) AND datetime(deleted_at) < datetime(?) GROUP BY bucket`).bind(startSql, endSql).all<any>(),
   ]);
 
-  const trendRows = await env.DB.prepare(`
-    SELECT date(created_at) AS day,
-      COUNT(*) AS created,
-      SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) AS approved,
-      SUM(CASE WHEN status IN ('rejected','revoked','deleted') OR deleted_at IS NOT NULL THEN 1 ELSE 0 END) AS rejected
-    FROM domain_applications
-    WHERE date(created_at) >= date('now', ?)
-    GROUP BY date(created_at)
-  `).bind(sinceExpr).all<any>();
-  const dnsTrendRows = await env.DB.prepare(`
-    SELECT date(created_at) AS day, COUNT(*) AS added, 0 AS removed
-    FROM dns_records
-    WHERE date(created_at) >= date('now', ?)
-    GROUP BY date(created_at)
-  `).bind(sinceExpr).all<any>();
-  const dnsRemovedRows = await env.DB.prepare(`
-    SELECT date(deleted_at) AS day, COUNT(*) AS removed
-    FROM dns_records
-    WHERE deleted_at IS NOT NULL AND deleted_at!='' AND date(deleted_at) >= date('now', ?)
-    GROUP BY date(deleted_at)
-  `).bind(sinceExpr).all<any>();
+  const bucketList = buildAnalyticsBuckets(range.start, range.end, range.bucket);
+  const domainTrend = mergeMultiTrend(bucketList, [
+    { key: 'created', rows: createdRows.results || [] },
+    { key: 'approved', rows: approvedRows.results || [] },
+    { key: 'rejected', rows: rejectedRows.results || [] },
+  ]);
+  const dnsTrend = mergeMultiTrend(bucketList, [
+    { key: 'added', rows: dnsAddedRows.results || [] },
+    { key: 'removed', rows: dnsRemovedRows.results || [] },
+  ]);
 
   return ok({ analytics: {
-    days,
-    metrics: {
-      totalDomains: { total: Number(domainTotals?.total || 0), deleted: Number(domainTotals?.deleted || 0) },
-      activeDomains: { total: Number(activeDomains?.count || 0) },
-      users: { total: Number(users?.total || 0) },
-      dnsRecords: { total: Number(dnsTotal?.total || 0) },
-      applications: { total: Number(apps?.total || 0) },
+    range: {
+      preset: range.preset,
+      days: range.days,
+      start: range.start.toISOString(),
+      end: range.end.toISOString(),
+      bucket: range.bucket,
+      label: range.label,
     },
-    domainTrend: trendRows.results || [],
-    dnsTrend: mergeDnsTrend(dnsTrendRows.results || [], dnsRemovedRows.results || []),
+    days: range.days,
+    metrics: {
+      totalDomains: metric(Number(domainTotals?.total || 0), Number(domainTotals?.deleted || 0), Number(totalDomainsPeriod?.count || 0), Number(totalDomainsPrev?.count || 0)),
+      activeDomains: metric(Number(activeDomains?.count || 0), 0, Number(activePeriod?.count || 0), Number(activePrev?.count || 0)),
+      users: metric(Number(users?.total || 0), 0, Number(usersPeriod?.count || 0), Number(usersPrev?.count || 0)),
+      dnsRecords: metric(Number(dnsTotal?.total || 0), 0, Number(dnsPeriod?.count || 0), Number(dnsPrev?.count || 0)),
+      applications: metric(Number(apps?.total || 0), 0, Number(appsPeriod?.count || 0), Number(appsPrev?.count || 0)),
+    },
+    domainTrend,
+    dnsTrend,
     statusDistribution: statusRows.results || [],
     dnsTypeDistribution: dnsTypeRows.results || [],
     cfApi: { total: Number(cfRows?.total || 0), failed: Number(cfRows?.failed || 0), success: Math.max(0, Number(cfRows?.total || 0) - Number(cfRows?.failed || 0)), failures: cfFails.results || [] },
   } });
+}
+
+type AnalyticsRange = { preset: string; start: Date; end: Date; prevStart: Date; prevEnd: Date; days: number; bucket: 'hour' | 'day'; label: string };
+function normalizeAnalyticsRange(url: URL): AnalyticsRange {
+  const now = new Date();
+  const preset = String(url.searchParams.get('range') || url.searchParams.get('days') || '30d').toLowerCase();
+  let start: Date;
+  let end = now;
+  let label = '最近30天';
+  let bucket: 'hour' | 'day' = 'day';
+
+  if (preset === 'custom') {
+    const rawStart = url.searchParams.get('start') || '';
+    const rawEnd = url.searchParams.get('end') || '';
+    start = rawStart ? new Date(rawStart) : new Date(now.getTime() - 30 * DAY);
+    end = rawEnd ? new Date(rawEnd) : now;
+    if (Number.isNaN(start.getTime())) start = new Date(now.getTime() - 30 * DAY);
+    if (Number.isNaN(end.getTime())) end = now;
+    if (end <= start) end = new Date(start.getTime() + DAY);
+    const diffHours = (end.getTime() - start.getTime()) / (60 * 60 * 1000);
+    bucket = diffHours <= 48 ? 'hour' : 'day';
+    label = '自定义';
+  } else {
+    const map: Record<string, { ms: number; label: string; bucket: 'hour' | 'day' }> = {
+      '12h': { ms: 12 * 60 * 60 * 1000, label: '最近12小时', bucket: 'hour' },
+      '1d': { ms: DAY, label: '最近1天', bucket: 'hour' },
+      '3d': { ms: 3 * DAY, label: '最近3天', bucket: 'day' },
+      '7d': { ms: 7 * DAY, label: '最近7天', bucket: 'day' },
+      '7': { ms: 7 * DAY, label: '最近7天', bucket: 'day' },
+      '30d': { ms: 30 * DAY, label: '最近30天', bucket: 'day' },
+      '30': { ms: 30 * DAY, label: '最近30天', bucket: 'day' },
+      '90d': { ms: 90 * DAY, label: '最近90天', bucket: 'day' },
+      '90': { ms: 90 * DAY, label: '最近90天', bucket: 'day' },
+    };
+    const picked = map[preset] || map['30d'];
+    start = new Date(now.getTime() - picked.ms);
+    bucket = picked.bucket;
+    label = picked.label;
+  }
+  const span = end.getTime() - start.getTime();
+  const prevEnd = new Date(start.getTime());
+  const prevStart = new Date(start.getTime() - span);
+  return { preset, start, end, prevStart, prevEnd, days: Math.max(1, Math.ceil(span / DAY)), bucket, label };
+}
+function sqlDate(date: Date): string {
+  return date.toISOString().slice(0, 19).replace('T', ' ');
+}
+function bucketKey(date: Date, bucket: 'hour' | 'day'): string {
+  const iso = date.toISOString();
+  return bucket === 'hour' ? iso.slice(0, 13).replace('T', ' ') + ':00' : iso.slice(0, 10);
+}
+function buildAnalyticsBuckets(start: Date, end: Date, bucket: 'hour' | 'day'): string[] {
+  const step = bucket === 'hour' ? 60 * 60 * 1000 : DAY;
+  const out: string[] = [];
+  let cursor = new Date(start.getTime());
+  if (bucket === 'hour') cursor.setUTCMinutes(0, 0, 0);
+  else cursor.setUTCHours(0, 0, 0, 0);
+  while (cursor < end && out.length < 220) {
+    out.push(bucketKey(cursor, bucket));
+    cursor = new Date(cursor.getTime() + step);
+  }
+  return out;
+}
+function mergeMultiTrend(buckets: string[], series: Array<{ key: string; rows: any[] }>) {
+  const map = new Map<string, any>();
+  for (const bucket of buckets) map.set(bucket, { day: bucket, bucket });
+  for (const item of series) {
+    for (const bucket of buckets) map.get(bucket)[item.key] = 0;
+    for (const row of item.rows || []) {
+      const key = String(row.bucket || row.day || '');
+      if (!map.has(key)) map.set(key, { day: key, bucket: key });
+      map.get(key)[item.key] = Number(row.count || 0);
+    }
+  }
+  return Array.from(map.values()).sort((a,b) => String(a.bucket).localeCompare(String(b.bucket)));
+}
+function metric(total: number, deleted: number, current: number, previous: number) {
+  let pct: number | null = null;
+  let direction = 'flat';
+  if (previous > 0) {
+    pct = Math.round(((current - previous) / previous) * 1000) / 10;
+    direction = pct > 0 ? 'up' : pct < 0 ? 'down' : 'flat';
+  } else if (current > 0) {
+    direction = 'up';
+  }
+  return { total, deleted, current, previous, pct, direction, noPrevious: previous === 0 };
 }
 
 function mergeDnsTrend(addRows: any[], removeRows: any[]) {
