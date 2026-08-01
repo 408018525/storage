@@ -1,4 +1,26 @@
- app = document.querySelector('#app')let app = document.querySelector('#app');
+window.__storageScriptLoaded = true;
+window.__storageBootStarted = false;
+window.__storageBootCompleted = false;
+window.addEventListener('error', function(event) {
+  try {
+    const app = document.querySelector('#app');
+    if (app && /正在加载系统|Loading/.test(app.textContent || '')) {
+      const msg = event && event.message ? event.message : '前端脚本执行失败';
+      app.innerHTML = '<div class="center-screen boot-error"><h2>系统启动失败</h2><p>' + String(msg).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])) + '</p><div class="boot-actions"><button class="btn primary" onclick="location.reload()">重新加载</button><a class="btn" href="#/login" onclick="setTimeout(function(){location.reload()},30)">进入登录页</a></div><p class="muted">请先 Ctrl + F5 强制刷新；如果仍失败，把浏览器 Console 红色错误截图发给管理员。</p></div>';
+    }
+  } catch (e) {}
+});
+window.addEventListener('unhandledrejection', function(event) {
+  try {
+    const app = document.querySelector('#app');
+    if (app && /正在加载系统|Loading/.test(app.textContent || '')) {
+      const reason = event && event.reason;
+      const msg = reason && reason.message ? reason.message : '接口请求或页面渲染超时';
+      app.innerHTML = '<div class="center-screen boot-error"><h2>系统启动异常</h2><p>' + String(msg).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])) + '</p><div class="boot-actions"><button class="btn primary" onclick="location.reload()">重新加载</button><a class="btn" href="#/login" onclick="setTimeout(function(){location.reload()},30)">进入登录页</a></div></div>';
+    }
+  } catch (e) {}
+});
+let app = document.querySelector('#app');
 let toastRoot = document.querySelector('#toast-root');
 let modalRoot = document.querySelector('#modal-root');
 
@@ -885,11 +907,13 @@ async function init() {
     state.me = me.user || null;
     applyTheme();
     await withBootTimeout(renderRoute(), 12000, '页面渲染超时');
+    window.__storageBootCompleted = true;
     startAutoRefresh();
   } catch (error) {
     ensureMountRoots();
     console.error('boot failed:', error);
     if (app) {
+      window.__storageBootCompleted = true;
       app.innerHTML = `<div class="center-screen"><h2>应用加载失败</h2><p>${esc(error.message || '启动异常')}</p><button class="btn primary" id="retry">重试</button><a class="btn" href="#/login" id="safe-login">进入登录页</a></div>`;
       document.querySelector('#retry')?.addEventListener('click', () => location.reload());
       document.querySelector('#safe-login')?.addEventListener('click', async e => {
@@ -4027,6 +4051,7 @@ function startLiveI18nObserver() {
 }
 
 function bootStorageApp() {
+  window.__storageBootStarted = true;
   ensureMountRoots();
   if (app && !app.innerHTML.trim()) app.innerHTML = '<div class="loading-card boot-loading">正在加载系统…</div>';
   startLiveI18nObserver();
