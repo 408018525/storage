@@ -1,4 +1,4 @@
-1/// <reference types="@cloudflare/workers-types" />
+/// <reference types="@cloudflare/workers-types" />
 
 interface D1Result<T = unknown> { results?: T[]; meta?: { changes?: number } }
 interface D1PreparedStatement {
@@ -155,6 +155,13 @@ interface AppSettings {
     subtitle: string;
     footer: string;
     copyright?: string;
+    faviconUrl?: string;
+    headerThirdPartyJs?: string;
+    maintenanceMode?: boolean;
+    maintenanceMessage?: string;
+    themeMode?: string;
+    noticeStartAt?: string;
+    noticeEndAt?: string;
     accent: string;
     accent2: string;
     logoText: string;
@@ -175,6 +182,15 @@ interface AppSettings {
     turnstileRegisterEnabled?: boolean;
     defaultStatus?: 'auto' | 'manual';
     disabledMessage?: string;
+    turnstileSiteKey?: string;
+    turnstileSecret?: string;
+    emailDomainBlacklist?: string;
+    emailVerificationEnabled?: boolean;
+    dailyDomainApplyLimit?: number;
+    failedRegisterBanThreshold?: number;
+    failedRegisterBanMinutes?: number;
+    blockVpnProxy?: boolean;
+    requireRegistrationKey?: boolean;
   };
   domain: {
     defaultQuota: number;
@@ -193,8 +209,16 @@ interface AppSettings {
     allowUserDeleteActive?: boolean;
     allowDomainTransfer?: boolean;
     maxDnsRecordsPerDomain?: number;
-    approvalMode?: 'manual' | 'auto';
+    approvalMode?: 'manual' | 'auto' | 'risk';
     platformMaxDomains?: number;
+    normalUserQuota?: number;
+    normalUserValidDays?: number;
+    whitelistUserQuota?: number;
+    whitelistUserValidDays?: number;
+    lockAfterExpireDays?: number;
+    hardDeleteAfterExpireDays?: number;
+    blockedPrefixText?: string;
+    adminOnlyPrefixText?: string;
   };
   help: {
     categories: HelpCategorySetting[];
@@ -204,6 +228,8 @@ interface AppSettings {
     reservedPrefixes: string[];
     defaultProxied?: boolean;
     allowMxRecords?: boolean;
+    blockWildcardRecords?: boolean;
+    cnameTargetBlacklist?: string;
     suffixes: Array<{
       label: string;
       suffix: string;
@@ -220,21 +246,37 @@ interface AppSettings {
     prefixes: string[];
     ips: string[];
     emails: string[];
+    registration?: unknown[];
+    access?: unknown[];
+    userIds?: unknown[];
   };
   notification?: {
     events: Record<string, boolean>;
     expiryTemplate: string;
+    templates?: Record<string, string>;
+    userTargets?: Record<string, string>;
+    adminTargets?: Record<string, string>;
+    rateLimitPerHour?: number;
   };
   security?: {
     adminSessionTimeoutHours: number;
     adminIpWhitelist: string;
     auditRetentionDays: number;
+    failedLoginLockThreshold?: number;
+    failedLoginLockMinutes?: number;
+    adminPath?: string;
+    rolesPermissions?: string;
+    auditRecordItems?: string;
   };
   automation?: {
     enabled: boolean;
     scanCycleMinutes: number;
     checkExpiringDomains: boolean;
     cleanupExpiredDns: boolean;
+    cronExpression?: string;
+    notifyAdminOnFailure?: boolean;
+    dnsCleanupProtectionDays?: number;
+    taskLogs?: unknown[];
   };
 }
 
@@ -331,12 +373,24 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   if (method === 'GET' && pathname === '/api/operation-logs') return listOperationLogs(request, env);
 
   if (method === 'GET' && pathname === '/api/admin/overview') return adminOverview(request, env);
+  if (method === 'GET' && pathname === '/api/admin/analytics') return adminAnalytics(request, env, url);
   if (method === 'GET' && pathname === '/api/admin/applications') return adminApplications(request, env, url);
   if (method === 'GET' && pathname === '/api/admin/users') return adminUsers(request, env);
   if (method === 'POST' && pathname === '/api/admin/users') return adminCreateUser(request, env);
+  if (method === 'GET' && pathname === '/api/admin/registration-keys') return adminListRegistrationKeys(request, env);
+  if (method === 'POST' && pathname === '/api/admin/registration-keys') return adminCreateRegistrationKey(request, env);
   if (method === 'GET' && pathname === '/api/admin/messages') return adminListMessages(request, env, url);
   if (method === 'POST' && pathname === '/api/admin/messages') return adminCreateMessage(request, env);
   if (method === 'GET' && pathname === '/api/admin/settings') return adminSettings(request, env);
+  if (method === 'GET' && pathname === '/api/admin/system-status') return adminSystemStatus(request, env);
+  if (method === 'GET' && pathname === '/api/admin/settings/export') return adminExportSettings(request, env);
+  if (method === 'POST' && pathname === '/api/admin/settings/import') return adminImportSettings(request, env);
+  if (method === 'POST' && pathname === '/api/admin/dns/test') return adminTestCloudflareApi(request, env);
+
+  match = pathname.match(/^\/api\/admin\/registration-keys\/([^/]+)$/);
+  if (match && method === 'DELETE') return adminDeleteRegistrationKey(request, env, decodeURIComponent(match[1]));
+  match = pathname.match(/^\/api\/admin\/registration-keys\/([^/]+)\/usages$/);
+  if (match && method === 'GET') return adminRegistrationKeyUsages(request, env, decodeURIComponent(match[1]));
   if (method === 'GET' && pathname === '/api/admin/help-settings') return adminHelpSettings(request, env);
   if (method === 'PUT' && pathname === '/api/admin/help-settings') return adminUpdateHelpSettings(request, env);
 
@@ -492,6 +546,31 @@ async function ensureSchema(env: Env): Promise<void> {
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       )
     `),
+
+    env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS registration_keys (
+        id TEXT PRIMARY KEY,
+        code TEXT NOT NULL UNIQUE,
+        role TEXT NOT NULL DEFAULT 'user',
+        max_uses INTEGER NOT NULL DEFAULT 0,
+        used_count INTEGER NOT NULL DEFAULT 0,
+        expires_at TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        created_by TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `),
+    env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS registration_key_usages (
+        id TEXT PRIMARY KEY,
+        key_id TEXT NOT NULL,
+        user_id TEXT,
+        username TEXT,
+        used_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY(key_id) REFERENCES registration_keys(id),
+        FOREIGN KEY(user_id) REFERENCES users(id)
+      )
+    `),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token_hash)'),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_apps_user ON domain_applications(user_id, created_at)'),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_apps_fqdn ON domain_applications(fqdn_ascii)'),
@@ -532,6 +611,16 @@ async function ensureSchema(env: Env): Promise<void> {
     `ALTER TABLE domain_applications ADD COLUMN ttl INTEGER DEFAULT 1`,
     `ALTER TABLE domain_applications ADD COLUMN dns_record_id TEXT`,
     `ALTER TABLE domain_applications ADD COLUMN error_message TEXT`,
+    `ALTER TABLE registration_keys ADD COLUMN code TEXT`,
+    `ALTER TABLE registration_keys ADD COLUMN role TEXT DEFAULT 'user'`,
+    `ALTER TABLE registration_keys ADD COLUMN max_uses INTEGER DEFAULT 0`,
+    `ALTER TABLE registration_keys ADD COLUMN used_count INTEGER DEFAULT 0`,
+    `ALTER TABLE registration_keys ADD COLUMN expires_at TEXT`,
+    `ALTER TABLE registration_keys ADD COLUMN status TEXT DEFAULT 'active'`,
+    `ALTER TABLE registration_keys ADD COLUMN created_by TEXT`,
+    `ALTER TABLE registration_keys ADD COLUMN created_at TEXT`,
+    `CREATE INDEX IF NOT EXISTS idx_registration_keys_code ON registration_keys(code)`,
+    `CREATE INDEX IF NOT EXISTS idx_registration_key_usages_key ON registration_key_usages(key_id, used_at)`,
   ];
 
   for (const sql of alters) {
@@ -680,7 +769,7 @@ async function publicConfigHandler(env: Env): Promise<Response> {
           ttl: x.ttl,
           proxied: x.proxied,
         })),
-      turnstile: turnstilePublicConfig(env),
+      turnstile: turnstilePublicConfig(env, settings),
       needsBootstrap: Number(adminCount?.count || 0) === 0,
     },
   });
@@ -700,7 +789,9 @@ async function bootstrapAdmin(request: Request, env: Env): Promise<Response> {
 
   const settings = await loadSettings(env);
   const username = normalizeUsername(body.username);
-  const email = normalizeEmail(body.email);
+  const email = normalizeOptionalEmailStrict(body.email);
+  const phone = normalizeOptionalPhone(body.phone);
+  if (!email && !phone) throw new HttpError(400, 'CONTACT_REQUIRED', '手机号和邮箱至少填写一个');
   const password = validatePassword(body.password);
   const { hash, salt } = await hashPassword(password);
   const id = crypto.randomUUID();
@@ -743,8 +834,16 @@ async function register(request: Request, env: Env): Promise<Response> {
   const phone = normalizeOptionalPhone(body.phone);
   if (!email && !phone) throw new HttpError(400, 'CONTACT_REQUIRED', '手机号和邮箱至少填写一个');
   if (email && settings.registration.blockTempEmail && isTempEmailDomain(email)) throw new HttpError(400, 'TEMP_EMAIL_BLOCKED', '不允许使用临时邮箱注册');
+  const emailDomain = email && email.includes('@') ? email.split('@').pop() || '' : '';
+  const blockedEmailDomains = sanitizeStringList(settings.registration.emailDomainBlacklist || '');
+  if (emailDomain && blockedEmailDomains.some(d => emailDomain.toLowerCase() === d.toLowerCase().replace(/^@/, ''))) throw new HttpError(403, 'EMAIL_DOMAIN_BLOCKED', '该邮箱后缀已被禁止注册');
   if (email && listMatches(email, settings.blacklist?.emails || [])) throw new HttpError(403, 'EMAIL_BLOCKED', '该邮箱已被禁止注册');
   if (phone && listMatches(phone, settings.blacklist?.emails || [])) throw new HttpError(403, 'PHONE_BLOCKED', '该手机号已被禁止注册');
+
+  let registrationKey: { id: string; role?: string | null } | null = null;
+  if (settings.registration.requireRegistrationKey) {
+    registrationKey = await validateRegistrationKey(env, body.registrationCode);
+  }
 
   if (settings.registration.maxAccountsPerIp && settings.registration.maxAccountsPerIp > 0) {
     const count = await env.DB.prepare(`SELECT COUNT(*) AS count FROM audit_logs WHERE action='auth.register' AND ip=?`).bind(ip).first<{ count: number }>();
@@ -775,7 +874,9 @@ async function register(request: Request, env: Env): Promise<Response> {
     VALUES (?, ?, ?, ?, ?, ?, 'user', ?, ?, ?)
   `).bind(id, username, email, phone, hash, salt, status, settings.domain.defaultQuota, JSON.stringify({ canApply: true })).run();
 
-  await audit(env, request, id, 'auth.register', 'user', id, { status });
+  if (registrationKey) await consumeRegistrationKey(env, registrationKey.id, id, username);
+
+  await audit(env, request, id, 'auth.register', 'user', id, { status, registrationKeyId: registrationKey?.id || null });
 
   // 注册接口只负责创建账户，不再自动创建登录会话。
   // 这样即使旧数据库 sessions 表结构不一致，也不会出现“用户已创建但注册提示失败”。
@@ -1074,6 +1175,16 @@ async function createApplication(request: Request, env: Env): Promise<Response> 
   const body = await readJson<Record<string, unknown>>(request);
   const settings = await loadSettings(env);
 
+  if (settings.registration.dailyDomainApplyLimit && settings.registration.dailyDomainApplyLimit > 0) {
+    const todayCount = await env.DB.prepare(`
+      SELECT COUNT(*) AS count FROM domain_applications
+      WHERE user_id=? AND date(created_at)=date('now')
+    `).bind(user.id).first<{ count: number }>();
+    if (Number(todayCount?.count || 0) >= settings.registration.dailyDomainApplyLimit) {
+      throw new HttpError(429, 'DAILY_DOMAIN_APPLY_LIMIT', `今天申请域名数量已达到上限：${settings.registration.dailyDomainApplyLimit} 个`);
+    }
+  }
+
   if (isEnabled(env.TURNSTILE_ENABLE_APPLY, false)) {
     await verifyTurnstile(env, request, body.turnstileToken, env.TURNSTILE_ACTION_APPLY || 'domain_apply');
   }
@@ -1096,10 +1207,15 @@ async function createApplication(request: Request, env: Env): Promise<Response> 
   const reserved = new Set(settings.dns.reservedPrefixes.map(x => x.toLowerCase()));
   const blacklistRules = [
     ...sanitizeStringList(settings.domain.prefixBlacklistText || ''),
+    ...sanitizeStringList(settings.domain.blockedPrefixText || ''),
     ...(settings.blacklist?.prefixes || []),
   ];
+  const adminOnlyRules = sanitizeStringList(settings.domain.adminOnlyPrefixText || '');
   if (reserved.has(prefix.unicode) || reserved.has(prefix.ascii) || prefixMatchesRule(prefix.unicode, blacklistRules) || prefixMatchesRule(prefix.ascii, blacklistRules)) {
     throw new HttpError(409, 'RESERVED_PREFIX', '该前缀为系统保留词或黑名单关键词');
+  }
+  if (user.role !== 'admin' && (prefixMatchesRule(prefix.unicode, adminOnlyRules) || prefixMatchesRule(prefix.ascii, adminOnlyRules))) {
+    throw new HttpError(409, 'ADMIN_ONLY_PREFIX', '该前缀仅管理员可用');
   }
 
   const platformCount = await env.DB.prepare(`
@@ -1136,7 +1252,9 @@ async function createApplication(request: Request, env: Env): Promise<Response> 
 
   const id = crypto.randomUUID();
 
-  const autoApproved = settings.domain.approvalMode === 'auto';
+  const riskRules = ['login','signin','pay','wallet','bank','admin','mail','api','official','support','verify'];
+  const isRiskDomain = riskRules.some(rule => prefix.unicode.toLowerCase().includes(rule) || prefix.ascii.toLowerCase().includes(rule));
+  const autoApproved = settings.domain.approvalMode === 'auto' || (settings.domain.approvalMode === 'risk' && !isRiskDomain);
   const appStatus = autoApproved ? 'approved' : 'pending';
   const expiresAt = autoApproved ? new Date(Date.now() + settings.domain.validDays * DAY).toISOString() : null;
 
@@ -2363,6 +2481,176 @@ async function adminUsers(request: Request, env: Env): Promise<Response> {
   })) });
 }
 
+
+async function validateRegistrationKey(env: Env, rawCode: unknown): Promise<{ id: string; role?: string | null }> {
+  const code = cleanText(rawCode, 120);
+  if (!code) throw new HttpError(400, 'REGISTRATION_KEY_REQUIRED', '请输入注册码');
+  const row = await env.DB.prepare(`
+    SELECT id, code, role, max_uses, used_count, expires_at, status
+    FROM registration_keys
+    WHERE code=? COLLATE NOCASE AND status='active'
+    LIMIT 1
+  `).bind(code).first<any>();
+  if (!row) throw new HttpError(403, 'REGISTRATION_KEY_INVALID', '注册码不存在或已停用');
+  if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) {
+    throw new HttpError(403, 'REGISTRATION_KEY_EXPIRED', '注册码已过期');
+  }
+  const maxUses = Number(row.max_uses || 0);
+  const used = Number(row.used_count || 0);
+  if (maxUses > 0 && used >= maxUses) throw new HttpError(403, 'REGISTRATION_KEY_USED_UP', '注册码使用次数已用完');
+  return { id: row.id, role: row.role };
+}
+
+async function consumeRegistrationKey(env: Env, keyId: string, userId: string, username: string): Promise<void> {
+  await env.DB.batch([
+    env.DB.prepare(`UPDATE registration_keys SET used_count=COALESCE(used_count,0)+1 WHERE id=?`).bind(keyId),
+    env.DB.prepare(`INSERT INTO registration_key_usages (id, key_id, user_id, username) VALUES (?, ?, ?, ?)`).bind(crypto.randomUUID(), keyId, userId, username),
+  ]);
+}
+
+async function adminListRegistrationKeys(request: Request, env: Env): Promise<Response> {
+  await requireAdmin(env, request);
+  const rows = await env.DB.prepare(`
+    SELECT k.*, (SELECT COUNT(*) FROM registration_key_usages u WHERE u.key_id=k.id) AS usage_count
+    FROM registration_keys k
+    WHERE status!='deleted'
+    ORDER BY datetime(created_at) DESC
+    LIMIT 500
+  `).all<any>();
+  return ok({ keys: (rows.results || []).map(k => ({
+    id: k.id,
+    code: k.code,
+    role: k.role || 'user',
+    maxUses: Number(k.max_uses || 0),
+    usedCount: Number(k.usage_count || k.used_count || 0),
+    expiresAt: k.expires_at || '',
+    status: k.status || 'active',
+    createdAt: k.created_at || '',
+  })) });
+}
+
+function randomRegistrationCode(length = 8): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+  const arr = new Uint8Array(Math.max(4, Math.min(64, length)));
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map(n => chars[n % chars.length]).join('');
+}
+
+async function adminCreateRegistrationKey(request: Request, env: Env): Promise<Response> {
+  const admin = await requireAdmin(env, request);
+  const body = await readJson<Record<string, unknown>>(request);
+  const codeLength = clamp(Number(body.codeLength || 8), 4, 64);
+  const code = cleanText(body.code, 120) || randomRegistrationCode(codeLength);
+  if (!/^[A-Za-z0-9_-]{4,120}$/.test(code)) throw new HttpError(400, 'INVALID_CODE', '注册码只能包含字母、数字、下划线或连字符，至少 4 位');
+  const role = body.role === 'admin' ? 'admin' : 'user';
+  const maxUses = clamp(Number(body.maxUses || 0), 0, 999999);
+  const expiresAt = cleanText(body.expiresAt, 80);
+  const duplicate = await env.DB.prepare(`SELECT id FROM registration_keys WHERE code=? COLLATE NOCASE AND status!='deleted'`).bind(code).first<any>();
+  if (duplicate) throw new HttpError(409, 'CODE_EXISTS', '注册码已存在');
+  const id = crypto.randomUUID();
+  await env.DB.prepare(`
+    INSERT INTO registration_keys (id, code, role, max_uses, used_count, expires_at, status, created_by)
+    VALUES (?, ?, ?, ?, 0, ?, 'active', ?)
+  `).bind(id, code, role, maxUses, expiresAt || null, admin.id).run();
+  await audit(env, request, admin.id, 'admin.registration_key_create', 'registration_key', id, { code, role, maxUses, expiresAt });
+  return ok({ key: { id, code, role, maxUses, usedCount: 0, expiresAt, status: 'active' } });
+}
+
+async function adminDeleteRegistrationKey(request: Request, env: Env, keyId: string): Promise<Response> {
+  const admin = await requireAdmin(env, request);
+  const row = await env.DB.prepare(`SELECT id,code FROM registration_keys WHERE id=? AND status!='deleted'`).bind(keyId).first<any>();
+  if (!row) throw new HttpError(404, 'NOT_FOUND', '注册码不存在');
+  await env.DB.prepare(`UPDATE registration_keys SET status='deleted' WHERE id=?`).bind(keyId).run();
+  await audit(env, request, admin.id, 'admin.registration_key_delete', 'registration_key', keyId, { code: row.code });
+  return ok({ deleted: true });
+}
+
+async function adminRegistrationKeyUsages(request: Request, env: Env, keyId: string): Promise<Response> {
+  await requireAdmin(env, request);
+  const key = await env.DB.prepare(`SELECT id,code FROM registration_keys WHERE id=?`).bind(keyId).first<any>();
+  if (!key) throw new HttpError(404, 'NOT_FOUND', '注册码不存在');
+  const rows = await env.DB.prepare(`
+    SELECT u.*, usr.email, usr.phone
+    FROM registration_key_usages u
+    LEFT JOIN users usr ON usr.id=u.user_id
+    WHERE u.key_id=?
+    ORDER BY datetime(u.used_at) DESC
+    LIMIT 500
+  `).bind(keyId).all<any>();
+  return ok({ key: { id: key.id, code: key.code }, usages: (rows.results || []).map(u => ({
+    id: u.id,
+    username: u.username || u.email || u.phone || u.user_id || '—',
+    userId: u.user_id || '',
+    usedAt: u.used_at || '',
+  })) });
+}
+
+async function adminAnalytics(request: Request, env: Env, url: URL): Promise<Response> {
+  await requireAdmin(env, request);
+  const days = clamp(Number(url.searchParams.get('days') || 30), 7, 90);
+  const sinceExpr = `-${days - 1} days`;
+  const [domainTotals, activeDomains, users, dnsTotal, apps, statusRows, dnsTypeRows, cfRows, cfFails] = await Promise.all([
+    env.DB.prepare(`SELECT COUNT(*) AS total, SUM(CASE WHEN deleted_at IS NOT NULL AND deleted_at!='' THEN 1 ELSE 0 END) AS deleted FROM domain_applications`).first<any>(),
+    env.DB.prepare(`SELECT COUNT(*) AS count FROM domain_applications WHERE status='approved' AND (deleted_at IS NULL OR deleted_at='') AND (expires_at IS NULL OR datetime(expires_at)>datetime('now'))`).first<any>(),
+    env.DB.prepare(`SELECT COUNT(*) AS total FROM users WHERE status!='deleted'`).first<any>(),
+    env.DB.prepare(`SELECT COUNT(*) AS total FROM dns_records WHERE (deleted_at IS NULL OR deleted_at='')`).first<any>(),
+    env.DB.prepare(`SELECT COUNT(*) AS total FROM domain_applications`).first<any>(),
+    env.DB.prepare(`SELECT status, COUNT(*) AS count FROM domain_applications GROUP BY status`).all<any>(),
+    env.DB.prepare(`SELECT type, COUNT(*) AS count FROM dns_records WHERE (deleted_at IS NULL OR deleted_at='') GROUP BY type`).all<any>(),
+    env.DB.prepare(`SELECT COUNT(*) AS total, SUM(CASE WHEN action LIKE '%failed%' OR action LIKE '%error%' THEN 1 ELSE 0 END) AS failed FROM audit_logs WHERE action LIKE '%dns%' OR action LIKE '%cf_api%'`).first<any>(),
+    env.DB.prepare(`SELECT action AS reason, COUNT(*) AS count FROM audit_logs WHERE (action LIKE '%dns%' OR action LIKE '%cf_api%') AND (action LIKE '%failed%' OR action LIKE '%error%') GROUP BY action LIMIT 10`).all<any>(),
+  ]);
+
+  const trendRows = await env.DB.prepare(`
+    SELECT date(created_at) AS day,
+      COUNT(*) AS created,
+      SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) AS approved,
+      SUM(CASE WHEN status IN ('rejected','revoked','deleted') OR deleted_at IS NOT NULL THEN 1 ELSE 0 END) AS rejected
+    FROM domain_applications
+    WHERE date(created_at) >= date('now', ?)
+    GROUP BY date(created_at)
+  `).bind(sinceExpr).all<any>();
+  const dnsTrendRows = await env.DB.prepare(`
+    SELECT date(created_at) AS day, COUNT(*) AS added, 0 AS removed
+    FROM dns_records
+    WHERE date(created_at) >= date('now', ?)
+    GROUP BY date(created_at)
+  `).bind(sinceExpr).all<any>();
+  const dnsRemovedRows = await env.DB.prepare(`
+    SELECT date(deleted_at) AS day, COUNT(*) AS removed
+    FROM dns_records
+    WHERE deleted_at IS NOT NULL AND deleted_at!='' AND date(deleted_at) >= date('now', ?)
+    GROUP BY date(deleted_at)
+  `).bind(sinceExpr).all<any>();
+
+  return ok({ analytics: {
+    days,
+    metrics: {
+      totalDomains: { total: Number(domainTotals?.total || 0), deleted: Number(domainTotals?.deleted || 0) },
+      activeDomains: { total: Number(activeDomains?.count || 0) },
+      users: { total: Number(users?.total || 0) },
+      dnsRecords: { total: Number(dnsTotal?.total || 0) },
+      applications: { total: Number(apps?.total || 0) },
+    },
+    domainTrend: trendRows.results || [],
+    dnsTrend: mergeDnsTrend(dnsTrendRows.results || [], dnsRemovedRows.results || []),
+    statusDistribution: statusRows.results || [],
+    dnsTypeDistribution: dnsTypeRows.results || [],
+    cfApi: { total: Number(cfRows?.total || 0), failed: Number(cfRows?.failed || 0), success: Math.max(0, Number(cfRows?.total || 0) - Number(cfRows?.failed || 0)), failures: cfFails.results || [] },
+  } });
+}
+
+function mergeDnsTrend(addRows: any[], removeRows: any[]) {
+  const map = new Map<string, any>();
+  for (const r of addRows) map.set(r.day, { day: r.day, added: Number(r.added || 0), removed: 0 });
+  for (const r of removeRows) {
+    const item = map.get(r.day) || { day: r.day, added: 0, removed: 0 };
+    item.removed = Number(r.removed || 0);
+    map.set(r.day, item);
+  }
+  return Array.from(map.values()).sort((a,b) => String(a.day).localeCompare(String(b.day)));
+}
+
 async function adminCreateUser(request: Request, env: Env): Promise<Response> {
   const admin = await requireAdmin(env, request);
   const body = await readJson<Record<string, unknown>>(request);
@@ -2371,7 +2659,9 @@ async function adminCreateUser(request: Request, env: Env): Promise<Response> {
   await verifyTurnstile(env, request, body.turnstileToken, env.TURNSTILE_ACTION_REGISTER || 'register');
 
   const username = normalizeUsername(body.username);
-  const email = normalizeEmail(body.email);
+  const email = normalizeOptionalEmailStrict(body.email);
+  const phone = normalizeOptionalPhone(body.phone);
+  if (!email && !phone) throw new HttpError(400, 'CONTACT_REQUIRED', '手机号和邮箱至少填写一个');
   const password = validatePassword(body.password);
   const role: Role = body.role === 'admin' ? 'admin' : 'user';
   const status = ['active', 'disabled'].includes(String(body.status)) ? String(body.status) as UserStatus : 'active';
@@ -2379,20 +2669,22 @@ async function adminCreateUser(request: Request, env: Env): Promise<Response> {
 
   const duplicate = await env.DB.prepare(`
     SELECT id FROM users
-    WHERE username=? COLLATE NOCASE OR (? IS NOT NULL AND email=? COLLATE NOCASE)
+    WHERE username=? COLLATE NOCASE
+      OR (? IS NOT NULL AND email=? COLLATE NOCASE)
+      OR (? IS NOT NULL AND phone=? COLLATE NOCASE)
     LIMIT 1
-  `).bind(username, email, email).first<{ id: string }>();
+  `).bind(username, email, email, phone, phone).first<{ id: string }>();
   if (duplicate) throw new HttpError(409, 'USER_EXISTS', '账号或邮箱/手机号已被使用');
 
   const { hash, salt } = await hashPassword(password);
   const id = crypto.randomUUID();
 
   await env.DB.prepare(`
-    INSERT INTO users (id, username, email, password_hash, password_salt, role, status, domain_quota, permissions_json)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).bind(id, username, email, hash, salt, role, status, quota, JSON.stringify({ canApply: true })).run();
+    INSERT INTO users (id, username, email, phone, password_hash, password_salt, role, status, domain_quota, permissions_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(id, username, email, phone, hash, salt, role, status, quota, JSON.stringify({ canApply: true })).run();
 
-  await audit(env, request, admin.id, 'admin.user_create', 'user', id, { username, email, role, status, quota });
+  await audit(env, request, admin.id, 'admin.user_create', 'user', id, { username, email, phone: phone ? 'set' : 'empty', role, status, quota });
   const user = await env.DB.prepare(`SELECT * FROM users WHERE id=?`).bind(id).first<UserRow>();
   return ok({ user: serializeUser(user!) });
 }
@@ -2490,7 +2782,14 @@ async function adminUpdateSettings(request: Request, env: Env, group: AdminSetti
       title: cleanText(body.title, 80) || settings.site.title,
       subtitle: cleanText(body.subtitle, 140),
       footer: cleanText(body.footer, 300),
-      copyright: cleanText(body.copyright, 300),
+      copyright: cleanText(body.copyright, 1000),
+      faviconUrl: cleanText(body.faviconUrl, 500),
+      headerThirdPartyJs: cleanText(body.headerThirdPartyJs, 20000),
+      maintenanceMode: asBoolean(body.maintenanceMode, false),
+      maintenanceMessage: cleanText(body.maintenanceMessage, 1000),
+      themeMode: ['light','dark','system'].includes(String(body.themeMode)) ? String(body.themeMode) : 'light',
+      noticeStartAt: cleanText(body.noticeStartAt, 80),
+      noticeEndAt: cleanText(body.noticeEndAt, 80),
       accent: normalizeHexColor(body.accent, '#4f63f6'),
       accent2: normalizeHexColor(body.accent2, '#7c4dff'),
       logoText: cleanText(body.logoText, 12) || 'free',
@@ -2515,6 +2814,15 @@ async function adminUpdateSettings(request: Request, env: Env, group: AdminSetti
       turnstileRegisterEnabled: asBoolean(body.turnstileRegisterEnabled, false),
       defaultStatus: String(body.defaultStatus || 'auto') === 'manual' ? 'manual' : 'auto',
       disabledMessage: cleanText(body.disabledMessage, 500) || '当前暂未开放用户注册',
+      turnstileSiteKey: cleanText(body.turnstileSiteKey, 300),
+      turnstileSecret: cleanText(body.turnstileSecret, 500),
+      emailDomainBlacklist: cleanText(body.emailDomainBlacklist, 10000),
+      emailVerificationEnabled: asBoolean(body.emailVerificationEnabled, false),
+      dailyDomainApplyLimit: clamp(Number(body.dailyDomainApplyLimit || 0), 0, 10000),
+      failedRegisterBanThreshold: clamp(Number(body.failedRegisterBanThreshold || 0), 0, 1000),
+      failedRegisterBanMinutes: clamp(Number(body.failedRegisterBanMinutes || 0), 0, 10080),
+      blockVpnProxy: asBoolean(body.blockVpnProxy, false),
+      requireRegistrationKey: asBoolean(body.requireRegistrationKey, false),
     };
   }
 
@@ -2537,8 +2845,16 @@ async function adminUpdateSettings(request: Request, env: Env, group: AdminSetti
       allowUserDeleteActive: asBoolean(body.allowUserDeleteActive, true),
       allowDomainTransfer: asBoolean(body.allowDomainTransfer, false),
       maxDnsRecordsPerDomain: clamp(Number(body.maxDnsRecordsPerDomain || 20), 1, 1000),
-      approvalMode: String(body.approvalMode || 'manual') === 'auto' ? 'auto' : 'manual',
+      approvalMode: ['auto','manual','risk'].includes(String(body.approvalMode || 'manual')) ? String(body.approvalMode || 'manual') as any : 'manual',
       platformMaxDomains: clamp(Number(body.platformMaxDomains || 9999), 1, 9999999),
+      normalUserQuota: clamp(Number(body.normalUserQuota || body.defaultQuota || 3), 0, 999999),
+      normalUserValidDays: clamp(Number(body.normalUserValidDays || body.validDays || 365), 1, 3650),
+      whitelistUserQuota: clamp(Number(body.whitelistUserQuota || body.defaultQuota || 10), 0, 999999),
+      whitelistUserValidDays: clamp(Number(body.whitelistUserValidDays || body.validDays || 365), 1, 3650),
+      lockAfterExpireDays: clamp(Number(body.lockAfterExpireDays || 0), 0, 3650),
+      hardDeleteAfterExpireDays: clamp(Number(body.hardDeleteAfterExpireDays || 30), 0, 3650),
+      blockedPrefixText: cleanText(body.blockedPrefixText, 10000),
+      adminOnlyPrefixText: cleanText(body.adminOnlyPrefixText, 10000),
     };
     if ((settings.domain.prefixMinLength || 2) > (settings.domain.prefixMaxLength || 36)) {
       const min = settings.domain.prefixMinLength || 2;
@@ -2563,6 +2879,9 @@ async function adminUpdateSettings(request: Request, env: Env, group: AdminSetti
       prefixes: sanitizeStringList(body.prefixes).slice(0, 2000),
       ips: sanitizeStringList(body.ips).slice(0, 2000),
       emails: sanitizeStringList(body.emails).slice(0, 2000),
+      registration: sanitizeBlacklistRecords((body as any).registration),
+      access: sanitizeBlacklistRecords((body as any).access),
+      userIds: sanitizeBlacklistRecords((body as any).userIds),
     };
   }
 
@@ -2570,6 +2889,10 @@ async function adminUpdateSettings(request: Request, env: Env, group: AdminSetti
     settings.notification = {
       events: sanitizeNotificationEvents((body as any).events),
       expiryTemplate: cleanText(body.expiryTemplate, 5000) || '您的域名即将到期，请及时续期。',
+      templates: sanitizeTemplateMap((body as any).templates),
+      userTargets: sanitizeTemplateMap((body as any).userTargets),
+      adminTargets: sanitizeTemplateMap((body as any).adminTargets),
+      rateLimitPerHour: clamp(Number(body.rateLimitPerHour || 60), 0, 10000),
     };
   }
 
@@ -2578,6 +2901,11 @@ async function adminUpdateSettings(request: Request, env: Env, group: AdminSetti
       adminSessionTimeoutHours: clamp(Number(body.adminSessionTimeoutHours || 24), 1, 24 * 365),
       adminIpWhitelist: cleanText(body.adminIpWhitelist, 10000),
       auditRetentionDays: clamp(Number(body.auditRetentionDays || 4), 1, 3650),
+      failedLoginLockThreshold: clamp(Number(body.failedLoginLockThreshold || 0), 0, 1000),
+      failedLoginLockMinutes: clamp(Number(body.failedLoginLockMinutes || 0), 0, 10080),
+      adminPath: cleanText(body.adminPath, 120),
+      rolesPermissions: cleanText(body.rolesPermissions, 20000),
+      auditRecordItems: cleanText(body.auditRecordItems, 10000),
     };
   }
 
@@ -2587,6 +2915,10 @@ async function adminUpdateSettings(request: Request, env: Env, group: AdminSetti
       scanCycleMinutes: clamp(Number(body.scanCycleMinutes || 60), 5, 1440),
       checkExpiringDomains: asBoolean(body.checkExpiringDomains, true),
       cleanupExpiredDns: asBoolean(body.cleanupExpiredDns, true),
+      cronExpression: cleanText(body.cronExpression, 120),
+      notifyAdminOnFailure: asBoolean(body.notifyAdminOnFailure, true),
+      dnsCleanupProtectionDays: clamp(Number(body.dnsCleanupProtectionDays || 7), 1, 3650),
+      taskLogs: Array.isArray((body as any).taskLogs) ? (body as any).taskLogs.slice(0, 50) : (settings.automation?.taskLogs || []),
     };
   }
 
@@ -2624,19 +2956,33 @@ async function loadSettings(env: Env): Promise<AppSettings> {
       prefixes: sanitizeStringList((saved as any).blacklist?.prefixes),
       ips: sanitizeStringList((saved as any).blacklist?.ips),
       emails: sanitizeStringList((saved as any).blacklist?.emails),
+      registration: sanitizeBlacklistRecords((saved as any).blacklist?.registration),
+      access: sanitizeBlacklistRecords((saved as any).blacklist?.access),
+      userIds: sanitizeBlacklistRecords((saved as any).blacklist?.userIds),
     },
     notification: {
       events: sanitizeNotificationEvents((saved as any).notification?.events),
       expiryTemplate: cleanText((saved as any).notification?.expiryTemplate, 5000) || defaults.notification!.expiryTemplate,
+      templates: sanitizeTemplateMap((saved as any).notification?.templates || defaults.notification?.templates),
+      userTargets: sanitizeTemplateMap((saved as any).notification?.userTargets || defaults.notification?.userTargets),
+      adminTargets: sanitizeTemplateMap((saved as any).notification?.adminTargets || defaults.notification?.adminTargets),
+      rateLimitPerHour: clamp(Number((saved as any).notification?.rateLimitPerHour || defaults.notification?.rateLimitPerHour || 60), 0, 10000),
     },
     security: {
       ...defaults.security!,
       ...((saved as any).security || {}),
       auditRetentionDays: clamp(Number((saved as any).security?.auditRetentionDays || defaults.security!.auditRetentionDays), 1, 3650),
+      failedLoginLockThreshold: clamp(Number((saved as any).security?.failedLoginLockThreshold || 0), 0, 1000),
+      failedLoginLockMinutes: clamp(Number((saved as any).security?.failedLoginLockMinutes || 0), 0, 10080),
+      adminPath: cleanText((saved as any).security?.adminPath, 120),
+      rolesPermissions: cleanText((saved as any).security?.rolesPermissions, 20000),
+      auditRecordItems: cleanText((saved as any).security?.auditRecordItems, 10000),
     },
     automation: {
       ...defaults.automation!,
       ...((saved as any).automation || {}),
+      scanCycleMinutes: clamp(Number((saved as any).automation?.scanCycleMinutes || defaults.automation!.scanCycleMinutes), 5, 1440),
+      dnsCleanupProtectionDays: clamp(Number((saved as any).automation?.dnsCleanupProtectionDays || defaults.automation?.dnsCleanupProtectionDays || 7), 1, 3650),
     },
   };
 }
@@ -2662,6 +3008,13 @@ function defaultSettings(env: Env): AppSettings {
       subtitle: '快速注册并管理您的专属免费域名',
       footer: '请勿申请违法、侵权、仿冒或误导性域名。',
       copyright: '',
+      faviconUrl: '',
+      headerThirdPartyJs: '',
+      maintenanceMode: false,
+      maintenanceMessage: '系统维护中，请稍后再试。',
+      themeMode: 'light',
+      noticeStartAt: '',
+      noticeEndAt: '',
       accent: '#4f63f6',
       accent2: '#7c4dff',
       logoText: 'free',
@@ -2682,6 +3035,15 @@ function defaultSettings(env: Env): AppSettings {
       turnstileRegisterEnabled: false,
       defaultStatus: 'auto',
       disabledMessage: '当前暂未开放用户注册',
+      turnstileSiteKey: '',
+      turnstileSecret: '',
+      emailDomainBlacklist: '',
+      emailVerificationEnabled: false,
+      dailyDomainApplyLimit: 0,
+      failedRegisterBanThreshold: 0,
+      failedRegisterBanMinutes: 0,
+      blockVpnProxy: false,
+      requireRegistrationKey: false,
     },
     domain: {
       defaultQuota: 3,
@@ -2702,6 +3064,14 @@ function defaultSettings(env: Env): AppSettings {
       maxDnsRecordsPerDomain: 20,
       approvalMode: 'manual',
       platformMaxDomains: 9999,
+      normalUserQuota: 3,
+      normalUserValidDays: 365,
+      whitelistUserQuota: 10,
+      whitelistUserValidDays: 365,
+      lockAfterExpireDays: 0,
+      hardDeleteAfterExpireDays: 30,
+      blockedPrefixText: reserved.join('\n'),
+      adminOnlyPrefixText: 'admin\nroot\nsystem',
     },
     help: defaultHelpSettings(),
     dns: {
@@ -2709,6 +3079,8 @@ function defaultSettings(env: Env): AppSettings {
       reservedPrefixes: reserved,
       defaultProxied: isEnabled(env.DNS_PROXIED, false),
       allowMxRecords: true,
+      blockWildcardRecords: true,
+      cnameTargetBlacklist: '',
       suffixes: [{
         label: env.DNS_SUFFIX_LABEL || '免费二级域名',
         suffix,
@@ -2723,7 +3095,7 @@ function defaultSettings(env: Env): AppSettings {
         enabled: true,
       }],
     },
-    blacklist: { prefixes: [], ips: [], emails: [] },
+    blacklist: { prefixes: [], ips: [], emails: [], registration: [], access: [], userIds: [] },
     notification: {
       events: {
         newUser: true,
@@ -2733,17 +3105,36 @@ function defaultSettings(env: Env): AppSettings {
         abnormalRegister: true,
       },
       expiryTemplate: '您的域名即将到期，请及时续期。',
+      templates: {
+        newUser: '新账号 {username} 已注册。',
+        newDomain: '用户 {username} 提交了域名 {domain} 申请。',
+        domainExpiring: '您的域名 {domain} 将在 {days} 天后到期，请及时续期。',
+        domainExpiredDelete: '域名 {domain} 已过期并进入清理流程。',
+        abnormalRegister: '检测到异常注册行为：{ip}。',
+      },
+      userTargets: {},
+      adminTargets: {},
+      rateLimitPerHour: 60,
     },
     security: {
       adminSessionTimeoutHours: 24,
       adminIpWhitelist: '',
       auditRetentionDays: 4,
+      failedLoginLockThreshold: 0,
+      failedLoginLockMinutes: 0,
+      adminPath: '',
+      rolesPermissions: 'super_admin: 全部权限\noperator: 审核域名、查看用户、发送通知',
+      auditRecordItems: '登录,注册,域名申请,DNS新增,DNS修改,DNS删除,消息发送,设置保存,黑名单操作',
     },
     automation: {
       enabled: false,
       scanCycleMinutes: 60,
       checkExpiringDomains: true,
       cleanupExpiredDns: true,
+      cronExpression: '0 */1 * * *',
+      notifyAdminOnFailure: true,
+      dnsCleanupProtectionDays: 7,
+      taskLogs: [],
     },
   };
 }
@@ -2763,6 +3154,26 @@ function parseJsonArray(value: unknown): unknown[] {
 function sanitizeStringList(value: unknown): string[] {
   if (Array.isArray(value)) return Array.from(new Set(value.map(x => String(x || '').trim()).filter(Boolean)));
   return Array.from(new Set(String(value || '').split(/[\n,]+/).map(x => x.trim()).filter(Boolean)));
+}
+
+
+function sanitizeTemplateMap(value: unknown): Record<string, string> {
+  const raw = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const out: Record<string, string> = {};
+  for (const [key, val] of Object.entries(raw)) {
+    const cleanKey = cleanText(key, 80);
+    if (cleanKey) out[cleanKey] = cleanText(val, 5000);
+  }
+  return out;
+}
+
+function sanitizeBlacklistRecords(value: unknown): unknown[] {
+  const raw = Array.isArray(value) ? value : [];
+  return raw.slice(0, 5000).map((item: any) => ({
+    value: cleanText(item?.value, 500),
+    note: cleanText(item?.note, 500),
+    expiresAt: cleanText(item?.expiresAt, 80),
+  })).filter((item: any) => item.value);
 }
 
 function sanitizeDnsSuffixes(value: unknown, fallback: AppSettings['dns']['suffixes']): AppSettings['dns']['suffixes'] {
@@ -3005,12 +3416,14 @@ function resolveDnsToken(env: Env): string {
 }
 
 async function verifyTurnstile(env: Env, request: Request, token: unknown, expectedAction: string): Promise<void> {
-  if (!env.TURNSTILE_SECRET) throw new HttpError(503, 'TURNSTILE_SECRET_MISSING', 'Turnstile Secret 未配置');
+  const settings = await loadSettings(env);
+  const secret = String(env.TURNSTILE_SECRET || settings.registration.turnstileSecret || '').trim();
+  if (!secret) throw new HttpError(503, 'TURNSTILE_SECRET_MISSING', 'Turnstile Secret 未配置');
   const value = String(token || '').trim();
   if (!value) throw new HttpError(400, 'TURNSTILE_REQUIRED', '请完成人机验证');
 
   const form = new FormData();
-  form.append('secret', env.TURNSTILE_SECRET);
+  form.append('secret', secret);
   form.append('response', value);
   form.append('remoteip', clientIp(request));
 
@@ -3029,9 +3442,9 @@ async function verifyTurnstile(env: Env, request: Request, token: unknown, expec
   }
 }
 
-function turnstilePublicConfig(env: Env) {
+function turnstilePublicConfig(env: Env, settings?: AppSettings) {
   return {
-    siteKey: env.TURNSTILE_SITE_KEY || '',
+    siteKey: env.TURNSTILE_SITE_KEY || settings?.registration?.turnstileSiteKey || '',
     enabledApply: isEnabled(env.TURNSTILE_ENABLE_APPLY, false),
     enabledLogin: isEnabled(env.TURNSTILE_ENABLE_LOGIN, false),
     enabledRegister: isEnabled(env.TURNSTILE_ENABLE_REGISTER, false),
@@ -3041,6 +3454,71 @@ function turnstilePublicConfig(env: Env) {
   };
 }
 
+
+
+async function adminSystemStatus(request: Request, env: Env): Promise<Response> {
+  await requireAdmin(env, request);
+  const settings = await loadSettings(env);
+  const counts = await env.DB.prepare(`
+    SELECT
+      (SELECT COUNT(*) FROM users WHERE status!='deleted') AS users,
+      (SELECT COUNT(*) FROM domain_applications) AS domains,
+      (SELECT COUNT(*) FROM dns_records) AS dnsRecords,
+      (SELECT COUNT(*) FROM audit_logs WHERE datetime(created_at) >= datetime('now','-4 days')) AS logs4d
+  `).first<any>();
+  return ok({
+    version: 'v73',
+    settingsKey: SETTINGS_KEY,
+    kv: { storage: 'Workers KV', estimatedKeys: '由 Cloudflare 控制台查看实际占用' },
+    cfApi: { configured: Boolean(resolveDnsToken(env)), status: resolveDnsToken(env) ? '已配置' : '未配置' },
+    cron: { enabled: Boolean(settings.automation?.enabled), expression: settings.automation?.cronExpression || '' },
+    counts,
+    update: { current: 'v73', latest: '请以当前部署包为准' },
+  });
+}
+
+async function adminExportSettings(request: Request, env: Env): Promise<Response> {
+  await requireAdmin(env, request);
+  return ok({ exportedAt: new Date().toISOString(), version: 'v73', settings: await loadSettings(env) });
+}
+
+async function adminImportSettings(request: Request, env: Env): Promise<Response> {
+  const admin = await requireAdmin(env, request);
+  const body = await readJson<Record<string, unknown>>(request, 1024 * 1024);
+  const incoming = (body as any).settings || body;
+  const defaults = defaultSettings(env);
+  const merged = {
+    ...defaults,
+    ...(incoming || {}),
+    site: { ...defaults.site, ...((incoming as any)?.site || {}) },
+    registration: { ...defaults.registration, ...((incoming as any)?.registration || {}) },
+    domain: { ...defaults.domain, ...((incoming as any)?.domain || {}) },
+    dns: { ...defaults.dns, ...((incoming as any)?.dns || {}) },
+    blacklist: { ...defaults.blacklist, ...((incoming as any)?.blacklist || {}) },
+    notification: { ...defaults.notification, ...((incoming as any)?.notification || {}) },
+    security: { ...defaults.security, ...((incoming as any)?.security || {}) },
+    automation: { ...defaults.automation, ...((incoming as any)?.automation || {}) },
+  } as AppSettings;
+  await env.APP_KV.put(SETTINGS_KEY, JSON.stringify(merged));
+  await audit(env, request, admin.id, 'admin.settings_import', 'setting', SETTINGS_KEY);
+  return ok({ settings: await loadSettings(env) });
+}
+
+async function adminTestCloudflareApi(request: Request, env: Env): Promise<Response> {
+  const admin = await requireAdmin(env, request);
+  const settings = await loadSettings(env);
+  const token = resolveDnsToken(env);
+  if (!token) throw new HttpError(400, 'CF_TOKEN_MISSING', 'CF_API_TOKEN 未配置');
+  const suffix = settings.dns.suffixes.find(x => x.enabled && x.zoneId) || settings.dns.suffixes.find(x => x.zoneId);
+  if (!suffix?.zoneId) throw new HttpError(400, 'ZONE_ID_MISSING', '没有可测试的 DNS_ZONE_ID / Zone ID');
+  const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${encodeURIComponent(suffix.zoneId)}`, {
+    headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+  });
+  const data: any = await res.json().catch(() => ({}));
+  await audit(env, request, admin.id, 'admin.cf_api_test', 'setting', 'dns', { ok: res.ok && data.success !== false, zoneId: suffix.zoneId });
+  if (!res.ok || data.success === false) throw new HttpError(502, 'CF_API_TEST_FAILED', data.errors?.[0]?.message || `Cloudflare API 测试失败 HTTP ${res.status}`);
+  return ok({ status: 'ok', message: 'Cloudflare API 连通正常', zone: data.result?.name || suffix.suffix });
+}
 
 function stripClientHint(value: string | null): string {
   return String(value || '').replace(/^"|"$/g, '').trim();
