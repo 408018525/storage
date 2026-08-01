@@ -7,14 +7,41 @@
   <title>二级域名注册</title>
   <link rel="preconnect" href="https://challenges.cloudflare.com" crossorigin>
   <link rel="dns-prefetch" href="//challenges.cloudflare.com">
-  <link rel="stylesheet" href="/styles.css?v=76">
+  <link rel="stylesheet" href="/styles.css?v=77">
 </head>
 <body>
   <div id="background-layer"></div>
   <div id="app"><div class="loading-card boot-loading">正在加载系统…</div></div>
   <div id="modal-root"></div>
   <div id="toast-root"></div>
+
+  <script>
+    (function(){
+      window.__storageIndexGuardStarted = true;
+      function escapeHtml(v){ return String(v || '').replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+      function showBootHelp(title, message){
+        var app = document.getElementById('app');
+        if (!app) return;
+        var text = app.textContent || '';
+        if (!/正在加载系统|Loading/.test(text)) return;
+        app.innerHTML = '<div class="center-screen boot-error"><h2>'+escapeHtml(title)+'</h2><p>'+escapeHtml(message)+'</p><div class="boot-actions"><button class="btn primary" onclick="location.reload()">重新加载</button><button class="btn" onclick="localStorage.clear(); sessionStorage.clear(); location.reload()">清缓存重试</button><a class="btn" href="#/login" onclick="setTimeout(function(){location.reload()},30)">进入登录页</a></div><p class="muted">如果反复出现，请打开 F12 → Console，把红色错误截图发给管理员。</p></div>';
+      }
+      window.addEventListener('error', function(e){
+        if (!window.__storageBootCompleted) showBootHelp('系统脚本加载失败', e && e.message ? e.message : '前端文件没有正确执行。');
+      });
+      window.addEventListener('unhandledrejection', function(e){
+        var reason = e && e.reason;
+        if (!window.__storageBootCompleted) showBootHelp('系统接口加载超时', reason && reason.message ? reason.message : '配置接口或登录状态接口没有及时返回。');
+      });
+      setTimeout(function(){
+        if (!window.__storageScriptLoaded) showBootHelp('前端文件未加载', 'app.js 没有成功加载，通常是部署文件缺失或浏览器缓存旧版本。');
+      }, 4500);
+      setTimeout(function(){
+        if (!window.__storageBootCompleted) showBootHelp('系统启动超时', '页面没有完成初始化，已阻止继续卡在加载状态。');
+      }, 14000);
+    })();
+  </script>
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer data-turnstile-api="1"></script>
-  <script defer src="/app.js?v=76"></script>
+  <script defer src="/app.js?v=77"></script>
 </body>
 </html>
