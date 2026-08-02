@@ -3482,19 +3482,27 @@ function analyticsToolbar(rangeState) {
   const presets = [
     ['12h','12小时'], ['1d','1天'], ['3d','3天'], ['7d','7天'], ['30d','30天'], ['90d','90天'], ['custom','自定义']
   ];
-  const buttons = presets.map(([value,label]) => `<button type="button" class="range-chip ${rangeState.range===value || (['7','30','90'].includes(rangeState.range) && value===rangeState.range+'d') ? 'active' : ''}" data-analytics-range="${value}">${label}</button>`).join('');
-  return `<div class="analytics-toolbar-v75">
-    <div class="range-switch">${buttons}</div>
-    <div class="custom-range ${rangeState.range==='custom' ? '' : 'hidden'}">
-      <input id="analytics-start" type="datetime-local" value="${attr(rangeState.start)}">
-      <span>至</span>
-      <input id="analytics-end" type="datetime-local" value="${attr(rangeState.end)}">
-      <button class="btn soft" id="apply-custom-analytics" type="button">应用</button>
+  const buttons = presets.map(([value,label]) =>
+    `<button type="button" class="range-chip bt-chip ${rangeState.range===value || (['7','30','90'].includes(rangeState.range) && value===rangeState.range+'d') ? 'active' : ''}" data-analytics-range="${value}">${label}</button>`
+  ).join('');
+  return `<div class="analytics-toolbar-v75 analytics-toolbar-v82">
+    <div class="toolbar-group toolbar-group-left">
+      <span class="toolbar-label">时间范围</span>
+      <div class="range-switch bt-segment">${buttons}</div>
     </div>
-    <button class="btn soft" id="refresh-analytics" type="button">手动刷新</button>
+    <div class="toolbar-group toolbar-group-right">
+      <div class="custom-range ${rangeState.range==='custom' ? '' : 'hidden'}">
+        <input id="analytics-start" type="datetime-local" value="${attr(rangeState.start)}">
+        <span>至</span>
+        <input id="analytics-end" type="datetime-local" value="${attr(rangeState.end)}">
+        <button class="btn soft" id="apply-custom-analytics" type="button">应用</button>
+      </div>
+      <button class="btn soft icon-btn" id="refresh-analytics" type="button" title="刷新">↻</button>
+    </div>
   </div>`;
 }
 function formatAnalyticsLabel(value, bucket) {
+
   const raw = String(value || '');
   if (bucket === 'hour') return raw.slice(5, 13).replace('-', '/');
   return raw.slice(5).replace('-', '/');
@@ -3506,48 +3514,88 @@ function analyticsSafeNumber(value) {
 function analyticsTooltipLabel(parts) {
   return String(parts.filter(Boolean).join(' | ')).replace(/"/g, '&quot;');
 }
+function niceChartMax(values) {
+  const raw = Math.max(1, ...values, 1);
+  if (raw <= 5) return 5;
+  if (raw <= 10) return 10;
+  const exp = Math.pow(10, Math.floor(Math.log10(raw)));
+  const scaled = raw / exp;
+  const nice = scaled <= 1 ? 1 : scaled <= 2 ? 2 : scaled <= 5 ? 5 : 10;
+  return nice * exp;
+}
+function buildAnalyticsTipHtml(label, series, row) {
+  const title = `<div class="tip-title">日期：${esc(label)}</div>`;
+  const rowsHtml = series.map((s, idx) => `<div class="tip-row"><i class="tip-swatch line-${idx}"></i><span>${esc(s.label)}</span><b>${analyticsSafeNumber(row[s.key])}</b></div>`).join('');
+  return `${title}${rowsHtml}`;
+}
+function chartOverview(rows, series, bucket='day') {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  if (!safeRows.length) return '';
+  const values = [];
+  safeRows.forEach(row => series.forEach(s => values.push(analyticsSafeNumber(row[s.key]))));
+  const max = niceChartMax(values);
+  const W = 980, H = 54, L = 10, R = 10, T = 6, B = 8;
+  const x = i => safeRows.length <= 1 ? L : L + i * ((W - L - R) / (safeRows.length - 1));
+  const y = v => T + (H - T - B) * (1 - analyticsSafeNumber(v) / max);
+  const lines = series.map((s, idx) => {
+    const pts = safeRows.map((row, i) => `${x(i)},${y(row[s.key] || 0)}`).join(' ');
+    return `<polyline points="${pts}" class="line-series line-${idx} overview-line"/>`;
+  }).join('');
+  const startLabel = formatAnalyticsLabel(safeRows[0]?.bucket || safeRows[0]?.day || '', bucket);
+  const endLabel = formatAnalyticsLabel(safeRows[safeRows.length - 1]?.bucket || safeRows[safeRows.length - 1]?.day || '', bucket);
+  return `<div class="chart-overview"><div class="overview-strip"><svg class="overview-svg" viewBox="0 0 ${W} ${H}" role="img">${lines}</svg></div><div class="overview-meta"><span>${esc(startLabel)}</span><em>概览</em><span>${esc(endLabel)}</span></div></div>`;
+}
 function multiLineChart(rows, series, bucket='day') {
   const safeRows = Array.isArray(rows) ? rows : [];
   const normalizedRows = safeRows.length ? safeRows : [{ bucket:'—', day:'—', ...Object.fromEntries(series.map(s => [s.key, 0])) }];
   const values = [];
   normalizedRows.forEach(row => series.forEach(s => values.push(analyticsSafeNumber(row[s.key]))));
-  const max = Math.max(1, ...values, 10);
-  const W = 980, H = 320, L = 58, R = 34, T = 26, B = 52;
+  const max = niceChartMax(values);
+  const W = 1080, H = 360, L = 60, R = 28, T = 22, B = 54;
   const x = i => normalizedRows.length <= 1 ? L : L + i * ((W - L - R) / (normalizedRows.length - 1));
   const y = v => T + (H - T - B) * (1 - analyticsSafeNumber(v) / max);
-  const grid = [0, .25, .5, .75, 1].map(k => {
-    const yy = T + (H - T - B) * k;
-    const val = Math.round(max * (1-k));
+  const gridSteps = 5;
+  const grid = Array.from({ length: gridSteps + 1 }, (_, step) => {
+    const ratio = step / gridSteps;
+    const yy = T + (H - T - B) * ratio;
+    const val = Math.round(max * (1 - ratio));
     return `<g><line x1="${L}" x2="${W-R}" y1="${yy}" y2="${yy}" class="chart-grid-line"/><text x="${L-12}" y="${yy+4}" text-anchor="end" class="chart-axis-text">${val}</text></g>`;
+  }).join('');
+  const areas = series.map((s, idx) => {
+    const pts = normalizedRows.map((row, i) => `${x(i)},${y(row[s.key] || 0)}`).join(' ');
+    const areaPts = `${x(0)},${H-B} ${pts} ${x(normalizedRows.length - 1)},${H-B}`;
+    return `<polygon points="${areaPts}" class="line-area line-area-${idx}"/>`;
   }).join('');
   const lines = series.map((s, idx) => {
     const pts = normalizedRows.map((row, i) => `${x(i)},${y(row[s.key] || 0)}`).join(' ');
-    const dots = normalizedRows.map((row,i) => `<circle cx="${x(i)}" cy="${y(row[s.key]||0)}" r="3.5" class="line-dot line-${idx}"/>`).join('');
+    const dots = normalizedRows.map((row,i) => `<circle cx="${x(i)}" cy="${y(row[s.key]||0)}" r="4" class="line-dot line-${idx}"/>`).join('');
     return `<polyline points="${pts}" class="line-series line-${idx}"/>${dots}`;
   }).join('');
-  const labelEvery = Math.max(1, Math.ceil(normalizedRows.length / 8));
+  const labelEvery = Math.max(1, Math.ceil(normalizedRows.length / (bucket === 'hour' ? 10 : 8)));
   const xLabels = normalizedRows.map((row,i) => i % labelEvery === 0 || i === normalizedRows.length - 1 ? `<text x="${x(i)}" y="${H-16}" text-anchor="middle" class="chart-axis-text">${esc(formatAnalyticsLabel(row.bucket || row.day, bucket))}</text>` : '').join('');
-  const hitWidth = normalizedRows.length <= 1 ? W - L - R : Math.max(18, (W - L - R) / normalizedRows.length);
+  const hitWidth = normalizedRows.length <= 1 ? W - L - R : Math.max(16, (W - L - R) / normalizedRows.length);
   const hits = normalizedRows.map((row, i) => {
     const label = formatAnalyticsLabel(row.bucket || row.day, bucket);
-    const parts = [label, ...series.map(s => `${s.label} ${analyticsSafeNumber(row[s.key])}`)];
-    const tooltip = analyticsTooltipLabel(parts);
-    return `<rect class="chart-hit" x="${Math.max(L, x(i)-hitWidth/2)}" y="${T}" width="${hitWidth}" height="${H-T-B}" data-chart-tip="${tooltip}" data-x="${x(i)}" data-y="${T+20}"></rect><line x1="${x(i)}" x2="${x(i)}" y1="${T}" y2="${H-B}" class="chart-hover-line"></line>`;
+    const tooltip = buildAnalyticsTipHtml(label, series, row).replace(/"/g, '&quot;');
+    return `<rect class="chart-hit" x="${Math.max(L, x(i)-hitWidth/2)}" y="${T}" width="${hitWidth}" height="${H-T-B}" data-chart-tip-html="${tooltip}" data-x="${x(i)}" data-y="${T+20}"></rect><line x1="${x(i)}" x2="${x(i)}" y1="${T}" y2="${H-B}" class="chart-hover-line"></line>`;
   }).join('');
   const legend = series.map((s, idx) => `<span><i class="legend-dot line-${idx}"></i>${esc(s.label)}</span>`).join('');
-  return `<div class="interactive-chart line-chart-box"><div class="chart-legend">${legend}</div><svg class="analytics-svg analytics-line-svg" viewBox="0 0 ${W} ${H}" role="img">${grid}<line x1="${L}" x2="${L}" y1="${T}" y2="${H-B}" class="chart-axis"/><line x1="${L}" x2="${W-R}" y1="${H-B}" y2="${H-B}" class="chart-axis"/>${lines}${xLabels}${hits}</svg><div class="analytics-floating-tip" hidden></div></div>`;
+  return `<div class="interactive-chart line-chart-box"><div class="chart-legend bt-legend">${legend}</div><svg class="analytics-svg analytics-line-svg" viewBox="0 0 ${W} ${H}" role="img">${grid}<line x1="${L}" x2="${L}" y1="${T}" y2="${H-B}" class="chart-axis"/><line x1="${L}" x2="${W-R}" y1="${H-B}" y2="${H-B}" class="chart-axis"/>${areas}${lines}${xLabels}${hits}</svg>${chartOverview(normalizedRows, series, bucket)}<div class="analytics-floating-tip rich-tip" hidden></div></div>`;
 }
 function donutChart(rows, labelKey='status') {
+
   const list = Array.isArray(rows) ? rows.filter(r => analyticsSafeNumber(r.count) > 0) : [];
   const total = list.reduce((sum,r)=>sum+analyticsSafeNumber(r.count),0);
   if (!total) return '<div class="empty small">暂无数据</div>';
   let offset = 25;
+  const gap = list.length > 1 ? 0.8 : 0;
   const circles = list.map((r, idx) => {
     const label = statusText[r[labelKey]] || r[labelKey] || '未知';
     const count = analyticsSafeNumber(r.count);
     const pct = count / total * 100;
+    const drawPct = Math.max(0, pct - gap);
     const pctText = Math.round(pct * 10) / 10;
-    const el = `<circle tabindex="0" class="donut-seg donut-${idx%8}" cx="110" cy="110" r="72" stroke-dasharray="${pct} ${100-pct}" stroke-dashoffset="${offset}" data-chart-tip="${attr(`${label}: ${count} (${pctText}%)`)}"></circle>`;
+    const el = `<circle tabindex="0" pathLength="100" class="donut-seg donut-${idx%8}" cx="110" cy="110" r="72" stroke-dasharray="${drawPct} ${100-drawPct}" stroke-dashoffset="${offset}" data-chart-tip="${attr(`${label}: ${count} (${pctText}%)`)}"></circle>`;
     offset -= pct;
     return el;
   }).join('');
@@ -3557,22 +3605,24 @@ function donutChart(rows, labelKey='status') {
     const pctText = Math.round(count / total * 1000) / 10;
     return `<p data-chart-tip="${attr(`${label}: ${count} (${pctText}%)`)}"><i class="donut-color donut-${idx%8}"></i><span>${esc(label)}</span><b>${count}</b><em>${pctText}%</em></p>`;
   }).join('');
-  return `<div class="interactive-chart donut-chart-box"><div class="donut-wrap email-style"><div class="donut-legend">${legend}</div><svg class="donut-svg" viewBox="0 0 220 220"><circle class="donut-bg" cx="110" cy="110" r="72"></circle>${circles}<text x="110" y="104" text-anchor="middle" class="donut-total">${total}</text><text x="110" y="126" text-anchor="middle" class="donut-caption">总数</text></svg></div><div class="analytics-floating-tip" hidden></div></div>`;
+  return `<div class="interactive-chart donut-chart-box"><div class="donut-wrap email-style compact-ring"><div class="donut-legend">${legend}</div><svg class="donut-svg" viewBox="0 0 220 220"><circle class="donut-bg" pathLength="100" cx="110" cy="110" r="72"></circle>${circles}<text x="110" y="104" text-anchor="middle" class="donut-total">${total}</text><text x="110" y="126" text-anchor="middle" class="donut-caption">总数</text></svg></div><div class="analytics-floating-tip" hidden></div></div>`;
 }
 function bindAnalyticsChartInteractions(root=document) {
   root.querySelectorAll('.interactive-chart').forEach(box => {
     const tip = box.querySelector('.analytics-floating-tip');
     if (!tip) return;
     const show = (target, event) => {
+      const html = target?.dataset?.chartTipHtml || target?.closest?.('[data-chart-tip-html]')?.dataset?.chartTipHtml || '';
       const text = target?.dataset?.chartTip || target?.closest?.('[data-chart-tip]')?.dataset?.chartTip || '';
-      if (!text) return;
-      tip.textContent = text;
+      if (!html && !text) return;
+      if (html) tip.innerHTML = html;
+      else tip.textContent = text;
       tip.hidden = false;
       const boxRect = box.getBoundingClientRect();
-      let left = (event?.clientX || (boxRect.left + boxRect.width / 2)) - boxRect.left + 14;
-      let top = (event?.clientY || (boxRect.top + 80)) - boxRect.top + 14;
-      left = Math.max(12, Math.min(left, boxRect.width - 230));
-      top = Math.max(12, Math.min(top, boxRect.height - 56));
+      let left = (event?.clientX || (boxRect.left + boxRect.width / 2)) - boxRect.left + 16;
+      let top = (event?.clientY || (boxRect.top + 72)) - boxRect.top + 16;
+      left = Math.max(12, Math.min(left, boxRect.width - 260));
+      top = Math.max(12, Math.min(top, boxRect.height - 92));
       tip.style.left = left + 'px';
       tip.style.top = top + 'px';
       if (target.classList?.contains('chart-hit')) {
@@ -3586,7 +3636,7 @@ function bindAnalyticsChartInteractions(root=document) {
       box.querySelectorAll('.chart-hover-line').forEach(l => l.classList.remove('active'));
       box.querySelectorAll('.donut-seg.active').forEach(s => s.classList.remove('active'));
     };
-    box.querySelectorAll('[data-chart-tip]').forEach(el => {
+    box.querySelectorAll('[data-chart-tip],[data-chart-tip-html]').forEach(el => {
       el.addEventListener('mouseenter', e => show(el, e));
       el.addEventListener('mousemove', e => show(el, e));
       el.addEventListener('mouseleave', hide);
@@ -3607,6 +3657,7 @@ function bindAnalyticsChartInteractions(root=document) {
   });
 }
 function cfApiMonitor(apiInfo) {
+
   const total = Number(apiInfo?.total || 0);
   const failed = Number(apiInfo?.failed || 0);
   const success = Number(apiInfo?.success || 0);
@@ -3627,7 +3678,7 @@ async function renderAdminAnalytics() {
     const m = analytics.metrics || {};
     const bucket = analytics.range?.bucket || 'day';
     shell('分析页', `<section class="card analytics-page analytics-v75 analytics-v76">
-      <div class="section-head analytics-head"><div><h2>分析页</h2><p>参考邮箱分析页布局，尽量铺满页面；卡片、折线图和环形图都支持鼠标悬停 / 触屏点击查看数据。</p></div>${analyticsToolbar(rangeState)}</div>
+      <div class="section-head analytics-head"><div><h2>分析页</h2><p>趋势图已按宝塔面板风格优化：支持 12 小时 / 1 天 / 3 天 / 7 天 / 30 天 / 90 天 / 自定义切换，并提供更清晰的悬停提示与概览视图。</p></div>${analyticsToolbar(rangeState)}</div>
       <div class="analytics-grid metric-row-v75 metric-row-v76">
         ${analyticsMetricCard('二级域名总数', m.totalDomains, `有效 ${m.activeDomains?.total || 0}　已注销 ${m.totalDomains?.deleted || 0}`, '▣')}
         ${analyticsMetricCard('活跃二级域名', m.activeDomains, '最近30天正常启用 / 未过期', '◎')}
@@ -3915,17 +3966,17 @@ function bindAdminSettingsTabs() {
   activate(sessionStorage.getItem('adminSettingsActiveTab') || 'site');
 }
 function toLocalDateTimeValue(value) { if (!value) return ''; const d=new Date(value); if(Number.isNaN(d.getTime())) return String(value).slice(0,16); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16); }
-function renderSuffixEditorRows(suffixes=[]) { return (suffixes.length?suffixes:[{label:'免费二级域名',suffix:'flore.top',zoneId:'',allowedTypes:['A','AAAA','CNAME','TXT','MX'],defaultType:'CNAME',ttl:1,proxied:false,enabled:true,allowRegister:true}]).map((s,i)=>`<div class="suffix-editor-row v81" data-suffix-row>
-  <div class="suffix-toggle-cell"><label><span>启用解析</span><input data-k="enabled" type="checkbox" ${yn(s.enabled!==false)}></label><em>关闭后该根域名不能写入 DNS。</em></div>
-  <div class="suffix-toggle-cell"><label><span>允许申请</span><input data-k="allowRegister" type="checkbox" ${yn(s.allowRegister!==false)}></label><em>关闭后用户注册页不显示该后缀。</em></div>
-  <label><span>显示名称</span><input data-k="label" value="${fieldValue(s.label||s.suffix)}" placeholder="免费二级域名"></label>
-  <label><span>根域名</span><input data-k="suffix" value="${fieldValue(s.suffix)}" placeholder="example.com"></label>
-  <label class="zone-field"><span>Zone ID</span><input data-k="zoneId" value="${fieldValue(s.zoneId)}" placeholder="Cloudflare Zone ID"></label>
-  <label><span>允许类型</span><input data-k="allowedTypes" value="${fieldValue((s.allowedTypes||['A','AAAA','CNAME','TXT','MX']).join(','))}" placeholder="A,AAAA,CNAME,TXT,MX"></label>
-  <label><span>默认类型</span><select data-k="defaultType"><option ${s.defaultType==='A'?'selected':''}>A</option><option ${s.defaultType==='AAAA'?'selected':''}>AAAA</option><option ${s.defaultType==='CNAME'?'selected':''}>CNAME</option><option ${s.defaultType==='TXT'?'selected':''}>TXT</option><option ${s.defaultType==='MX'?'selected':''}>MX</option></select></label>
-  <label><span>TTL</span><input data-k="ttl" type="number" min="1" max="86400" value="${fieldValue(s.ttl||1)}"></label>
-  <div class="suffix-toggle-cell"><label><span>默认代理</span><input data-k="proxied" type="checkbox" ${yn(s.proxied)}></label><em>仅 A/AAAA/CNAME 可代理。</em></div>
-  <label class="suffix-token-field"><span>该根域名 API Token（可选）${s.cfApiTokenConfigured?' · 已配置':''}</span><input data-k="cfApiToken" type="password" autocomplete="new-password" placeholder="不同 CF 账号/Zone 时填写；留空保留原值"><em>优先使用这里的 Token，其次使用全局 Token / Worker Secret。</em></label>
+function renderSuffixEditorRows(suffixes=[]) { return (suffixes.length?suffixes:[{label:'免费二级域名',suffix:'flore.top',zoneId:'',allowedTypes:['A','AAAA','CNAME','TXT','MX'],defaultType:'CNAME',ttl:1,proxied:false,enabled:true,allowRegister:true}]).map((s,i)=>`<div class="suffix-editor-row v83" data-suffix-row>
+  <div class="suffix-toggle-cell compact enabled-toggle"><label><span>启用解析</span><input data-k="enabled" type="checkbox" ${yn(s.enabled!==false)}></label><em>关闭后该根域名不能写入 DNS。</em></div>
+  <div class="suffix-toggle-cell compact register-toggle"><label><span>允许申请</span><input data-k="allowRegister" type="checkbox" ${yn(s.allowRegister!==false)}></label><em>关闭后用户注册页不显示该后缀。</em></div>
+  <label class="suffix-field name-field"><span>显示名称</span><input data-k="label" value="${fieldValue(s.label||s.suffix)}" placeholder="免费二级域名"></label>
+  <label class="suffix-field root-field"><span>根域名</span><input data-k="suffix" value="${fieldValue(s.suffix)}" placeholder="example.com"></label>
+  <label class="suffix-field zone-field"><span>Zone ID</span><input data-k="zoneId" value="${fieldValue(s.zoneId)}" placeholder="Cloudflare Zone ID"></label>
+  <label class="suffix-field types-field"><span>允许类型</span><input data-k="allowedTypes" value="${fieldValue((s.allowedTypes||['A','AAAA','CNAME','TXT','MX']).join(','))}" placeholder="A,AAAA,CNAME,TXT,MX"></label>
+  <label class="suffix-field default-type-field"><span>默认类型</span><select data-k="defaultType"><option ${s.defaultType==='A'?'selected':''}>A</option><option ${s.defaultType==='AAAA'?'selected':''}>AAAA</option><option ${s.defaultType==='CNAME'?'selected':''}>CNAME</option><option ${s.defaultType==='TXT'?'selected':''}>TXT</option><option ${s.defaultType==='MX'?'selected':''}>MX</option></select></label>
+  <label class="suffix-field ttl-field"><span>TTL</span><input data-k="ttl" type="number" min="1" max="86400" value="${fieldValue(s.ttl||1)}"></label>
+  <div class="suffix-toggle-cell compact proxy-toggle"><label><span>默认代理</span><input data-k="proxied" type="checkbox" ${yn(s.proxied)}></label><em>仅 A/AAAA/CNAME 可代理。</em></div>
+  <label class="suffix-field suffix-token-field"><span>该根域名 API Token（可选）${s.cfApiTokenConfigured?' · 已配置':''}</span><input data-k="cfApiToken" type="password" autocomplete="new-password" placeholder="不同 CF 账号/Zone 时填写；留空保留原值"><em>优先使用这里的 Token，其次使用全局 Token / Worker Secret。</em></label>
   <div class="suffix-actions"><button type="button" class="btn soft small" data-test-suffix>测试</button><button type="button" class="btn danger-soft small" data-remove-suffix>删除</button></div>
 </div>`).join(''); }
 function bindDnsSuffixEditor() {
