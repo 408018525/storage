@@ -2786,3 +2786,182 @@ html[data-theme="dark"] .admin-settings-v79 .settings-section-heading{
   .admin-settings-v79 .suffix-editor-row.v80 .suffix-actions { grid-column: auto; }
   .admin-settings-v79 .event-grid { grid-template-columns: 1fr !important; }
 }
+
+/* v82 analytics chart update: learn from BT panel style */
+.analytics-toolbar-v82{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;width:100%}
+.analytics-toolbar-v82 .toolbar-group{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.analytics-toolbar-v82 .toolbar-label{font-weight:900;color:#4b5565}
+.analytics-toolbar-v82 .bt-segment{background:#f5f7fb;border:1px solid #dbe4f0;border-radius:16px;padding:4px;gap:4px}
+.analytics-toolbar-v82 .bt-chip{border:none;background:transparent;border-radius:12px;padding:10px 14px;color:#5f6f86;min-width:64px}
+.analytics-toolbar-v82 .bt-chip.active{background:#1f9fe8;color:#fff;box-shadow:none}
+.analytics-toolbar-v82 .icon-btn{width:44px;height:44px;border-radius:12px;padding:0;font-size:22px;display:grid;place-items:center}
+.bt-legend{justify-content:flex-start;margin:4px 0 10px 4px}
+.line-chart-box{background:linear-gradient(180deg,#ffffff 0%,#fbfdff 100%);border-radius:18px}
+.line-area{opacity:.12}
+.line-area-0{fill:#2697ff}.line-area-1{fill:#17cdb5}.line-area-2{fill:#ff6f4d}
+.analytics-line-svg{height:360px!important}
+.chart-grid-line{stroke:#dde6f3;stroke-dasharray:4 6}
+.chart-axis{stroke:#b4c0d1}
+.chart-axis-text{fill:#7c889c;font-weight:800}
+.chart-hit{cursor:crosshair}
+.chart-hover-line.active{stroke:#94a3b8;opacity:.95}
+.chart-overview{margin-top:8px;padding:8px 6px 0}
+.overview-strip{background:#eef3ff;border:1px solid #d7e3fb;border-radius:14px;padding:6px 10px;height:68px;display:flex;align-items:center}
+.overview-svg{width:100%;height:52px;display:block}
+.overview-line{stroke-width:3;opacity:.8}
+.overview-meta{display:flex;align-items:center;justify-content:space-between;padding:6px 4px 0;color:#7b8798;font-weight:900;font-size:12px}
+.overview-meta em{font-style:normal;color:#90a0b8}
+.rich-tip{min-width:190px;max-width:280px;padding:12px 14px;border-color:#d4e7ff;box-shadow:0 16px 40px rgba(15,23,42,.18)}
+.rich-tip::before{display:none}
+.tip-title{font-size:15px;color:#24324a;font-weight:1000;margin-bottom:8px}
+.tip-row{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:2px 0;color:#334155}
+.tip-row b{font-size:15px}
+.tip-swatch{width:12px;height:12px;border-radius:999px;display:inline-block}
+.tip-swatch.line-0{background:#2697ff}.tip-swatch.line-1{background:#17cdb5}.tip-swatch.line-2{background:#ff6f4d}
+@media (max-width:900px){.analytics-toolbar-v82{align-items:flex-start}.analytics-toolbar-v82 .toolbar-group-right{width:100%}.analytics-toolbar-v82 .custom-range{width:100%}.analytics-toolbar-v82 .custom-range input{flex:1;min-width:140px}.analytics-line-svg{height:300px!important}}
+@media (max-width:560px){.analytics-toolbar-v82 .toolbar-label{width:100%}.analytics-toolbar-v82 .bt-chip{padding:8px 10px;min-width:auto}.overview-strip{height:58px}.overview-svg{height:42px}.rich-tip{max-width:220px}}
+
+/* v83 donut + multi-root layout fixes */
+.donut-wrap.email-style.compact-ring{
+  grid-template-columns:minmax(240px,1fr) 320px!important;
+  gap:36px;
+  align-items:center;
+}
+.donut-wrap.email-style.compact-ring .donut-svg{
+  width:320px!important;
+  height:320px!important;
+  justify-self:center;
+  overflow:visible;
+}
+.donut-wrap.email-style.compact-ring .donut-bg,
+.donut-wrap.email-style.compact-ring .donut-seg{
+  stroke-width:22;
+}
+.donut-wrap.email-style.compact-ring .donut-seg{
+  stroke-linecap:round;
+}
+.donut-wrap.email-style.compact-ring .donut-total{
+  font-size:34px;
+}
+.donut-wrap.email-style.compact-ring .donut-caption{
+  font-size:13px;
+}
+.donut-wrap.email-style.compact-ring .donut-legend{
+  display:grid;
+  gap:14px;
+  align-self:center;
+}
+.donut-wrap.email-style.compact-ring .donut-legend p{
+  grid-template-columns:auto minmax(120px,1fr) auto auto!important;
+  align-items:center;
+  padding:3px 0;
+}
+
+.admin-settings-v79 .suffix-editor-row.v83{
+  display:grid!important;
+  grid-template-columns:repeat(12,minmax(0,1fr))!important;
+  gap:14px!important;
+  align-items:start!important;
+  width:100%!important;
+  max-width:100%!important;
+  padding:18px!important;
+  overflow:visible!important;
+  box-sizing:border-box!important;
+  border-radius:22px!important;
+}
+.admin-settings-v79 .suffix-editor-row.v83 .enabled-toggle,
+.admin-settings-v79 .suffix-editor-row.v83 .register-toggle,
+.admin-settings-v79 .suffix-editor-row.v83 .proxy-toggle{grid-column:span 2;}
+.admin-settings-v79 .suffix-editor-row.v83 .name-field,
+.admin-settings-v79 .suffix-editor-row.v83 .root-field,
+.admin-settings-v79 .suffix-editor-row.v83 .default-type-field,
+.admin-settings-v79 .suffix-editor-row.v83 .ttl-field{grid-column:span 2;}
+.admin-settings-v79 .suffix-editor-row.v83 .zone-field,
+.admin-settings-v79 .suffix-editor-row.v83 .types-field,
+.admin-settings-v79 .suffix-editor-row.v83 .suffix-token-field{grid-column:span 4;}
+.admin-settings-v79 .suffix-editor-row.v83 .suffix-actions{grid-column:span 2;align-self:end;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-start;padding-top:22px;}
+.admin-settings-v79 .suffix-editor-row.v83 label,
+.admin-settings-v79 .suffix-editor-row.v83 .suffix-toggle-cell{min-width:0!important;width:100%!important;}
+.admin-settings-v79 .suffix-editor-row.v83 input,
+.admin-settings-v79 .suffix-editor-row.v83 select{
+  width:100%!important;
+  min-width:0!important;
+  height:44px;
+  box-sizing:border-box;
+}
+.admin-settings-v79 .suffix-editor-row.v83 .zone-field input,
+.admin-settings-v79 .suffix-editor-row.v83 .suffix-token-field input{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  font-size:13px;
+}
+.admin-settings-v79 .suffix-editor-row.v83 .suffix-toggle-cell label{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  font-weight:800;
+  color:#64748b;
+  font-size:13px;
+}
+.admin-settings-v79 .suffix-editor-row.v83 .suffix-toggle-cell input[type="checkbox"]{
+  width:36px!important;
+  height:36px!important;
+  accent-color:var(--accent);
+}
+.admin-settings-v79 .suffix-editor-row.v83 .suffix-toggle-cell em,
+.admin-settings-v79 .suffix-editor-row.v83 .suffix-token-field em,
+.admin-settings-v79 .suffix-editor-row.v83 label span{
+  white-space:normal!important;
+  word-break:break-word!important;
+  line-height:1.4;
+}
+.admin-settings-v79 .suffix-editor-row.v83 .btn.small{height:42px;padding:0 14px;}
+
+@media (max-width:1500px){
+  .admin-settings-v79 .suffix-editor-row.v83{grid-template-columns:repeat(6,minmax(0,1fr))!important;}
+  .admin-settings-v79 .suffix-editor-row.v83 .enabled-toggle,
+  .admin-settings-v79 .suffix-editor-row.v83 .register-toggle,
+  .admin-settings-v79 .suffix-editor-row.v83 .proxy-toggle,
+  .admin-settings-v79 .suffix-editor-row.v83 .name-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .root-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .default-type-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .ttl-field{grid-column:span 2;}
+  .admin-settings-v79 .suffix-editor-row.v83 .zone-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .types-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .suffix-token-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .suffix-actions{grid-column:span 3;}
+}
+@media (max-width:980px){
+  .donut-wrap.email-style.compact-ring{grid-template-columns:1fr!important;gap:20px;}
+  .donut-wrap.email-style.compact-ring .donut-svg{width:260px!important;height:260px!important;}
+  .admin-settings-v79 .suffix-editor-row.v83{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
+  .admin-settings-v79 .suffix-editor-row.v83 .enabled-toggle,
+  .admin-settings-v79 .suffix-editor-row.v83 .register-toggle,
+  .admin-settings-v79 .suffix-editor-row.v83 .proxy-toggle,
+  .admin-settings-v79 .suffix-editor-row.v83 .name-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .root-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .default-type-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .ttl-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .zone-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .types-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .suffix-token-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .suffix-actions{grid-column:span 1;}
+  .admin-settings-v79 .suffix-editor-row.v83 .zone-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .types-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .suffix-token-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .suffix-actions{grid-column:1 / -1;}
+}
+@media (max-width:640px){
+  .admin-settings-v79 .suffix-editor-row.v83{grid-template-columns:1fr!important;padding:14px!important;}
+  .admin-settings-v79 .suffix-editor-row.v83 .enabled-toggle,
+  .admin-settings-v79 .suffix-editor-row.v83 .register-toggle,
+  .admin-settings-v79 .suffix-editor-row.v83 .proxy-toggle,
+  .admin-settings-v79 .suffix-editor-row.v83 .name-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .root-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .default-type-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .ttl-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .zone-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .types-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .suffix-token-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .suffix-actions{grid-column:auto;}
+  .donut-wrap.email-style.compact-ring .donut-svg{width:220px!important;height:220px!important;}
+}
