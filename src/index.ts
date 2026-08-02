@@ -228,6 +228,7 @@ interface AppSettings {
     reservedPrefixes: string[];
     defaultProxied?: boolean;
     allowMxRecords?: boolean;
+    cfApiToken?: string;
     blockWildcardRecords?: boolean;
     cnameTargetBlacklist?: string;
     suffixes: Array<{
@@ -1298,7 +1299,7 @@ async function updateOwnDns(request: Request, env: Env, id: string): Promise<Res
   let errorMessage = '';
 
   if (app.status === 'approved') {
-    const token = resolveDnsToken(env);
+    const token = resolveDnsToken(env, settings);
     if (!token) throw new HttpError(503, 'DNS_TOKEN_MISSING', '尚未配置 Cloudflare DNS API Token');
     try {
       if (app.dns_record_id) {
@@ -1392,7 +1393,7 @@ async function createOwnDnsRecord(request: Request, env: Env, applicationId: str
   let status = 'active';
   let errorMessage = '';
 
-  const token = resolveDnsToken(env);
+  const token = resolveDnsToken(env, settings);
   if (!token) throw new HttpError(503, 'DNS_TOKEN_MISSING', '尚未配置 Cloudflare DNS API Token');
   try {
     const record = await createDnsRecord(token, suffix.zoneId, dnsPayload({ type, name, content, ttl, proxied, priority }, `Created by storage portal dns record ${id}`));
@@ -1451,7 +1452,7 @@ async function updateOwnDnsRecordManaged(request: Request, env: Env, recordId: s
   let status = row.status || 'pending';
   let errorMessage = '';
   if (row.app_status === 'approved') {
-    const token = resolveDnsToken(env);
+    const token = resolveDnsToken(env, settings);
     if (!token) throw new HttpError(503, 'DNS_TOKEN_MISSING', '尚未配置 Cloudflare DNS API Token');
     try {
       if (cfRecordId) {
@@ -1496,7 +1497,7 @@ async function deleteOwnDnsRecordManaged(request: Request, env: Env, recordId: s
   const suffix = settings.dns.suffixes.find(x => x.suffixAscii === row.suffix_ascii);
   if (!suffix) throw new HttpError(409, 'SUFFIX_MISSING', '根域名配置不存在');
   if (row.app_status === 'approved' && row.cf_record_id) {
-    const token = resolveDnsToken(env);
+    const token = resolveDnsToken(env, settings);
     if (!token) throw new HttpError(503, 'DNS_TOKEN_MISSING', '尚未配置 Cloudflare DNS API Token');
     try { await deleteDnsRecord(token, suffix.zoneId, row.cf_record_id); }
     catch (error) {
@@ -1533,7 +1534,8 @@ async function syncPendingDnsRecordsForApp(env: Env, app: ApplicationRow, suffix
   `).bind(app.id).all<DnsRecordRow>();
   const records = rows.results || [];
   if (!records.length) return 0;
-  const token = resolveDnsToken(env);
+  const settings = await loadSettings(env);
+  const token = resolveDnsToken(env, settings);
   if (!token) throw new HttpError(503, 'DNS_TOKEN_MISSING', '尚未配置 Cloudflare DNS API Token');
   let created = 0;
   for (const record of records) {
@@ -1552,7 +1554,8 @@ async function syncPendingDnsRecordsForApp(env: Env, app: ApplicationRow, suffix
 }
 
 async function deleteAllDnsRecordsForApp(env: Env, app: ApplicationRow, suffix: AppSettings['dns']['suffixes'][number]): Promise<void> {
-  const token = resolveDnsToken(env);
+  const settings = await loadSettings(env);
+  const token = resolveDnsToken(env, settings);
   const rows = await env.DB.prepare(`
     SELECT * FROM dns_records WHERE application_id=? AND (deleted_at IS NULL OR deleted_at='')
   `).bind(app.id).all<DnsRecordRow>();
@@ -2978,6 +2981,7 @@ async function adminUpdateSettings(request: Request, env: Env, group: AdminSetti
       ...settings.dns,
       defaultProxied: asBoolean(body.defaultProxied, settings.dns.defaultProxied ?? false),
       allowMxRecords: asBoolean(body.allowMxRecords, settings.dns.allowMxRecords ?? true),
+      cfApiToken: asBoolean((body as any).clearCfApiToken, false) ? '' : (cleanText((body as any).cfApiToken, 2000) || settings.dns.cfApiToken || ''),
       reservedPrefixes: sanitizeStringList(body.reservedPrefixes || settings.dns.reservedPrefixes.join('\n')).slice(0, 500),
       suffixes: sanitizeDnsSuffixes(suffixesInput, settings.dns.suffixes),
     };
@@ -3188,6 +3192,7 @@ function defaultSettings(env: Env): AppSettings {
       reservedPrefixes: reserved,
       defaultProxied: isEnabled(env.DNS_PROXIED, false),
       allowMxRecords: true,
+      cfApiToken: '',
       blockWildcardRecords: true,
       cnameTargetBlacklist: '',
       suffixes: [{
@@ -3308,7 +3313,14 @@ function sanitizeDnsSuffixes(value: unknown, fallback: AppSettings['dns']['suffi
       };
     } catch { return null; }
   }).filter(Boolean) as AppSettings['dns']['suffixes'];
-  return items.length ? items : fallback;
+  const seen = new Set<string>();
+  const deduped = items.filter(item => {
+    const key = item.suffixAscii || item.suffix;
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return deduped.length ? deduped : fallback;
 }
 
 function sanitizeNotificationEvents(value: unknown): Record<string, boolean> {
@@ -3520,8 +3532,9 @@ async function deleteDnsRecordsByName(token: string, zoneId: string, name: strin
   }
 }
 
-function resolveDnsToken(env: Env): string {
-  return String(env.CF_API_TOKEN || '').trim();
+function resolveDnsToken(env: Env, settings?: AppSettings): string {
+  // 优先使用 Cloudflare Worker Secret；没有 Secret 时，允许管理员在后台 DNS 配置中保存 token 到 Workers KV。
+  return String(env.CF_API_TOKEN || settings?.dns?.cfApiToken || '').trim();
 }
 
 async function verifyTurnstile(env: Env, request: Request, token: unknown, expectedAction: string): Promise<void> {
@@ -3576,19 +3589,19 @@ async function adminSystemStatus(request: Request, env: Env): Promise<Response> 
       (SELECT COUNT(*) FROM audit_logs WHERE datetime(created_at) >= datetime('now','-4 days')) AS logs4d
   `).first<any>();
   return ok({
-    version: 'v73',
+    version: 'v78',
     settingsKey: SETTINGS_KEY,
     kv: { storage: 'Workers KV', estimatedKeys: '由 Cloudflare 控制台查看实际占用' },
-    cfApi: { configured: Boolean(resolveDnsToken(env)), status: resolveDnsToken(env) ? '已配置' : '未配置' },
+    cfApi: { configured: Boolean(resolveDnsToken(env, settings)), status: resolveDnsToken(env, settings) ? '已配置' : '未配置' },
     cron: { enabled: Boolean(settings.automation?.enabled), expression: settings.automation?.cronExpression || '' },
     counts,
-    update: { current: 'v73', latest: '请以当前部署包为准' },
+    update: { current: 'v78', latest: '请以当前部署包为准' },
   });
 }
 
 async function adminExportSettings(request: Request, env: Env): Promise<Response> {
   await requireAdmin(env, request);
-  return ok({ exportedAt: new Date().toISOString(), version: 'v73', settings: await loadSettings(env) });
+  return ok({ exportedAt: new Date().toISOString(), version: 'v78', settings: await loadSettings(env) });
 }
 
 async function adminImportSettings(request: Request, env: Env): Promise<Response> {
@@ -3616,17 +3629,23 @@ async function adminImportSettings(request: Request, env: Env): Promise<Response
 async function adminTestCloudflareApi(request: Request, env: Env): Promise<Response> {
   const admin = await requireAdmin(env, request);
   const settings = await loadSettings(env);
-  const token = resolveDnsToken(env);
-  if (!token) throw new HttpError(400, 'CF_TOKEN_MISSING', 'CF_API_TOKEN 未配置');
-  const suffix = settings.dns.suffixes.find(x => x.enabled && x.zoneId) || settings.dns.suffixes.find(x => x.zoneId);
-  if (!suffix?.zoneId) throw new HttpError(400, 'ZONE_ID_MISSING', '没有可测试的 DNS_ZONE_ID / Zone ID');
+  const body = await readJson<Record<string, unknown>>(request, 64 * 1024).catch(() => ({}));
+  const token = resolveDnsToken(env, settings);
+  if (!token) throw new HttpError(400, 'CF_TOKEN_MISSING', '尚未配置 Cloudflare API Token：可放 Worker Secret，也可在“DNS 配置”中填写一次保存到 KV');
+  const requestedZoneId = cleanText((body as any).zoneId, 120);
+  const requestedSuffix = normalizeOptionalSuffix((body as any).suffix);
+  const suffix = settings.dns.suffixes.find(x => requestedZoneId && x.zoneId === requestedZoneId)
+    || settings.dns.suffixes.find(x => requestedSuffix && (x.suffix === requestedSuffix || x.suffixAscii === requestedSuffix))
+    || settings.dns.suffixes.find(x => x.enabled && x.zoneId)
+    || settings.dns.suffixes.find(x => x.zoneId);
+  if (!suffix?.zoneId) throw new HttpError(400, 'ZONE_ID_MISSING', '没有可测试的 Zone ID；请在多根域名编辑器中填写该根域名的 Zone ID');
   const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${encodeURIComponent(suffix.zoneId)}`, {
     headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
   });
   const data: any = await res.json().catch(() => ({}));
-  await audit(env, request, admin.id, 'admin.cf_api_test', 'setting', 'dns', { ok: res.ok && data.success !== false, zoneId: suffix.zoneId });
+  await audit(env, request, admin.id, 'admin.cf_api_test', 'setting', 'dns', { ok: res.ok && data.success !== false, zoneId: suffix.zoneId, suffix: suffix.suffix });
   if (!res.ok || data.success === false) throw new HttpError(502, 'CF_API_TEST_FAILED', data.errors?.[0]?.message || `Cloudflare API 测试失败 HTTP ${res.status}`);
-  return ok({ status: 'ok', message: 'Cloudflare API 连通正常', zone: data.result?.name || suffix.suffix });
+  return ok({ status: 'ok', message: `Cloudflare API 连通正常：${data.result?.name || suffix.suffix}`, zone: data.result?.name || suffix.suffix, zoneId: suffix.zoneId });
 }
 
 function stripClientHint(value: string | null): string {
@@ -3880,6 +3899,12 @@ function normalizeSuffix(raw: string): string {
   const value = raw.trim().toLowerCase().replace(/^\.+/, '');
   if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(value)) throw new HttpError(400, 'INVALID_SUFFIX', '根域名格式不正确');
   return value;
+}
+
+function normalizeOptionalSuffix(value: unknown): string {
+  const raw = String(value || '').trim().toLowerCase().replace(/^\.+|\.+$/g, '');
+  if (!raw) return '';
+  try { return normalizeSuffix(raw); } catch { return ''; }
 }
 
 function normalizeRecordType(raw: unknown, allowed: string[]): DnsRecordType {
