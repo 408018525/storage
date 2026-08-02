@@ -2708,13 +2708,13 @@ function normalizeAnalyticsRange(url: URL): AnalyticsRange {
     if (Number.isNaN(end.getTime())) end = now;
     if (end <= start) end = new Date(start.getTime() + DAY);
     const diffHours = (end.getTime() - start.getTime()) / (60 * 60 * 1000);
-    bucket = diffHours <= 48 ? 'hour' : 'day';
+    bucket = diffHours <= 72 ? 'hour' : 'day';
     label = '自定义';
   } else {
     const map: Record<string, { ms: number; label: string; bucket: 'hour' | 'day' }> = {
       '12h': { ms: 12 * 60 * 60 * 1000, label: '最近12小时', bucket: 'hour' },
       '1d': { ms: DAY, label: '最近1天', bucket: 'hour' },
-      '3d': { ms: 3 * DAY, label: '最近3天', bucket: 'day' },
+      '3d': { ms: 3 * DAY, label: '最近3天', bucket: 'hour' },
       '7d': { ms: 7 * DAY, label: '最近7天', bucket: 'day' },
       '7': { ms: 7 * DAY, label: '最近7天', bucket: 'day' },
       '30d': { ms: 30 * DAY, label: '最近30天', bucket: 'day' },
