@@ -2438,3 +2438,24 @@ body:has(.analytics-v76) .content{max-width:none!important;width:100%!important;
 @media (max-width:1400px){.metric-row-v76{grid-template-columns:repeat(3,minmax(220px,1fr))!important}.analytics-two-col{grid-template-columns:1fr!important}.analytics-two-col .monitor-card{grid-column:auto}.donut-wrap.email-style{grid-template-columns:minmax(180px,1fr) 280px!important}.donut-wrap.email-style .donut-svg{width:280px!important;height:280px!important}}
 @media (max-width:900px){body:has(.analytics-v76) .content{padding-left:12px!important;padding-right:12px!important}.metric-row-v76{grid-template-columns:repeat(2,minmax(160px,1fr))!important}.analytics-v76{padding:16px!important}.donut-wrap.email-style{grid-template-columns:1fr!important}.donut-wrap.email-style .donut-svg{width:240px!important;height:240px!important}.analytics-line-svg{height:280px!important}.line-chart-box{min-height:290px}.trend-card,.distribution-card,.monitor-card{min-height:auto}}
 @media (max-width:560px){.metric-row-v76{grid-template-columns:1fr!important}.analytics-toolbar-v75{gap:8px}.range-switch{gap:6px}.donut-wrap.email-style .donut-svg{width:220px!important;height:220px!important}.analytics-floating-tip{max-width:210px}.analytics-v76 .chart-card{padding:16px!important}}
+
+/* v78 多根域名设置优化 */
+.suffix-editor-help{
+  margin:10px 0 14px;padding:12px 14px;border:1px solid var(--border);border-radius:14px;background:#f8fbff;color:#64748b;font-weight:700;line-height:1.6;
+}
+.suffix-editor-row{
+  grid-template-columns:72px minmax(150px,1fr) minmax(170px,1fr) minmax(220px,1.35fr) minmax(190px,1.2fr) 130px 90px 74px 146px !important;
+  overflow:visible;
+}
+.suffix-editor-row .zone-field input{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:13px;}
+.suffix-enabled-cell,.suffix-proxy-cell{display:flex;align-items:end;min-height:64px;}
+.suffix-enabled-cell label,.suffix-proxy-cell label{width:100%;}
+.suffix-actions{display:flex;gap:8px;align-items:end;justify-content:flex-end;min-height:64px;}
+.suffix-actions .btn{height:42px;padding:0 12px;}
+@media (max-width: 1280px){
+  .suffix-editor-row{grid-template-columns:1fr 1fr !important;}
+  .suffix-actions{justify-content:flex-start;}
+}
+@media (max-width: 640px){
+  .suffix-editor-row{grid-template-columns:1fr !important;}
+}
