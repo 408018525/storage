@@ -811,6 +811,33 @@ Object.assign(I18N_EN, {
 });
 
 Object.assign(I18N_EN, {
+  '界面设置':'Appearance','注册设置':'Registration','域名规则':'Domain Rules','DNS 配置':'DNS Configuration','黑名单管理':'Blacklist','通知设置':'Notifications','安全设置':'Security','自动化任务':'Automation','系统状态':'System Status',
+  '导出配置':'Export Settings','导入配置':'Import Settings','设置读取完成':'Settings loaded','最近保存：':'Last saved: ',
+  '品牌与外观':'Brand & Appearance','配置站点名称、Logo、主题和主色。':'Configure the site name, logo, theme, and colors.',
+  '页脚与合规信息':'Footer & Compliance','统一维护页脚、版权和备案信息。':'Manage footer, copyright, and filing information.',
+  '公告、维护与高级代码':'Notice, Maintenance & Advanced Code','控制维护模式、公告时段和可信第三方脚本。':'Control maintenance mode, notice schedule, and trusted third-party scripts.',
+  '网站标题':'Site Title','显示在浏览器标题和登录页。':'Shown in the browser title and login page.','副标题':'Subtitle','显示在前台品牌区域。':'Shown in the public brand area.','Logo 文字':'Logo Text','不使用图片 Logo 时显示。':'Shown when no logo image is configured.','站点 Logo 图片 URL':'Logo Image URL','填写后优先显示图片 Logo。':'The image logo takes priority when set.','站点 Favicon 地址':'Favicon URL','用于浏览器标签页图标，留空使用默认。':'Used as the browser tab icon. Leave blank for default.','主题模式':'Theme Mode','浅色':'Light','深色':'Dark','跟随系统':'Follow System','只影响前台基础主题，不改变现有布局。':'Changes the public theme without changing the layout.','主色':'Primary Color','辅助色':'Secondary Color','支持十六进制颜色代码。':'Supports hexadecimal color values.','用于渐变按钮第二色。':'Used as the second gradient color.','ICP 备案信息':'ICP Filing','前台底部显示，位于版权信息下方。':'Displayed below copyright in the footer.','版权信息':'Copyright','支持换行，显示在 ICP 上方。':'Supports line breaks and appears above ICP.','页脚文字':'Footer Text','底部基础说明。':'Basic footer description.','自定义头部第三方 JS 代码':'Custom Head Third-party JS','高危配置，保存前会二次确认；错误 JS 可能导致前台白屏。':'High risk. Invalid JavaScript may break the public site.','开启网站维护模式':'Enable Maintenance Mode','开启后前台显示维护提示。':'Shows a maintenance notice on the public site.','维护文案':'Maintenance Message','维护模式开启时展示给用户。':'Displayed while maintenance mode is enabled.','前台默认语言':'Default Public Language','公告开始时间':'Notice Start','公告结束时间':'Notice End','留空表示立即生效。':'Leave blank to start immediately.','留空表示长期展示。':'Leave blank to keep it visible.','前台首页公告 Markdown':'Homepage Notice Markdown','作为前台顶部横幅通知。':'Shown as a banner at the top of the public site.','Markdown 实时预览':'Preview Markdown','404 自定义提示文本':'Custom 404 Message','访问不存在页面时显示。':'Shown when a page does not exist.','前台展示域名剩余配额':'Show Remaining Domain Quota','关闭后用户注册页不突出显示剩余额度。':'Hide quota emphasis on the registration page.','前台展示域名到期提醒':'Show Domain Expiry Reminder','关闭后减少到期提示展示。':'Reduce expiry reminders on the public site.',
+  '注册入口与账户状态':'Registration Access & Account Status','控制用户是否可以注册、是否需要注册码以及新账号初始状态。':'Control public registration, registration keys, and initial account status.','开放用户注册':'Enable Public Registration','关闭后普通用户不能创建新账户。':'Regular users cannot create accounts when disabled.','注册后自动启用账户':'Auto-activate Accounts','关闭后新用户需要管理员启用。':'New accounts require admin activation when disabled.','开启注册码注册':'Require Registration Key','开启后注册页显示注册码输入框，必须填写有效注册码。':'Shows and requires a valid registration key.','拦截临时邮箱注册':'Block Temporary Email','用于减少垃圾账号。':'Reduces spam accounts.','Turnstile 人机验证':'Turnstile Verification','保护普通注册和管理员手动添加用户。':'Protects public registration and admin-created accounts.','注册启用 Turnstile 人机验证':'Enable Turnstile for Registration','普通注册和管理员添加用户都会使用。':'Used for both public registration and admin-created users.','前台显示验证模块用；环境变量优先。':'Used by the public verification widget; environment variables take priority.','密钥不会回显；留空保持原值。建议优先使用 Worker Secret。':'The secret is never displayed. Leave blank to keep the current value. Worker Secret is recommended.','新注册账号默认状态':'Default New Account Status','自动启用':'Auto Activate','需要人工审核':'Manual Review','用于注册后的账号状态。':'Sets the initial status after registration.','注册频率与风险控制':'Rate Limits & Risk Control','限制单 IP、失败次数、代理网络和每日域名申请量。':'Limit IP activity, failures, proxies, and daily domain applications.','单 IP 最大注册账号数量':'Max Accounts per IP','同一 IP 注册冷却/分钟':'Registration Cooldown per IP (minutes)','单账号每日域名申请上限':'Daily Domain Applications per Account','连续注册失败封禁阈值':'Failed Registration Ban Threshold','注册失败封禁时长/分钟':'Failed Registration Ban Duration (minutes)','注册邮箱验证开关':'Email Verification','开启前需先接入邮件发送服务；未接入时只保存开关，不会发送验证码。':'Requires an email delivery service before it can be enforced.','拦截 VPN / 代理注册':'Block VPN / Proxy Registration','仅在 Worker 能读取可信代理风险字段时生效；未接入检测源时不会自动判断 VPN。':'Requires Cloudflare risk signals.','邮箱与关闭提示':'Email Rules & Disabled Message','管理邮箱后缀限制和注册关闭时的前台说明。':'Manage blocked email domains and the registration-disabled message.','邮箱后缀拦截黑名单':'Blocked Email Domains','一行一个邮箱后缀，不要带 @ 也可以。':'One email domain per line; @ is optional.','关闭注册时前台提示文案':'Registration Disabled Message','注册关闭时显示给用户。':'Shown when registration is disabled.',
+  '平台与用户配额':'Platform & User Quotas','设置平台总量、普通用户和白名单用户的独立额度。':'Set platform, regular-user, and allowlisted-user quotas.','有效期与到期流程':'Validity & Expiry Workflow','分别设置续期窗口、锁定期、DNS 清理和彻底删除周期。':'Configure renewal, lock, DNS cleanup, and hard-delete periods separately.','前缀规则与审核':'Prefix Rules & Review','控制长度、关键词、管理员专用前缀和审核模式。':'Control length, keywords, admin-only prefixes, and review mode.','用户权限':'User Permissions','控制删除、DNS 修改、续期和域名转让权限。':'Control deletion, DNS editing, renewal, and transfer permissions.',
+  '全局 DNS 策略':'Global DNS Policy','这些设置会影响所有新建解析记录。':'These settings affect all newly created DNS records.','Cloudflare 凭据与拦截规则':'Cloudflare Credentials & Blocking Rules','密钥不会回显；目标黑名单和保留前缀会立即参与校验。':'Secrets are never displayed; target blocks and reserved prefixes apply immediately.','多根域名管理':'Multiple Root Domains','每个根域名使用独立 Zone ID、类型和代理策略。':'Each root domain uses its own Zone ID, types, and proxy policy.','多根域名可视化编辑器':'Visual Root Domain Editor','新增根域名':'Add Root Domain','显示名称':'Display Name','根域名':'Root Domain','允许类型':'Allowed Types','默认类型':'Default Type','测试':'Test','测试中…':'Testing…','根域名 JSON 输出':'Root Domain JSON Output','该内容由上方可视化编辑器自动生成，仅用于查看和复制备份。':'Generated automatically from the visual editor for viewing and backup only.','测试第一个可用根域名':'Test First Available Root Domain','配置来源说明':'Configuration Source','Cloudflare API Token（可选）':'Cloudflare API Token (optional)','Token 不会回显；留空保持原值。Worker Secret CF_API_TOKEN 的优先级最高。':'The token is never displayed. Leave blank to keep it. Worker Secret CF_API_TOKEN has highest priority.','CNAME 目标黑名单':'CNAME Target Blacklist','保留前缀':'Reserved Prefixes','新建解析默认开启 Cloudflare 代理':'Proxy New DNS Records by Default','允许用户创建 MX 解析记录':'Allow MX Records','禁止用户创建泛解析':'Block Wildcard Records',
+  '行为黑名单':'Behavior Blacklists','每行格式：值 | 备注 | 到期时间。到期时间可留空。':'Format per line: value | note | expiry. Expiry is optional.','兼容黑名单':'Compatibility Blacklists','保留原有前缀、IP、邮箱和手机号拦截字段。':'Keeps the original prefix, IP, email, and phone blocking fields.','注册黑名单':'Registration Blacklist','访问黑名单':'Access Blacklist','UserID 账号黑名单':'User ID Blacklist','域名前缀黑名单':'Domain Prefix Blacklist','IP 黑名单':'IP Blacklist','邮箱/手机号黑名单':'Email / Phone Blacklist',
+  '事件与模板变量':'Events & Template Variables','为每种事件分别设置用户通知和管理员告警。':'Configure user notifications and admin alerts for each event.','模板变量提示':'Template Variables','发送限制与兼容模板':'Rate Limits & Compatibility Template','限制单位时间发送数量，避免通知风暴。':'Limit messages per period to avoid notification storms.','消息限流/小时':'Message Limit per Hour','用户到期消息模板':'User Expiry Message Template','用户通知目标':'User Notification Target','管理员告警目标':'Admin Alert Target','消息模板':'Message Template',
+  '会话与登录保护':'Session & Login Protection','控制会话时长、失败锁定和管理员访问来源。':'Control session duration, failed-login lockout, and admin access sources.','角色与审计':'Roles & Audit','维护角色说明和需要写入操作日志的动作。':'Maintain role descriptions and audited actions.','管理员会话超时/小时':'Admin Session Timeout (hours)','操作日志保留天数':'Audit Log Retention Days','登录失败锁定阈值':'Failed Login Lock Threshold','登录失败锁定分钟':'Failed Login Lock Duration (minutes)','自定义后台管理访问路径':'Custom Admin Path','后台登录 IP 白名单':'Admin Login IP Allowlist','多角色权限配置':'Role Permissions','操作日志可选记录项':'Audited Actions','登录日志查询入口':'Login Log Query Entry',
+  '调度计划':'Schedule','设置 Cron 表达式和扫描周期。':'Configure the Cron expression and scan interval.','任务与保护策略':'Tasks & Protection','独立控制到期检测、DNS 清理、失败告警和保护阈值。':'Control expiry checks, DNS cleanup, failure alerts, and protection thresholds separately.','开启定时任务':'Enable Scheduled Tasks','Cron 表达式':'Cron Expression','定时扫描周期/分钟':'Scan Interval (minutes)','每小时':'Hourly','每 6 小时':'Every 6 Hours','每天 02:00':'Daily at 02:00','每周一 03:00':'Mondays at 03:00','域名到期检测':'Domain Expiry Check','过期 DNS 清理':'Expired DNS Cleanup','任务失败推送管理员告警':'Notify Admin on Task Failure','自动清理 DNS 保护阈值/天':'DNS Cleanup Protection Days','定时任务运行日志':'Scheduled Task Logs',
+  '程序版本':'Program Version','KV 存储':'KV Storage','定时任务':'Scheduled Tasks','更新检测':'Update Check','配置备份 / 导入恢复':'Settings Backup / Restore','读取中':'Loading','已开启':'Enabled','未开启':'Disabled','已配置':'Configured','未配置':'Not Configured','未知':'Unknown',
+  '保存设置':'Save Settings','设置已保存':'Settings saved','正在读取设置…':'Loading settings…','配置已导入':'Settings imported','Markdown 预览':'Markdown Preview','前台公告预览':'Public notice preview'
+});
+
+Object.assign(I18N_EN, {"0 表示不限制。":"0 means unlimited.","0 表示关闭自动锁定。":"0 disables automatic lockout.","0 表示无冷却。":"0 means no cooldown.","A / AAAA / CNAME 可代理，TXT / MX 会强制仅 DNS。":"A / AAAA / CNAME can be proxied; TXT / MX are always DNS only.","Cloudflare Workers Cron 需要在 Worker 触发器中单独配置。":"Cloudflare Workers Cron must also be configured in Worker Triggers.","Cloudflare Workers 下需从 CF-Connecting-IP 获取真实访客 IP。":"On Cloudflare Workers, use CF-Connecting-IP to obtain the real visitor IP.","DNS 配置风险提示":"DNS Configuration Risk Warning","一行一个目标域名或关键词。":"One target domain or keyword per line.","不建议开启，部分 DNS 场景兼容性差。":"Not recommended; some DNS scenarios have poor compatibility.","例如 12345。":"Example: 12345.","填写希望重点审计的动作说明；当前系统关键操作仍会统一写入日志。":"Describe actions to audit closely; critical actions are still logged automatically.","例如统计代码。高危：请只粘贴可信代码。":"Example: analytics code. High risk: paste trusted code only.","例如：粤ICP备xxxx号":"Example: ICP filing number","保留原字段，继续兼容域名前缀拦截。":"Keeps the legacy field for prefix blocking compatibility.","保留原有字段，继续参与拦截。":"Keeps the legacy field active in blocking checks.","值 | 备注 | 到期时间":"value | note | expiry","允许下划线":"Allow Underscores","允许纯数字前缀":"Allow Numeric-only Prefixes","允许转让二级域名":"Allow Domain Transfer","全站总量上限。":"Site-wide total limit.","全部人工审核":"Manual Review for All","关闭可降低垃圾邮件滥用风险。":"Disabling this reduces email abuse risk.","关闭后只能管理员处理。":"Only admins can process this when disabled.","关闭后用户只能查看解析。":"Users can only view DNS records when disabled.","兼容前缀黑名单/正则":"Legacy Prefix Blacklist / Regex","兼容原到期提醒模板。":"Keeps compatibility with the original expiry template.","兼容原有效期设置。":"Keeps compatibility with the original validity setting.","兼容原自动清理字段。":"Keeps compatibility with the original cleanup field.","删除仍需要二次确认/审核。":"Deletion still requires confirmation or review.","到期前多少天允许续期。":"Number of days before expiry when renewal opens.","到期前提醒天数":"Expiry Reminder Days","到期后多少天彻底删除。":"Number of days after expiry before permanent deletion.","单域名最大 DNS 条数":"Max DNS Records per Domain","可视化生成器会同步 Cron。":"The visual presets update the Cron expression.","命中后可禁止注册或访问。":"Matching entries can block registration or access.","命中后普通用户和管理员都不能注册，支持一行一个关键词。":"Matching keywords block both users and admins; one keyword per line.","和侧边栏“域名审核”联动。":"Works with the Domain Review menu.","域名前缀最短长度。":"Minimum domain prefix length.","域名前缀最长长度。":"Maximum domain prefix length.","域名前缀黑名单：仅管理员可用":"Admin-only Prefixes","域名前缀黑名单：禁止注册":"Blocked Prefixes","填写用户 ID 或账号标识，一行一条。":"Enter one user ID or account identifier per line.","多根域名列表保存在 Workers KV。DNS_SUFFIX、DNS_ZONE_ID、DNS_ALLOWED_TYPES、DNS_DEFAULT_TYPE、DNS_TTL、DNS_PROXIED 只作为首次默认值；后续新增/修改根域名直接在本页保存即可。CF_API_TOKEN 可继续用 Worker Secret，也可在上方填写一次保存到 KV。":"Root domain settings are stored in Workers KV. Environment variables are only initial defaults; later changes are made here. CF_API_TOKEN can remain a Worker Secret or be stored in KV.","失败时写入消息中心。":"Writes an alert to Message Center on failure.","审核模式":"Review Mode","对应右上角 EN/中文切换按钮。":"Controls the EN/Chinese switch in the upper-right.","导出会下载当前 Workers KV 中的完整设置。导入属于高危操作，会覆盖当前配置。":"Export downloads the full Workers KV settings. Import is high risk and overwrites current settings.","平台最大二级域名总配额":"Platform Maximum Domain Count","开放用户自助续期":"Allow Self-service Renewal","彻底删除周期/天":"Permanent Deletion Period (days)","必填：名称、根域名、Zone ID。允许类型用逗号分隔，例如 A,AAAA,CNAME,TXT,MX。每个根域名会独立使用自己的 Zone ID 写入 Cloudflare DNS。":"Required: name, root domain, and Zone ID. Separate record types with commas. Each root domain uses its own Zone ID.","扫描即将到期和已过期域名。":"Scans expiring and expired domains.","拒绝/撤销类域名可由用户清理。":"Users can clean rejected or revoked domains.","按保护阈值清理过期解析。":"Cleans expired records after the protection threshold.","支持邮箱、手机号或关键词。":"Supports email, phone, or keywords.","新增根域名不需要再去 Worker 里手动新增 DNS_SUFFIX / DNS_ZONE_ID 环境变量。这里只要填根域名、Zone ID、允许类型并保存到 Workers KV，注册页会自动出现该后缀，DNS 写入时也会按该后缀对应的 Zone ID 调用 Cloudflare API。已存在的 Cloudflare DNS 记录不会自动改写；需要用户或管理员逐条调整。":"New root domains do not require additional Worker environment variables. Save the domain, Zone ID, and types in KV. Existing Cloudflare DNS records are not rewritten automatically.","新增根域名只需在这里添加，不需要给每个域名单独配置环境变量。保存后用户注册页会自动读取启用的后缀。":"Add root domains here without separate environment variables. Enabled suffixes appear automatically on the registration page.","新用户默认额度。":"Default quota for new users.","普通用户不能注册，管理员可使用。":"Regular users cannot register these prefixes; admins can.","普通用户有效期/天":"Regular User Validity (days)","普通用户配额方案。":"Quota plan for regular users.","普通用户额度":"Regular User Quota","普通用户默认有效期。":"Default validity for regular users.","最大前缀长度":"Maximum Prefix Length","最小前缀长度":"Minimum Prefix Length","用于前台和消息提醒。":"Used for public and message reminders.","用于封禁恶意访问 IP 或标识。":"Blocks malicious access IPs or identifiers.","用于拦截注册行为，可填 IP、邮箱、手机号、关键词。":"Blocks registration by IP, email, phone, or keyword.","用于阻止用户申请系统保留前缀。":"Prevents users from applying for reserved prefixes.","用户能否删除已生效域名":"Allow Users to Delete Active Domains","白名单用户有效期/天":"Allowlisted User Validity (days)","白名单用户配额方案。":"Quota plan for allowlisted users.","白名单用户额度":"Allowlisted User Quota","白名单用户默认有效期。":"Default validity for allowlisted users.","示例：0 */1 * * * 表示每小时。":"Example: 0 */1 * * * means hourly.","续期窗口期/天":"Renewal Window (days)","联动侧边栏“操作日志”。":"Works with the Operation Logs page.","自动审批所有申请":"Automatically Approve All","英文":"English","当前用于保存角色规划说明，不会自动授予权限；实际权限仍以后端 requireAdmin 校验为准。":"Stores role planning notes only; actual permissions still use backend requireAdmin checks.","超过时间后需要重新登录。":"Requires login again after the timeout.","达到次数后临时封禁 IP，0 表示关闭。":"Temporarily blocks the IP after this count; 0 disables it.","达到阈值后的锁定时长。":"Lock duration after reaching the threshold.","过期后先锁定，防止立即清理。":"Locks first after expiry to prevent immediate cleanup.","过期后清理 DNS 天数":"DNS Cleanup after Expiry (days)","过期后锁定周期/天":"Lock Period after Expiry (days)","进入侧边栏“操作日志”，类型选择“认证”，可查看登录、退出、失败登录等记录。":"Open Operation Logs and select Auth to view logins, logouts, and failed logins.","配合上方阈值使用。":"Used with the threshold above.","配置按功能分组保存到 Workers KV。修改高风险项目时会要求二次确认。":"Settings are grouped and stored in Workers KV. High-risk changes require confirmation.","防止误删刚过期的正常解析。":"Prevents deletion of recently expired valid records.","阻止 * 主机记录。":"Blocks * wildcard host records.","限制单个二级域名解析数量。":"Limits DNS records per subdomain.","需要 Workers Cron 触发器配合。":"Requires a Workers Cron trigger.","预留功能，开启前请完善风控。":"Reserved feature; complete risk controls before enabling.","当前仅保存配置，不会自动修改现有 #/admin 路由；正式启用前需配套路由改造。":"Stores the value only and does not change the current #/admin route. Route changes are required before activation.","风险域名人工审核":"Manual Review for Risky Domains","＋ 新增根域名":"+ Add Root Domain","开启前需先接入邮件发送服务；未接入时只保存开关，不会发送验证码。":"Requires an email delivery service. Without it, the switch is stored but no verification email is sent.","仅在 Worker 能读取可信代理风险字段时生效；未接入检测源时不会自动判断 VPN。":"Works only when the Worker receives trusted proxy-risk signals; no VPN decision is made without a detection source.","后台访问路径别名（预留）":"Admin Path Alias (reserved)","多角色权限说明（预留）":"Role Permission Notes (reserved)","界面设置包含头部 JS、维护模式、公告时间等配置，错误 JS 可能导致前台白屏。确认保存？":"Appearance settings include custom JS and maintenance controls. Invalid JS may break the public site. Save changes?","注册风控属于高危配置，错误设置可能导致用户无法注册或垃圾账号进入系统。确认保存？":"Registration risk controls are high risk. Incorrect settings may block users or allow spam. Save changes?","域名规则属于高危配置，可能影响用户申请、续期、删除和现有域名管理。确认保存？":"Domain rules may affect applications, renewals, deletions, and existing domains. Save changes?","DNS 配置属于高危配置，修改根域名、代理、允许类型可能影响存量解析和用户访问。确认保存？":"DNS settings are high risk. Root domains, proxy settings, and record types may affect existing services. Save changes?","黑名单会直接拦截用户、IP、邮箱或域名前缀，错误配置可能误伤正常用户。确认保存？":"Blacklists directly block users, IPs, emails, or prefixes. Incorrect settings may affect legitimate users. Save changes?","安全设置会影响管理员登录、会话超时和操作日志保留。确认保存？":"Security settings affect admin login, sessions, and audit retention. Save changes?","自动化任务可能自动清理到期域名或 DNS 记录。确认保存？":"Automation may clean expired domains or DNS records. Save changes?"});
+
+Object.assign(I18N_EN, {
+  '导入配置会覆盖当前 Workers KV 设置。确认继续？':'Importing settings will overwrite the current Workers KV configuration. Continue?',
+  '配置文件不能超过 1MB':'The settings file must not exceed 1 MB.',
+  '配置文件内容不是有效的设置对象':'The file does not contain a valid settings object.',
+  '配置导入失败':'Settings import failed','失败':'Failed','正常':'Healthy','最近保存：':'Last saved: '
+});
+
+Object.assign(I18N_EN, {
   '操作日志':'Operation Logs','最近操作记录':'Recent Operation Logs','仅显示最近 4 天内的账号、登录、域名、DNS、消息、设置等操作记录。':'Only account, domain, DNS and related operations from the last 4 days are shown.','管理员可查看近 4 天内未注销账号的完整操作记录；普通用户仅查看自己的记录。':'Admins can view logs for non-deleted accounts from the last 4 days. Regular users can only view their own logs.','暂无操作记录。':'No operation logs.','操作类型':'Action','操作人':'Operator','操作说明':'Description','目标对象':'Target','IP 地址':'IP Address','保留时间':'Retention','7 天':'4 days','日志会自动清理：超过 4 天、或账号注销后的记录会从 D1 中删除。':'Logs are automatically cleaned from D1 after 4 days or when the account is cancelled.','正在读取操作日志…':'Loading operation logs…','系统':'System','未知用户':'Unknown User',
   '方式一：站内消息':'Method 1: In-site message','在下方填写标题和内容，消息会直接进入管理员的消息中心，适合已经登录后反馈域名、DNS、额度、审核等问题。':'Fill in the title and content below. The message will go directly to the admin Message Center. Use it for domain, DNS, quota, and review issues after login.','方式二：外部联系':'Method 2: External contact','点击右上角“其他：联系我们”会打开外部反馈页面，适合无法登录、无法收到消息、需要提交截图或更详细资料的情况。':'Click “Other: Contact Us” in the upper right to open the external contact form. Use it when you cannot log in, cannot receive messages, or need to submit screenshots/details.','其他：联系我们':'Other: Contact Us','直接发消息给管理员':'Send a message to admin','发送给管理员':'Send to Admin','请填写要反馈的问题标题':'Enter the issue title','请详细描述您遇到的问题、页面位置、操作步骤和错误提示':'Describe the issue, page, steps, and error message in detail','消息已发送到管理员消息中心':'Message sent to admin Message Center','请填写标题和内容':'Please enter title and content','回复':'Reply','撤销':'Withdraw','撤销消息':'Withdraw Message','确认撤销这条已发送消息？撤销后对方将无法继续查看。':'Withdraw this sent message? The recipient will no longer be able to view it.','消息已撤销':'Message withdrawn','已超过 15 分钟，不能撤销':'More than 15 minutes have passed; this message cannot be withdrawn.','回复消息':'Reply Message','回复内容':'Reply Content','请输入回复内容':'Enter reply content','发送回复':'Send Reply','消息已回复':'Reply sent','原信息':'Original Message','已转到消息中心':'Moved to Message Center','资料已保存':'Profile saved','账号已复制':'Account copied','复制账号':'Copy account','手机号':'Phone','保存账户资料':'Save Account Info','未注销域名':'Uncancelled Domains','账户下还有未注销域名':'Uncancelled domains remain','请选择要回复的消息':'Select messages to reply','已引用':'Quoted','条消息，请在发送消息中填写回复内容':'messages. Please write the reply in Send Message','客服回复':'Support Reply'
 });
@@ -3323,7 +3350,7 @@ function riskyConfirm(group) {
     security:'安全设置会影响管理员登录、会话超时和操作日志保留。确认保存？',
     automation:'自动化任务可能自动清理到期域名或 DNS 记录。确认保存？'
   };
-  return !messages[group] || confirm(messages[group]);
+  return !messages[group] || confirm(tr(messages[group]));
 }
 
 
@@ -3657,10 +3684,10 @@ async function renderAdminSettings() {
     const security = settings.security || { adminSessionTimeoutHours:24, adminIpWhitelist:'', auditRetentionDays:4 };
     const automation = settings.automation || { enabled:false, scanCycleMinutes:60, checkExpiringDomains:true, cleanupExpiredDns:true };
 
-    shell('管理员设置', `<section class="card admin-settings admin-settings-v73">
+    shell('管理员设置', `<section class="card admin-settings admin-settings-v79">
       <div class="settings-toolbar">
-        <div><h2>管理员设置</h2><p>保留原有 8 个标签页结构，所有配置保存到 Workers KV。</p></div>
-        <div class="toolbar-actions"><button class="btn soft" id="export-settings" type="button">导出配置</button><label class="btn soft file-btn">导入配置<input id="import-settings-file" type="file" accept="application/json,.json" hidden></label></div>
+        <div><h2>管理员设置</h2><p>配置按功能分组保存到 Workers KV。修改高风险项目时会要求二次确认。</p></div>
+        <div class="toolbar-actions"><span class="settings-save-status">设置读取完成</span><button class="btn soft" id="export-settings" type="button">导出配置</button><label class="btn soft file-btn">导入配置<input id="import-settings-file" type="file" accept="application/json,.json" hidden></label></div>
       </div>
       <div class="tabs admin-tabs">
         <button class="tab active" data-tab="site">界面设置</button>
@@ -3676,6 +3703,7 @@ async function renderAdminSettings() {
 
       <div class="tab-page active" data-page="site">
         <form id="site-form" class="form-grid settings-grid">
+          <div class="settings-section-heading wide"><span>01</span><div><h3>品牌与外观</h3><p>配置站点名称、Logo、主题和主色。</p></div></div>
           <label class="field"><span>网站标题</span><input name="title" maxlength="80" value="${fieldValue(site.title)}"><em>显示在浏览器标题和登录页。</em></label>
           <label class="field"><span>副标题</span><input name="subtitle" maxlength="140" value="${fieldValue(site.subtitle)}"><em>显示在前台品牌区域。</em></label>
           <label class="field"><span>Logo 文字</span><input name="logoText" maxlength="12" value="${fieldValue(site.logoText)}"><em>不使用图片 Logo 时显示。</em></label>
@@ -3684,9 +3712,11 @@ async function renderAdminSettings() {
           <label class="field"><span>主题模式</span><select name="themeMode"><option value="light" ${site.themeMode !== 'dark' && site.themeMode !== 'system' ? 'selected' : ''}>浅色</option><option value="dark" ${site.themeMode === 'dark' ? 'selected' : ''}>深色</option><option value="system" ${site.themeMode === 'system' ? 'selected' : ''}>跟随系统</option></select><em>只影响前台基础主题，不改变现有布局。</em></label>
           <label class="field color-field"><span>主色</span><div class="color-picker-row"><input name="accent" class="color-text" value="${fieldValue(site.accent || '#4f63f6')}" placeholder="#4f63f6"><input type="color" class="color-native" value="${fieldValue(site.accent || '#4f63f6')}"><button type="button" class="color-preview color-open" style="background:${attr(site.accent || '#4f63f6')}"></button></div><em>支持十六进制颜色代码。</em></label>
           <label class="field color-field"><span>辅助色</span><div class="color-picker-row"><input name="accent2" class="color-text" value="${fieldValue(site.accent2 || '#7c4dff')}" placeholder="#7c4dff"><input type="color" class="color-native" value="${fieldValue(site.accent2 || '#7c4dff')}"><button type="button" class="color-preview color-open" style="background:${attr(site.accent2 || '#7c4dff')}"></button></div><em>用于渐变按钮第二色。</em></label>
+          <div class="settings-section-heading wide"><span>02</span><div><h3>页脚与合规信息</h3><p>统一维护页脚、版权和备案信息。</p></div></div>
           <label class="field"><span>ICP 备案信息</span><input name="icp" value="${fieldValue(site.icp)}" placeholder="例如：粤ICP备xxxx号"><em>前台底部显示，位于版权信息下方。</em></label>
           <label class="field"><span>版权信息</span><textarea name="copyright" rows="3">${esc(site.copyright || '')}</textarea><em>支持换行，显示在 ICP 上方。</em></label>
           <label class="field wide"><span>页脚文字</span><input name="footer" value="${fieldValue(site.footer)}"><em>底部基础说明。</em></label>
+          <div class="settings-section-heading wide"><span>03</span><div><h3>公告、维护与高级代码</h3><p>控制维护模式、公告时段和可信第三方脚本。</p></div></div>
           <label class="field wide"><span>自定义头部第三方 JS 代码</span><textarea name="headerThirdPartyJs" rows="5" placeholder="例如统计代码。高危：请只粘贴可信代码。">${esc(site.headerThirdPartyJs || '')}</textarea><em>高危配置，保存前会二次确认；错误 JS 可能导致前台白屏。</em></label>
           <label class="check"><input name="maintenanceMode" type="checkbox" ${yn(site.maintenanceMode)}> 开启网站维护模式 <em>开启后前台显示维护提示。</em></label>
           <label class="field wide"><span>维护文案</span><textarea name="maintenanceMessage" rows="3">${esc(site.maintenanceMessage || '')}</textarea><em>维护模式开启时展示给用户。</em></label>
@@ -3703,21 +3733,25 @@ async function renderAdminSettings() {
 
       <div class="tab-page" data-page="registration">
         <form id="registration-form" class="form-grid settings-grid">
+          <div class="settings-section-heading wide"><span>01</span><div><h3>注册入口与账户状态</h3><p>控制用户是否可以注册、是否需要注册码以及新账号初始状态。</p></div></div>
           <label class="check"><input name="enabled" type="checkbox" ${yn(reg.enabled)}> 开放用户注册 <em>关闭后普通用户不能创建新账户。</em></label>
           <label class="check"><input name="autoActivate" type="checkbox" ${yn(reg.autoActivate)}> 注册后自动启用账户 <em>关闭后新用户需要管理员启用。</em></label>
           <label class="check"><input name="requireRegistrationKey" type="checkbox" ${yn(reg.requireRegistrationKey)}> 开启注册码注册 <em>开启后注册页显示注册码输入框，必须填写有效注册码。</em></label>
           <label class="check"><input name="blockTempEmail" type="checkbox" ${yn(reg.blockTempEmail)}> 拦截临时邮箱注册 <em>用于减少垃圾账号。</em></label>
+          <div class="settings-section-heading wide"><span>02</span><div><h3>Turnstile 人机验证</h3><p>保护普通注册和管理员手动添加用户。</p></div></div>
           <label class="check"><input name="turnstileRegisterEnabled" type="checkbox" ${yn(reg.turnstileRegisterEnabled)}> 注册启用 Turnstile 人机验证 <em>普通注册和管理员添加用户都会使用。</em></label>
           <label class="field"><span>Turnstile Site Key</span><input name="turnstileSiteKey" value="${fieldValue(reg.turnstileSiteKey)}" placeholder="0x4..."><em>前台显示验证模块用；环境变量优先。</em></label>
-          <label class="field"><span>Turnstile Secret Key</span><input name="turnstileSecret" type="password" value="${fieldValue(reg.turnstileSecret)}" placeholder="Secret"><em>后端校验用；建议优先使用 Worker Secret。</em></label>
+          <label class="field"><span>Turnstile Secret Key</span><input name="turnstileSecret" type="password" value="" autocomplete="new-password" placeholder="${reg.turnstileSecretConfigured ? '已配置，留空保持不变' : '请输入 Secret Key'}"><em>密钥不会回显；留空保持原值。建议优先使用 Worker Secret。</em></label>
           <label class="field"><span>新注册账号默认状态</span><select name="defaultStatus"><option value="auto" ${reg.defaultStatus !== 'manual' ? 'selected' : ''}>自动启用</option><option value="manual" ${reg.defaultStatus === 'manual' ? 'selected' : ''}>需要人工审核</option></select><em>用于注册后的账号状态。</em></label>
+          <div class="settings-section-heading wide"><span>03</span><div><h3>注册频率与风险控制</h3><p>限制单 IP、失败次数、代理网络和每日域名申请量。</p></div></div>
           <label class="field"><span>单 IP 最大注册账号数量</span><input name="maxAccountsPerIp" type="number" min="0" value="${fieldValue(reg.maxAccountsPerIp || 0)}"><em>0 表示不限制。</em></label>
           <label class="field"><span>同一 IP 注册冷却/分钟</span><input name="ipRegisterCooldownMinutes" type="number" min="0" value="${fieldValue(reg.ipRegisterCooldownMinutes || 0)}"><em>0 表示无冷却。</em></label>
           <label class="field"><span>单账号每日域名申请上限</span><input name="dailyDomainApplyLimit" type="number" min="0" value="${fieldValue(reg.dailyDomainApplyLimit || 0)}"><em>0 表示不限制。</em></label>
           <label class="field"><span>连续注册失败封禁阈值</span><input name="failedRegisterBanThreshold" type="number" min="0" value="${fieldValue(reg.failedRegisterBanThreshold || 0)}"><em>达到次数后临时封禁 IP，0 表示关闭。</em></label>
           <label class="field"><span>注册失败封禁时长/分钟</span><input name="failedRegisterBanMinutes" type="number" min="0" value="${fieldValue(reg.failedRegisterBanMinutes || 0)}"><em>配合上方阈值使用。</em></label>
-          <label class="check"><input name="emailVerificationEnabled" type="checkbox" ${yn(reg.emailVerificationEnabled)}> 注册邮箱验证开关 <em>预留邮箱验证流程。</em></label>
-          <label class="check"><input name="blockVpnProxy" type="checkbox" ${yn(reg.blockVpnProxy)}> 拦截 VPN / 代理注册 <em>需要 Cloudflare 风险字段支持。</em></label>
+          <label class="check"><input name="emailVerificationEnabled" type="checkbox" ${yn(reg.emailVerificationEnabled)}> 注册邮箱验证开关 <em>开启前需先接入邮件发送服务；未接入时只保存开关，不会发送验证码。</em></label>
+          <label class="check"><input name="blockVpnProxy" type="checkbox" ${yn(reg.blockVpnProxy)}> 拦截 VPN / 代理注册 <em>仅在 Worker 能读取可信代理风险字段时生效；未接入检测源时不会自动判断 VPN。</em></label>
+          <div class="settings-section-heading wide"><span>04</span><div><h3>邮箱与关闭提示</h3><p>管理邮箱后缀限制和注册关闭时的前台说明。</p></div></div>
           <label class="field wide"><span>邮箱后缀拦截黑名单</span><textarea name="emailDomainBlacklist" rows="4" placeholder="tempmail.com&#10;mailinator.com">${esc(reg.emailDomainBlacklist || '')}</textarea><em>一行一个邮箱后缀，不要带 @ 也可以。</em></label>
           <label class="field wide"><span>关闭注册时前台提示文案</span><textarea name="disabledMessage" rows="3">${esc(reg.disabledMessage || '')}</textarea><em>注册关闭时显示给用户。</em></label>
           <button class="btn primary wide" type="submit">保存设置</button>
@@ -3726,6 +3760,7 @@ async function renderAdminSettings() {
 
       <div class="tab-page" data-page="domain">
         <form id="domain-form" class="form-grid settings-grid">
+          <div class="settings-section-heading wide"><span>01</span><div><h3>平台与用户配额</h3><p>设置平台总量、普通用户和白名单用户的独立额度。</p></div></div>
           <label class="field"><span>默认域名额度</span><input name="defaultQuota" type="number" min="0" value="${fieldValue(domain.defaultQuota)}"><em>新用户默认额度。</em></label>
           <label class="field"><span>平台最大二级域名总配额</span><input name="platformMaxDomains" type="number" min="1" value="${fieldValue(domain.platformMaxDomains || 9999)}"><em>全站总量上限。</em></label>
           <label class="field"><span>普通用户额度</span><input name="normalUserQuota" type="number" min="0" value="${fieldValue(domain.normalUserQuota || domain.defaultQuota || 3)}"><em>普通用户配额方案。</em></label>
@@ -3733,9 +3768,11 @@ async function renderAdminSettings() {
           <label class="field"><span>白名单用户额度</span><input name="whitelistUserQuota" type="number" min="0" value="${fieldValue(domain.whitelistUserQuota || 10)}"><em>白名单用户配额方案。</em></label>
           <label class="field"><span>白名单用户有效期/天</span><input name="whitelistUserValidDays" type="number" min="1" value="${fieldValue(domain.whitelistUserValidDays || domain.validDays || 365)}"><em>白名单用户默认有效期。</em></label>
           <label class="field"><span>默认有效天数</span><input name="validDays" type="number" min="1" value="${fieldValue(domain.validDays)}"><em>兼容原有效期设置。</em></label>
+          <div class="settings-section-heading wide"><span>02</span><div><h3>有效期与到期流程</h3><p>分别设置续期窗口、锁定期、DNS 清理和彻底删除周期。</p></div></div>
           <label class="field"><span>续期窗口期/天</span><input name="renewWindowDays" type="number" min="1" value="${fieldValue(domain.renewWindowDays)}"><em>到期前多少天允许续期。</em></label>
           <label class="field"><span>过期后锁定周期/天</span><input name="lockAfterExpireDays" type="number" min="0" value="${fieldValue(domain.lockAfterExpireDays || 0)}"><em>过期后先锁定，防止立即清理。</em></label>
           <label class="field"><span>彻底删除周期/天</span><input name="hardDeleteAfterExpireDays" type="number" min="0" value="${fieldValue(domain.hardDeleteAfterExpireDays || domain.expiredDnsCleanupDays || 30)}"><em>到期后多少天彻底删除。</em></label>
+          <div class="settings-section-heading wide"><span>03</span><div><h3>前缀规则与审核</h3><p>控制长度、关键词、管理员专用前缀和审核模式。</p></div></div>
           <label class="field"><span>最小前缀长度</span><input name="prefixMinLength" type="number" min="1" max="63" value="${fieldValue(domain.prefixMinLength || 2)}"><em>域名前缀最短长度。</em></label>
           <label class="field"><span>最大前缀长度</span><input name="prefixMaxLength" type="number" min="1" max="63" value="${fieldValue(domain.prefixMaxLength || 36)}"><em>域名前缀最长长度。</em></label>
           <label class="field"><span>到期前提醒天数</span><input name="expiryReminderDays" type="number" min="0" value="${fieldValue(domain.expiryReminderDays || 30)}"><em>用于前台和消息提醒。</em></label>
@@ -3745,6 +3782,7 @@ async function renderAdminSettings() {
           <label class="field wide"><span>域名前缀黑名单：禁止注册</span><textarea name="blockedPrefixText" rows="4">${esc(domain.blockedPrefixText || domain.prefixBlacklistText || '')}</textarea><em>命中后普通用户和管理员都不能注册，支持一行一个关键词。</em></label>
           <label class="field wide"><span>域名前缀黑名单：仅管理员可用</span><textarea name="adminOnlyPrefixText" rows="4">${esc(domain.adminOnlyPrefixText || '')}</textarea><em>普通用户不能注册，管理员可使用。</em></label>
           <label class="field wide"><span>兼容前缀黑名单/正则</span><textarea name="prefixBlacklistText" rows="4">${esc(domain.prefixBlacklistText || '')}</textarea><em>保留原有字段，继续参与拦截。</em></label>
+          <div class="settings-section-heading wide"><span>04</span><div><h3>用户权限</h3><p>控制删除、DNS 修改、续期和域名转让权限。</p></div></div>
           <label class="check"><input name="allowUserDeleteInvalid" type="checkbox" ${yn(domain.allowUserDeleteInvalid)}> 用户可删除无效域名 <em>拒绝/撤销类域名可由用户清理。</em></label>
           <label class="check"><input name="allowDnsEditAfterApproved" type="checkbox" ${yn(domain.allowDnsEditAfterApproved)}> 生效后允许用户修改 DNS <em>关闭后用户只能查看解析。</em></label>
           <label class="check"><input name="allowNumericPrefix" type="checkbox" ${yn(domain.allowNumericPrefix !== false)}> 允许纯数字前缀 <em>例如 12345。</em></label>
@@ -3758,14 +3796,17 @@ async function renderAdminSettings() {
 
       <div class="tab-page" data-page="dns">
         <form id="dns-form" class="form-grid settings-grid">
+          <div class="settings-section-heading wide"><span>01</span><div><h3>全局 DNS 策略</h3><p>这些设置会影响所有新建解析记录。</p></div></div>
           <div class="readonly-box wide danger"><b>DNS 配置风险提示</b><p>新增根域名不需要再去 Worker 里手动新增 DNS_SUFFIX / DNS_ZONE_ID 环境变量。这里只要填根域名、Zone ID、允许类型并保存到 Workers KV，注册页会自动出现该后缀，DNS 写入时也会按该后缀对应的 Zone ID 调用 Cloudflare API。已存在的 Cloudflare DNS 记录不会自动改写；需要用户或管理员逐条调整。</p></div>
           <label class="check"><input name="defaultProxied" type="checkbox" ${yn(dns.defaultProxied)}> 新建解析默认开启 Cloudflare 代理 <em>A / AAAA / CNAME 可代理，TXT / MX 会强制仅 DNS。</em></label>
           <label class="check"><input name="allowMxRecords" type="checkbox" ${yn(dns.allowMxRecords !== false)}> 允许用户创建 MX 解析记录 <em>关闭可降低垃圾邮件滥用风险。</em></label>
           <label class="check"><input name="blockWildcardRecords" type="checkbox" ${yn(dns.blockWildcardRecords !== false)}> 禁止用户创建泛解析 <em>阻止 * 主机记录。</em></label>
-          <label class="field wide"><span>Cloudflare API Token（可选）</span><input name="cfApiToken" type="password" autocomplete="new-password" placeholder="留空则继续使用已保存 Token 或 Worker Secret"><em>不想手动配置 Worker Secret 时，可在这里填写一次并保存到 Workers KV；如果 Worker Secret CF_API_TOKEN 已配置，会优先使用 Secret。</em></label>
+          <div class="settings-section-heading wide"><span>02</span><div><h3>Cloudflare 凭据与拦截规则</h3><p>密钥不会回显；目标黑名单和保留前缀会立即参与校验。</p></div></div>
+          <label class="field wide"><span>Cloudflare API Token（可选）</span><input name="cfApiToken" type="password" autocomplete="new-password" placeholder="${dns.cfApiTokenConfigured ? '已配置，留空保持不变' : '请输入 API Token，或使用 Worker Secret'}"><em>Token 不会回显；留空保持原值。Worker Secret CF_API_TOKEN 的优先级最高。</em></label>
           <label class="field wide"><span>CNAME 目标黑名单</span><textarea name="cnameTargetBlacklist" rows="4" placeholder="malicious.example.com&#10;*.badhost.com">${esc(dns.cnameTargetBlacklist || '')}</textarea><em>一行一个目标域名或关键词。</em></label>
           <label class="field wide"><span>保留前缀</span><textarea name="reservedPrefixes" rows="4">${esc(arrayText(dns.reservedPrefixes || []))}</textarea><em>用于阻止用户申请系统保留前缀。</em></label>
-          <div class="wide dns-suffix-editor-block"><div class="section-head compact"><div><h3>多根域名可视化编辑器</h3><p>新增根域名只需在这里添加，不需要给每个域名单独配置环境变量。保存后用户注册页会自动读取启用的后缀。</p></div><button type="button" class="btn soft" id="add-suffix-row">＋ 新增根域名</button></div><div class="suffix-editor-help">必填：名称、根域名、Zone ID。允许类型用逗号分隔，例如 A,AAAA,CNAME,TXT,MX。每个根域名会独立使用自己的 Zone ID 写入 Cloudflare DNS。</div><div id="suffix-editor">${renderSuffixEditorRows(dns.suffixes || [])}</div><label class="field wide"><span>根域名 JSON 输出</span><textarea name="suffixesJson" id="suffixes-json" rows="8">${esc(suffixesToJson(dns.suffixes || []))}</textarea><em>可直接复制备份，也可由上方编辑器自动生成。正常情况下只用上方可视化编辑器即可。</em></label></div>
+          <div class="settings-section-heading wide"><span>03</span><div><h3>多根域名管理</h3><p>每个根域名使用独立 Zone ID、类型和代理策略。</p></div></div>
+          <div class="wide dns-suffix-editor-block"><div class="section-head compact"><div><h3>多根域名可视化编辑器</h3><p>新增根域名只需在这里添加，不需要给每个域名单独配置环境变量。保存后用户注册页会自动读取启用的后缀。</p></div><button type="button" class="btn soft" id="add-suffix-row">＋ 新增根域名</button></div><div class="suffix-editor-help">必填：名称、根域名、Zone ID。允许类型用逗号分隔，例如 A,AAAA,CNAME,TXT,MX。每个根域名会独立使用自己的 Zone ID 写入 Cloudflare DNS。</div><div id="suffix-editor">${renderSuffixEditorRows(dns.suffixes || [])}</div><label class="field wide"><span>根域名 JSON 输出</span><textarea name="suffixesJson" id="suffixes-json" rows="8" readonly>${esc(suffixesToJson(dns.suffixes || []))}</textarea><em>该内容由上方可视化编辑器自动生成，仅用于查看和复制备份。</em></label></div>
           <div class="readonly-box wide"><b>配置来源说明</b><p>多根域名列表保存在 Workers KV。DNS_SUFFIX、DNS_ZONE_ID、DNS_ALLOWED_TYPES、DNS_DEFAULT_TYPE、DNS_TTL、DNS_PROXIED 只作为首次默认值；后续新增/修改根域名直接在本页保存即可。CF_API_TOKEN 可继续用 Worker Secret，也可在上方填写一次保存到 KV。</p><button type="button" class="btn soft" id="test-cf-api">测试第一个可用根域名</button><span id="cf-test-result" class="muted"></span></div>
           <button class="btn primary wide" type="submit">保存设置</button>
         </form>
@@ -3773,10 +3814,11 @@ async function renderAdminSettings() {
 
       <div class="tab-page" data-page="blacklist">
         <form id="blacklist-form" class="form-grid settings-grid">
-          <div class="readonly-box wide"><b>CSV 导入格式</b><p>value,note,expiresAt。每条黑名单支持备注和自动到期时间。</p><button type="button" class="btn soft" id="export-blacklist-csv">导出 CSV</button><label class="btn soft file-btn">导入 CSV<input id="import-blacklist-csv" type="file" accept=".csv,text/csv" hidden></label></div>
+          <div class="settings-section-heading wide"><span>01</span><div><h3>行为黑名单</h3><p>每行格式：值 | 备注 | 到期时间。到期时间可留空。</p></div></div>
           <label class="field wide"><span>注册黑名单</span><textarea name="registrationRecords" rows="6" placeholder="值 | 备注 | 到期时间">${esc(recordsToText(bl.registration))}</textarea><em>用于拦截注册行为，可填 IP、邮箱、手机号、关键词。</em></label>
           <label class="field wide"><span>访问黑名单</span><textarea name="accessRecords" rows="6">${esc(recordsToText(bl.access))}</textarea><em>用于封禁恶意访问 IP 或标识。</em></label>
           <label class="field wide"><span>UserID 账号黑名单</span><textarea name="userIdRecords" rows="5">${esc(recordsToText(bl.userIds))}</textarea><em>填写用户 ID 或账号标识，一行一条。</em></label>
+          <div class="settings-section-heading wide"><span>02</span><div><h3>兼容黑名单</h3><p>保留原有前缀、IP、邮箱和手机号拦截字段。</p></div></div>
           <label class="field wide"><span>域名前缀黑名单</span><textarea name="prefixes" rows="5">${esc(arrayText(bl.prefixes))}</textarea><em>保留原字段，继续兼容域名前缀拦截。</em></label>
           <label class="field wide"><span>IP 黑名单</span><textarea name="ips" rows="5">${esc(arrayText(bl.ips))}</textarea><em>命中后可禁止注册或访问。</em></label>
           <label class="field wide"><span>邮箱/手机号黑名单</span><textarea name="emails" rows="5">${esc(arrayText(bl.emails))}</textarea><em>支持邮箱、手机号或关键词。</em></label>
@@ -3786,9 +3828,11 @@ async function renderAdminSettings() {
 
       <div class="tab-page" data-page="notification">
         <form id="notification-form" class="form-grid settings-grid">
+          <div class="settings-section-heading wide"><span>01</span><div><h3>事件与模板变量</h3><p>为每种事件分别设置用户通知和管理员告警。</p></div></div>
           <div class="readonly-box wide"><b>模板变量提示</b><p>{username} 用户名、{domain} 域名、{days} 剩余天数、{ip} IP、{time} 时间、{reason} 原因。用户通知和管理员告警可以分别配置。</p></div>
           <div class="wide event-grid">${eventChecks(notification.events)}</div>
           ${notificationTemplateFields(notification)}
+          <div class="settings-section-heading wide"><span>02</span><div><h3>发送限制与兼容模板</h3><p>限制单位时间发送数量，避免通知风暴。</p></div></div>
           <label class="field"><span>消息限流/小时</span><input name="rateLimitPerHour" type="number" min="0" value="${fieldValue(notification.rateLimitPerHour || 60)}"><em>0 表示不限制。</em></label>
           <label class="field wide"><span>用户到期消息模板</span><textarea name="expiryTemplate" rows="4">${esc(notification.expiryTemplate || '')}</textarea><em>兼容原到期提醒模板。</em></label>
           <button class="btn primary wide" type="submit">保存设置</button>
@@ -3797,14 +3841,16 @@ async function renderAdminSettings() {
 
       <div class="tab-page" data-page="security">
         <form id="security-form" class="form-grid settings-grid">
+          <div class="settings-section-heading wide"><span>01</span><div><h3>会话与登录保护</h3><p>控制会话时长、失败锁定和管理员访问来源。</p></div></div>
           <label class="field"><span>管理员会话超时/小时</span><input name="adminSessionTimeoutHours" type="number" min="1" value="${fieldValue(security.adminSessionTimeoutHours || 24)}"><em>超过时间后需要重新登录。</em></label>
           <label class="field"><span>操作日志保留天数</span><input name="auditRetentionDays" type="number" min="1" value="${fieldValue(security.auditRetentionDays || 4)}"><em>联动侧边栏“操作日志”。</em></label>
           <label class="field"><span>登录失败锁定阈值</span><input name="failedLoginLockThreshold" type="number" min="0" value="${fieldValue(security.failedLoginLockThreshold || 0)}"><em>0 表示关闭自动锁定。</em></label>
           <label class="field"><span>登录失败锁定分钟</span><input name="failedLoginLockMinutes" type="number" min="0" value="${fieldValue(security.failedLoginLockMinutes || 0)}"><em>达到阈值后的锁定时长。</em></label>
-          <label class="field"><span>自定义后台管理访问路径</span><input name="adminPath" value="${fieldValue(security.adminPath || '')}" placeholder="/admin-secret"><em>预留路由配置，修改前需确认前端链接。</em></label>
+          <label class="field"><span>后台访问路径别名（预留）</span><input name="adminPath" value="${fieldValue(security.adminPath || '')}" placeholder="/admin-secret"><em>当前仅保存配置，不会自动修改现有 #/admin 路由；正式启用前需配套路由改造。</em></label>
           <label class="field wide"><span>后台登录 IP 白名单</span><textarea name="adminIpWhitelist" rows="4">${esc(security.adminIpWhitelist || '')}</textarea><em>Cloudflare Workers 下需从 CF-Connecting-IP 获取真实访客 IP。</em></label>
-          <label class="field wide"><span>多角色权限配置</span><textarea name="rolesPermissions" rows="6">${esc(security.rolesPermissions || '')}</textarea><em>超级管理员/运营审核员权限说明，后续角色扩展用。</em></label>
-          <label class="field wide"><span>操作日志可选记录项</span><textarea name="auditRecordItems" rows="5">${esc(security.auditRecordItems || '')}</textarea><em>例如登录、注册、DNS新增、设置保存、黑名单操作。</em></label>
+          <div class="settings-section-heading wide"><span>02</span><div><h3>角色与审计</h3><p>维护角色说明和需要写入操作日志的动作。</p></div></div>
+          <label class="field wide"><span>多角色权限说明（预留）</span><textarea name="rolesPermissions" rows="6">${esc(security.rolesPermissions || '')}</textarea><em>当前用于保存角色规划说明，不会自动授予权限；实际权限仍以后端 requireAdmin 校验为准。</em></label>
+          <label class="field wide"><span>操作日志可选记录项</span><textarea name="auditRecordItems" rows="5">${esc(security.auditRecordItems || '')}</textarea><em>填写希望重点审计的动作说明；当前系统关键操作仍会统一写入日志。</em></label>
           <div class="readonly-box wide"><b>登录日志查询入口</b><p>进入侧边栏“操作日志”，类型选择“认证”，可查看登录、退出、失败登录等记录。</p></div>
           <button class="btn primary wide" type="submit">保存设置</button>
         </form>
@@ -3812,10 +3858,12 @@ async function renderAdminSettings() {
 
       <div class="tab-page" data-page="automation">
         <form id="automation-form" class="form-grid settings-grid">
+          <div class="settings-section-heading wide"><span>01</span><div><h3>调度计划</h3><p>设置 Cron 表达式和扫描周期。</p></div></div>
           <label class="check"><input name="enabled" type="checkbox" ${yn(automation.enabled)}> 开启定时任务 <em>需要 Workers Cron 触发器配合。</em></label>
           <label class="field"><span>Cron 表达式</span><input name="cronExpression" id="cron-expression" value="${fieldValue(automation.cronExpression || '0 */1 * * *')}"><em>示例：0 */1 * * * 表示每小时。</em></label>
           <label class="field"><span>定时扫描周期/分钟</span><input name="scanCycleMinutes" type="number" min="5" value="${fieldValue(automation.scanCycleMinutes || 60)}"><em>可视化生成器会同步 Cron。</em></label>
           <div class="wide cron-builder"><button type="button" class="btn soft small" data-cron="0 */1 * * *">每小时</button><button type="button" class="btn soft small" data-cron="0 */6 * * *">每 6 小时</button><button type="button" class="btn soft small" data-cron="0 2 * * *">每天 02:00</button><button type="button" class="btn soft small" data-cron="0 3 * * 1">每周一 03:00</button></div>
+          <div class="settings-section-heading wide"><span>02</span><div><h3>任务与保护策略</h3><p>独立控制到期检测、DNS 清理、失败告警和保护阈值。</p></div></div>
           <label class="check"><input name="checkExpiringDomains" type="checkbox" ${yn(automation.checkExpiringDomains !== false)}> 域名到期检测 <em>扫描即将到期和已过期域名。</em></label>
           <label class="check"><input name="cleanupExpiredDns" type="checkbox" ${yn(automation.cleanupExpiredDns !== false)}> 过期 DNS 清理 <em>按保护阈值清理过期解析。</em></label>
           <label class="check"><input name="notifyAdminOnFailure" type="checkbox" ${yn(automation.notifyAdminOnFailure !== false)}> 任务失败推送管理员告警 <em>失败时写入消息中心。</em></label>
@@ -3836,14 +3884,14 @@ async function renderAdminSettings() {
     bindSettingsTools();
     bindDnsSuffixEditor();
     bindCronBuilder();
-    bindSettingForm('#site-form', 'site', f => Object.fromEntries(f));
-    bindSettingForm('#registration-form', 'registration', f => ({ ...Object.fromEntries(f), enabled:f.get('enabled')==='on', autoActivate:f.get('autoActivate')==='on', requireRegistrationKey:f.get('requireRegistrationKey')==='on', blockTempEmail:f.get('blockTempEmail')==='on', turnstileRegisterEnabled:f.get('turnstileRegisterEnabled')==='on', emailVerificationEnabled:f.get('emailVerificationEnabled')==='on', blockVpnProxy:f.get('blockVpnProxy')==='on' }));
-    bindSettingForm('#domain-form', 'domain', f => ({ ...Object.fromEntries(f), allowUserDeleteInvalid:f.get('allowUserDeleteInvalid')==='on', allowDnsEditAfterApproved:f.get('allowDnsEditAfterApproved')==='on', allowNumericPrefix:f.get('allowNumericPrefix')==='on', allowUnderscorePrefix:f.get('allowUnderscorePrefix')==='on', selfRenewEnabled:f.get('selfRenewEnabled')==='on', allowUserDeleteActive:f.get('allowUserDeleteActive')==='on', allowDomainTransfer:f.get('allowDomainTransfer')==='on' }));
-    bindSettingForm('#dns-form', 'dns', f => ({ ...Object.fromEntries(f), defaultProxied:f.get('defaultProxied')==='on', allowMxRecords:f.get('allowMxRecords')==='on', blockWildcardRecords:f.get('blockWildcardRecords')==='on', suffixes:collectSuffixesFromEditor() }));
-    bindSettingForm('#blacklist-form', 'blacklist', f => ({ prefixes:f.get('prefixes'), ips:f.get('ips'), emails:f.get('emails'), registration:recordsFromText(f.get('registrationRecords')), access:recordsFromText(f.get('accessRecords')), userIds:recordsFromText(f.get('userIdRecords')) }));
+    bindSettingForm('#site-form', 'site', buildSiteSettingsPayload);
+    bindSettingForm('#registration-form', 'registration', buildRegistrationSettingsPayload);
+    bindSettingForm('#domain-form', 'domain', buildDomainSettingsPayload);
+    bindSettingForm('#dns-form', 'dns', buildDnsSettingsPayload);
+    bindSettingForm('#blacklist-form', 'blacklist', buildBlacklistSettingsPayload);
     bindSettingForm('#notification-form', 'notification', f => collectNotificationPayload(f));
-    bindSettingForm('#security-form', 'security', f => Object.fromEntries(f));
-    bindSettingForm('#automation-form', 'automation', f => ({ ...Object.fromEntries(f), enabled:f.get('enabled')==='on', checkExpiringDomains:f.get('checkExpiringDomains')==='on', cleanupExpiredDns:f.get('cleanupExpiredDns')==='on', notifyAdminOnFailure:f.get('notifyAdminOnFailure')==='on' }));
+    bindSettingForm('#security-form', 'security', buildSecuritySettingsPayload);
+    bindSettingForm('#automation-form', 'automation', buildAutomationSettingsPayload);
     document.querySelector('#preview-notice')?.addEventListener('click', () => openModal('Markdown 预览', '前台公告预览', `<div class="markdown-preview">${simpleMarkdown(document.querySelector('[name="homepageNotice"]')?.value || '')}</div>`, 'wide'));
     document.querySelector('#test-cf-api')?.addEventListener('click', async () => { const el=document.querySelector('#cf-test-result'); if (el) el.textContent=' 正在测试…'; try { const r=await api('/api/admin/dns/test',{method:'POST',body:{}}); if (el) el.textContent=' '+(r.message || '连接正常'); toast('Cloudflare API 连通正常','success'); } catch(error){ if(el) el.textContent=' '+error.message; toast(error.message,'error'); } });
     loadSystemStatusPanel();
@@ -3851,13 +3899,18 @@ async function renderAdminSettings() {
 }
 
 function bindAdminSettingsTabs() {
-  document.querySelectorAll('[data-tab]').forEach(btn => btn.addEventListener('click', () => {
+  const activate = name => {
+    const target = document.querySelector(`[data-tab="${name}"]`) || document.querySelector('[data-tab="site"]');
+    if (!target) return;
     document.querySelectorAll('[data-tab]').forEach(x => x.classList.remove('active'));
     document.querySelectorAll('[data-page]').forEach(x => x.classList.remove('active'));
-    btn.classList.add('active');
-    document.querySelector(`[data-page="${btn.dataset.tab}"]`)?.classList.add('active');
-    if (btn.dataset.tab === 'system') loadSystemStatusPanel();
-  }));
+    target.classList.add('active');
+    document.querySelector(`[data-page="${target.dataset.tab}"]`)?.classList.add('active');
+    sessionStorage.setItem('adminSettingsActiveTab', target.dataset.tab || 'site');
+    if (target.dataset.tab === 'system') loadSystemStatusPanel();
+  };
+  document.querySelectorAll('[data-tab]').forEach(btn => btn.addEventListener('click', () => activate(btn.dataset.tab || 'site')));
+  activate(sessionStorage.getItem('adminSettingsActiveTab') || 'site');
 }
 function toLocalDateTimeValue(value) { if (!value) return ''; const d=new Date(value); if(Number.isNaN(d.getTime())) return String(value).slice(0,16); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16); }
 function renderSuffixEditorRows(suffixes=[]) { return (suffixes.length?suffixes:[{label:'免费二级域名',suffix:'flore.top',zoneId:'',allowedTypes:['A','AAAA','CNAME','TXT','MX'],defaultType:'CNAME',ttl:1,proxied:false,enabled:true}]).map((s,i)=>`<div class="suffix-editor-row" data-suffix-row>
@@ -3871,7 +3924,7 @@ function renderSuffixEditorRows(suffixes=[]) { return (suffixes.length?suffixes:
   <div class="suffix-proxy-cell"><label><span>代理</span><input data-k="proxied" type="checkbox" ${yn(s.proxied)}></label></div>
   <div class="suffix-actions"><button type="button" class="btn soft small" data-test-suffix>测试</button><button type="button" class="btn danger soft small" data-remove-suffix>删除</button></div>
 </div>`).join(''); }
-function bindDnsSuffixEditor() { const box=document.querySelector('#suffix-editor'); const json=document.querySelector('#suffixes-json'); if(!box||!json)return; const sync=()=>{ json.value=JSON.stringify(collectSuffixesFromEditor(),null,2); }; box.addEventListener('input',sync); box.addEventListener('change',sync); box.addEventListener('click',async e=>{ const remove=e.target.closest('[data-remove-suffix]'); if(remove){ e.target.closest('[data-suffix-row]')?.remove(); sync(); return; } const test=e.target.closest('[data-test-suffix]'); if(test){ const row=e.target.closest('[data-suffix-row]'); const suffix=row?.querySelector('[data-k="suffix"]')?.value?.trim(); const zoneId=row?.querySelector('[data-k="zoneId"]')?.value?.trim(); if(!suffix||!zoneId){ toast('请先填写根域名和 Zone ID', 'error'); return; } test.disabled=true; test.textContent='测试中…'; try{ const r=await api('/api/admin/dns/test',{method:'POST',body:{suffix,zoneId}}); toast(r.message||'Cloudflare API 连通正常','success'); test.textContent='正常'; }catch(error){ toast(error.message,'error'); test.textContent='失败'; } finally { setTimeout(()=>{ test.disabled=false; test.textContent='测试'; },1600); } } }); document.querySelector('#add-suffix-row')?.addEventListener('click',()=>{ box.insertAdjacentHTML('beforeend',renderSuffixEditorRows([{label:'',suffix:'',zoneId:'',allowedTypes:['A','AAAA','CNAME','TXT','MX'],defaultType:'CNAME',ttl:1,proxied:false,enabled:true}])); sync(); }); sync(); }
+function bindDnsSuffixEditor() { const box=document.querySelector('#suffix-editor'); const json=document.querySelector('#suffixes-json'); if(!box||!json)return; const sync=()=>{ json.value=JSON.stringify(collectSuffixesFromEditor(),null,2); }; box.addEventListener('input',sync); box.addEventListener('change',sync); box.addEventListener('click',async e=>{ const remove=e.target.closest('[data-remove-suffix]'); if(remove){ e.target.closest('[data-suffix-row]')?.remove(); sync(); return; } const test=e.target.closest('[data-test-suffix]'); if(test){ const row=e.target.closest('[data-suffix-row]'); const suffix=row?.querySelector('[data-k="suffix"]')?.value?.trim(); const zoneId=row?.querySelector('[data-k="zoneId"]')?.value?.trim(); if(!suffix||!zoneId){ toast('请先填写根域名和 Zone ID', 'error'); return; } test.disabled=true; test.textContent=tr('测试中…'); try{ const r=await api('/api/admin/dns/test',{method:'POST',body:{suffix,zoneId}}); toast(r.message||'Cloudflare API 连通正常','success'); test.textContent=tr('正常'); }catch(error){ toast(error.message,'error'); test.textContent=tr('失败'); } finally { setTimeout(()=>{ test.disabled=false; test.textContent=tr('测试'); },1600); } } }); document.querySelector('#add-suffix-row')?.addEventListener('click',()=>{ box.insertAdjacentHTML('beforeend',renderSuffixEditorRows([{label:'',suffix:'',zoneId:'',allowedTypes:['A','AAAA','CNAME','TXT','MX'],defaultType:'CNAME',ttl:1,proxied:false,enabled:true}])); applyI18n(box); sync(); }); sync(); }
 function collectSuffixesFromEditor() { return Array.from(document.querySelectorAll('[data-suffix-row]')).map(row=>{ const get=k=>row.querySelector(`[data-k="${k}"]`); const suffix=String(get('suffix')?.value||'').trim().toLowerCase().replace(/^\.+|\.+$/g,''); const allowedTypes=Array.from(new Set(String(get('allowedTypes')?.value||'A,AAAA,CNAME,TXT,MX').split(/[,\s]+/).map(x=>x.trim().toUpperCase()).filter(x=>['A','AAAA','CNAME','TXT','MX'].includes(x)))); return { enabled: !!get('enabled')?.checked, label:get('label')?.value?.trim()||suffix, suffix, zoneId:get('zoneId')?.value?.trim(), allowedTypes:allowedTypes.length?allowedTypes:['CNAME'], defaultType:get('defaultType')?.value||'CNAME', ttl:Number(get('ttl')?.value||1), proxied:!!get('proxied')?.checked }; }).filter(x=>x.suffix); }
 function recordsToText(records=[]) { return Array.isArray(records) ? records.map(r=>[r.value||'',r.note||'',r.expiresAt||''].join(' | ')).join('\n') : ''; }
 function recordsFromText(value) { return String(value||'').split('\n').map(line=>line.trim()).filter(Boolean).map(line=>{ const [value,note,expiresAt]=line.split('|').map(x=>x.trim()); return { value, note:note||'', expiresAt:expiresAt||'' }; }); }
@@ -3879,9 +3932,46 @@ function notificationTemplateFields(n={}) { const names={newUser:'新账号注�
 function collectNotificationPayload(f) { const events={newUser:f.get('newUser')==='on',newDomain:f.get('newDomain')==='on',domainExpiring:f.get('domainExpiring')==='on',domainExpiredDelete:f.get('domainExpiredDelete')==='on',abnormalRegister:f.get('abnormalRegister')==='on'}; const templates={}, userTargets={}, adminTargets={}; Object.keys(events).forEach(k=>{ templates[k]=f.get('template_'+k)||''; userTargets[k]=f.get('userTarget_'+k)||''; adminTargets[k]=f.get('adminTarget_'+k)||''; }); return { events, templates, userTargets, adminTargets, rateLimitPerHour:f.get('rateLimitPerHour'), expiryTemplate:f.get('expiryTemplate') }; }
 function bindCronBuilder(){ document.querySelectorAll('[data-cron]').forEach(btn=>btn.addEventListener('click',()=>{ const input=document.querySelector('#cron-expression'); if(input) input.value=btn.dataset.cron; })); }
 function taskLogSummary(logs){ return Array.isArray(logs)&&logs.length ? logs.slice(-5).map(x=>`${x.time||''} ${x.status||''} ${x.message||''}`).join('；') : '暂无任务运行记录。'; }
-function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v73</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
-async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v73')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v73')}</strong></div>`; }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; } }
-function bindSettingsTools(){ const exportFn=async()=>{ const data=await api('/api/admin/settings/export'); downloadText('flore-settings-backup.json', JSON.stringify(data,null,2)); }; document.querySelector('#export-settings')?.addEventListener('click',exportFn); document.querySelector('#export-settings-2')?.addEventListener('click',exportFn); const bindImport=id=>document.querySelector(id)?.addEventListener('change',async e=>{ const file=e.target.files?.[0]; if(!file)return; if(!confirm('导入配置会覆盖当前 Workers KV 设置。确认继续？'))return; const text=await file.text(); const data=JSON.parse(text); const r=await api('/api/admin/settings/import',{method:'POST',body:data}); state.config.site=r.settings.site; state.config.registration=r.settings.registration; state.config.domain=domainConfig(r.settings.domain); state.config.dns=r.settings.dns; toast('配置已导入','success'); renderAdminSettings(); }); bindImport('#import-settings-file'); bindImport('#import-settings-file-2'); document.querySelector('#export-blacklist-csv')?.addEventListener('click',()=>downloadText('blacklist.csv','value,note,expiresAt\n'+recordsFromText(document.querySelector('[name="registrationRecords"]')?.value||'').map(r=>`${r.value},${r.note},${r.expiresAt}`).join('\n'))); }
+function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v79</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
+async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v79')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v79')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
+function bindSettingsTools() {
+  const exportFn = async () => {
+    try {
+      const data = await api('/api/admin/settings/export');
+      downloadText('flore-settings-backup.json', JSON.stringify(data, null, 2));
+    } catch (error) { toast(error.message, 'error'); }
+  };
+  document.querySelector('#export-settings')?.addEventListener('click', exportFn);
+  document.querySelector('#export-settings-2')?.addEventListener('click', exportFn);
+
+  const bindImport = selector => document.querySelector(selector)?.addEventListener('change', async event => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (!file) return;
+    try {
+      if (file.size > 1024 * 1024) throw new Error('配置文件不能超过 1MB');
+      if (!confirm(tr('导入配置会覆盖当前 Workers KV 设置。确认继续？'))) return;
+      const parsed = JSON.parse(await file.text());
+      const source = parsed?.settings || parsed;
+      if (!source || typeof source !== 'object' || Array.isArray(source)) throw new Error('配置文件内容不是有效的设置对象');
+      const result = await api('/api/admin/settings/import', { method:'POST', body:parsed });
+      state.config.site = result.settings.site;
+      state.config.registration = result.settings.registration;
+      state.config.domain = domainConfig(result.settings.domain);
+      state.config.dns = result.settings.dns;
+      state.config.suffixes = (result.settings.dns?.suffixes || []).filter(x => x.enabled !== false);
+      applyTheme();
+      toast('配置已导入', 'success');
+      await renderAdminSettings();
+    } catch (error) {
+      toast(error.message || '配置导入失败', 'error');
+    } finally {
+      input.value = '';
+    }
+  });
+  bindImport('#import-settings-file');
+  bindImport('#import-settings-file-2');
+}
 function downloadText(filename, text){ const blob=new Blob([text],{type:'application/octet-stream'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000); }
 function simpleMarkdown(text){ return esc(text||'').replace(/^### (.*)$/gm,'<h3>$1</h3>').replace(/^## (.*)$/gm,'<h2>$1</h2>').replace(/^# (.*)$/gm,'<h1>$1</h1>').replace(/\*\*(.*?)\*\*/g,'<b>$1</b>').replace(/\n/g,'<br>'); }
 
@@ -3918,6 +4008,89 @@ function bindColorPickers() {
   });
 }
 
+
+function formString(form, name) { return String(form.get(name) ?? '').trim(); }
+function formBoolean(form, name) { return form.get(name) === 'on'; }
+function formNumber(form, name, fallback = 0) {
+  const value = Number(form.get(name));
+  return Number.isFinite(value) ? value : fallback;
+}
+function buildSiteSettingsPayload(form) {
+  return {
+    ...Object.fromEntries(form),
+    maintenanceMode: formBoolean(form, 'maintenanceMode'),
+    showQuota: formBoolean(form, 'showQuota'),
+    showExpiryReminder: formBoolean(form, 'showExpiryReminder'),
+  };
+}
+function buildRegistrationSettingsPayload(form) {
+  const payload = {
+    ...Object.fromEntries(form),
+    enabled: formBoolean(form, 'enabled'),
+    autoActivate: formBoolean(form, 'autoActivate'),
+    requireRegistrationKey: formBoolean(form, 'requireRegistrationKey'),
+    blockTempEmail: formBoolean(form, 'blockTempEmail'),
+    turnstileRegisterEnabled: formBoolean(form, 'turnstileRegisterEnabled'),
+    emailVerificationEnabled: formBoolean(form, 'emailVerificationEnabled'),
+    blockVpnProxy: formBoolean(form, 'blockVpnProxy'),
+    maxAccountsPerIp: formNumber(form, 'maxAccountsPerIp'),
+    ipRegisterCooldownMinutes: formNumber(form, 'ipRegisterCooldownMinutes'),
+    dailyDomainApplyLimit: formNumber(form, 'dailyDomainApplyLimit'),
+    failedRegisterBanThreshold: formNumber(form, 'failedRegisterBanThreshold'),
+    failedRegisterBanMinutes: formNumber(form, 'failedRegisterBanMinutes'),
+  };
+  if (!formString(form, 'turnstileSecret')) delete payload.turnstileSecret;
+  return payload;
+}
+function buildDomainSettingsPayload(form) {
+  const payload = { ...Object.fromEntries(form) };
+  ['defaultQuota','validDays','platformMaxDomains','normalUserQuota','normalUserValidDays','whitelistUserQuota','whitelistUserValidDays','renewWindowDays','lockAfterExpireDays','hardDeleteAfterExpireDays','prefixMinLength','prefixMaxLength','expiryReminderDays','expiredDnsCleanupDays','maxDnsRecordsPerDomain'].forEach(name => payload[name] = formNumber(form, name));
+  ['allowUserDeleteInvalid','allowDnsEditAfterApproved','allowNumericPrefix','allowUnderscorePrefix','selfRenewEnabled','allowUserDeleteActive','allowDomainTransfer'].forEach(name => payload[name] = formBoolean(form, name));
+  return payload;
+}
+function buildDnsSettingsPayload(form) {
+  const payload = {
+    ...Object.fromEntries(form),
+    defaultProxied: formBoolean(form, 'defaultProxied'),
+    allowMxRecords: formBoolean(form, 'allowMxRecords'),
+    blockWildcardRecords: formBoolean(form, 'blockWildcardRecords'),
+    suffixes: collectSuffixesFromEditor(),
+  };
+  delete payload.suffixesJson;
+  if (!formString(form, 'cfApiToken')) delete payload.cfApiToken;
+  return payload;
+}
+function buildBlacklistSettingsPayload(form) {
+  return {
+    prefixes: formString(form, 'prefixes'),
+    ips: formString(form, 'ips'),
+    emails: formString(form, 'emails'),
+    registration: recordsFromText(form.get('registrationRecords')),
+    access: recordsFromText(form.get('accessRecords')),
+    userIds: recordsFromText(form.get('userIdRecords')),
+  };
+}
+function buildSecuritySettingsPayload(form) {
+  return {
+    ...Object.fromEntries(form),
+    adminSessionTimeoutHours: formNumber(form, 'adminSessionTimeoutHours', 24),
+    auditRetentionDays: formNumber(form, 'auditRetentionDays', 4),
+    failedLoginLockThreshold: formNumber(form, 'failedLoginLockThreshold'),
+    failedLoginLockMinutes: formNumber(form, 'failedLoginLockMinutes'),
+  };
+}
+function buildAutomationSettingsPayload(form) {
+  return {
+    ...Object.fromEntries(form),
+    enabled: formBoolean(form, 'enabled'),
+    checkExpiringDomains: formBoolean(form, 'checkExpiringDomains'),
+    cleanupExpiredDns: formBoolean(form, 'cleanupExpiredDns'),
+    notifyAdminOnFailure: formBoolean(form, 'notifyAdminOnFailure'),
+    scanCycleMinutes: formNumber(form, 'scanCycleMinutes', 60),
+    dnsCleanupProtectionDays: formNumber(form, 'dnsCleanupProtectionDays', 7),
+  };
+}
+
 function validateSettingsPayload(group, data) {
   const isHex = v => !v || /^#?[0-9a-fA-F]{6}$/.test(String(v).trim());
   const isUrl = v => !v || /^https?:\/\//i.test(String(v).trim()) || String(v).trim().startsWith('/');
@@ -3930,9 +4103,11 @@ function validateSettingsPayload(group, data) {
     if (data.noticeStartAt && data.noticeEndAt && new Date(data.noticeStartAt) > new Date(data.noticeEndAt)) throw new Error('公告结束时间不能早于开始时间');
   }
   if (group === 'registration') {
-    if (n(data.maxAccountsPerIp) < 0 || n(data.ipRegisterCooldownMinutes) < 0 || n(data.dailyDomainApplyLimit) < 0) throw new Error('注册限制参数不能小于 0');
-    const domains = String(data.emailDomainBlacklist || '').split(/[\n,]+/).map(x=>x.trim()).filter(Boolean);
-    if (domains.some(d => /\s/.test(d))) throw new Error('邮箱后缀黑名单每行只能填写一个域名');
+    if (n(data.maxAccountsPerIp) < 0 || n(data.ipRegisterCooldownMinutes) < 0 || n(data.dailyDomainApplyLimit) < 0 || n(data.failedRegisterBanThreshold) < 0 || n(data.failedRegisterBanMinutes) < 0) throw new Error('注册限制参数不能小于 0');
+    const domains = String(data.emailDomainBlacklist || '').split(/[\n,]+/).map(x=>x.trim().replace(/^@/, '')).filter(Boolean);
+    if (domains.some(d => /\s/.test(d) || !/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(d))) throw new Error('邮箱后缀黑名单中存在格式不正确的域名');
+    if (data.turnstileRegisterEnabled && !String(data.turnstileSiteKey || '').trim() && !state.config?.turnstile?.siteKey) throw new Error('启用注册人机验证前必须配置 Turnstile Site Key');
+    if (n(data.failedRegisterBanThreshold) > 0 && n(data.failedRegisterBanMinutes) <= 0) throw new Error('设置失败封禁阈值后，封禁时长必须大于 0');
   }
   if (group === 'domain') {
     if (n(data.prefixMinLength,2) > n(data.prefixMaxLength,36)) throw new Error('最小前缀长度不能大于最大前缀长度');
@@ -3949,10 +4124,28 @@ function validateSettingsPayload(group, data) {
       if (seen.has(s.suffix)) throw new Error('根域名不能重复：' + s.suffix);
       seen.add(s.suffix);
       if (!Array.isArray(s.allowedTypes) || !s.allowedTypes.length) throw new Error('每个根域名至少允许一种 DNS 类型');
+      if (!s.allowedTypes.includes(s.defaultType)) throw new Error(`默认类型必须包含在允许类型中：${s.suffix}`);
+      if (!Number.isFinite(Number(s.ttl)) || Number(s.ttl) < 1 || Number(s.ttl) > 86400) throw new Error(`TTL 必须在 1 到 86400 之间：${s.suffix}`);
     });
+    if (!suffixes.some(s => s.enabled)) throw new Error('至少启用一个根域名');
   }
+  if (group === 'blacklist') {
+    for (const list of [data.registration, data.access, data.userIds]) {
+      for (const item of Array.isArray(list) ? list : []) {
+        if (!String(item.value || '').trim()) throw new Error('黑名单值不能为空');
+        if (item.expiresAt && Number.isNaN(new Date(item.expiresAt).getTime())) throw new Error('黑名单到期时间格式不正确');
+      }
+    }
+  }
+  if (group === 'notification' && n(data.rateLimitPerHour) < 0) throw new Error('消息限流不能小于 0');
   if (group === 'security') {
-    if (String(data.adminPath || '') && !String(data.adminPath).startsWith('/')) throw new Error('后台访问路径必须以 / 开头');
+    if (String(data.adminPath || '') && !/^\/[a-z0-9/_-]*$/i.test(String(data.adminPath))) throw new Error('后台访问路径必须以 / 开头，且只能包含字母、数字、/、-、_');
+    if (n(data.adminSessionTimeoutHours) < 1 || n(data.auditRetentionDays) < 1) throw new Error('会话超时和日志保留天数必须大于 0');
+    if (n(data.failedLoginLockThreshold) > 0 && n(data.failedLoginLockMinutes) <= 0) throw new Error('设置登录失败阈值后，锁定时长必须大于 0');
+  }
+  if (group === 'automation') {
+    if (n(data.scanCycleMinutes) < 5) throw new Error('定时扫描周期不能小于 5 分钟');
+    if (!/^([*0-9,\/-]+\s+){4}[*0-9,\/-]+$/.test(String(data.cronExpression || '').trim())) throw new Error('Cron 表达式格式不正确');
   }
 }
 function bindSettingForm(selector, group, mapper) {
@@ -3974,6 +4167,8 @@ function bindSettingForm(selector, group, mapper) {
       state.config.suffixes = (settings.dns?.suffixes || []).filter(x => x.enabled !== false);
       applyTheme();
       toast('设置已保存', 'success');
+      const stamp = document.querySelector('.settings-save-status');
+      if (stamp) stamp.textContent = `${tr('最近保存：')}${new Date().toLocaleString(lang() === 'en' ? 'en-US' : 'zh-CN', { hour12:false })}`;
       btn.disabled = false;
     } catch (error) {
       toast(error.message, 'error');
