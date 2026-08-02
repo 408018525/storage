@@ -2529,8 +2529,8 @@ body:has(.admin-settings-v79) .content{
   max-width:100%;
 }
 .admin-settings-v79 .settings-grid textarea[readonly]{
-    background:#f7f9fc;
-color:#526078;
+  background:#f7f9fc;
+  color:#526078;
   cursor:text;
 }
 .admin-settings-v79 .settings-section-heading{
@@ -2590,4 +2590,88 @@ html[data-theme="dark"] .admin-settings-v79 .settings-section-heading{
   .admin-settings-v79 .settings-section-heading{padding:13px 14px;}
   .admin-settings-v79 .settings-grid > .field,.admin-settings-v79 .settings-grid > .check{padding:14px;}
   .admin-settings-v79 .btn.primary.wide{bottom:8px;}
+}
+
+
+/* v80 DNS 多根域名修复：不再右侧溢出，增加“允许申请”和单域名 Token */
+.admin-settings-v79 .dns-suffix-editor-block{
+  overflow: visible !important;
+}
+.admin-settings-v79 .suffix-editor-row.v80{
+  display:grid !important;
+  grid-template-columns: minmax(100px,.6fr) minmax(110px,.7fr) minmax(160px,1fr) minmax(170px,1fr) minmax(230px,1.2fr) minmax(160px,1fr) minmax(120px,.7fr) minmax(90px,.45fr) minmax(120px,.65fr) minmax(260px,1.2fr) minmax(150px,.75fr) !important;
+  gap:12px !important;
+  align-items:end !important;
+  width:100% !important;
+  max-width:100% !important;
+  box-sizing:border-box !important;
+  padding:16px !important;
+  overflow:hidden !important;
+}
+.admin-settings-v79 .suffix-editor-row.v80 label,
+.admin-settings-v79 .suffix-editor-row.v80 .suffix-toggle-cell{
+  min-width:0;
+}
+.admin-settings-v79 .suffix-editor-row.v80 input,
+.admin-settings-v79 .suffix-editor-row.v80 select{
+  width:100%;
+  min-width:0;
+  box-sizing:border-box;
+}
+.admin-settings-v79 .suffix-toggle-cell label{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  font-weight:800;
+  color:#64748b;
+  font-size:13px;
+}
+.admin-settings-v79 .suffix-toggle-cell input[type="checkbox"]{
+  width:42px;
+  height:42px;
+  accent-color:var(--accent);
+}
+.admin-settings-v79 .suffix-toggle-cell em,
+.admin-settings-v79 .suffix-token-field em{
+  display:block;
+  margin-top:5px;
+  color:#7b879b;
+  font-size:12px;
+  line-height:1.35;
+  font-style:normal;
+  font-weight:600;
+}
+.admin-settings-v79 .suffix-editor-row.v80 .suffix-actions{
+  min-height:42px;
+  display:flex;
+  gap:8px;
+  align-items:flex-end;
+  justify-content:flex-end;
+  flex-wrap:wrap;
+}
+.admin-settings-v79 .suffix-editor-row.v80 .suffix-token-field input{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+}
+.admin-settings-v79 #suffixes-json{
+  max-height:220px;
+  font-size:13px;
+}
+@media (max-width: 1500px){
+  .admin-settings-v79 .suffix-editor-row.v80{
+    grid-template-columns: repeat(3, minmax(0,1fr)) !important;
+  }
+  .admin-settings-v79 .suffix-editor-row.v80 .suffix-token-field{
+    grid-column:span 2;
+  }
+}
+@media (max-width: 760px){
+  .admin-settings-v79 .suffix-editor-row.v80{
+    grid-template-columns: 1fr !important;
+  }
+  .admin-settings-v79 .suffix-editor-row.v80 .suffix-token-field{
+    grid-column:auto;
+  }
+  .admin-settings-v79 .suffix-editor-row.v80 .suffix-actions{
+    justify-content:flex-start;
+  }
 }
