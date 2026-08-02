@@ -633,7 +633,7 @@ async function renderRoute() {
 }
 
 
-const AUTO_REFRESH_MS = 5 * 60 * 1000;
+const AUTO_REFRESH_MS = 10 * 60 * 1000;
 let autoRefreshTimer = null;
 let autoRefreshRunning = false;
 
@@ -651,10 +651,17 @@ function currentRouteCanAutoRefresh() {
   return hash === '#/apply'
     || hash === '#/domains'
     || hash === '#/applications'
+    || hash === '#/account'
     || hash === '#/logs'
+    || hash === '#/help'
+    || hash === '#/messages'
     || hash === '#/admin'
     || hash === '#/admin/applications'
     || hash === '#/admin/users'
+    || hash === '#/admin/registration-keys'
+    || hash === '#/admin/settings'
+    || hash === '#/admin/help-settings'
+    || hash.startsWith('#/admin/analytics')
     || hash.startsWith('#/domain/');
 }
 
@@ -716,6 +723,13 @@ function appDnsDisplay(a) {
   if (summary) return count > 1 ? `${count} 条：${summary}` : summary;
   if (a?.dnsConfigured && a?.recordType && a?.recordContent) return `${a.recordType} → ${a.recordContent}`;
   return '未配置';
+}
+
+function isAccountDisabled() {
+  return Boolean(state.me && state.me.status === 'disabled');
+}
+function disabledAccountPage(title, message) {
+  return shell(title, `<section class="card disabled-account-card"><h2>账户已被禁用</h2><p>${esc(message)}</p><div class="quick-actions"><a class="btn primary" href="#/help">进入帮助中心</a><a class="btn soft" href="https://mailform.flore.top" target="_blank" rel="noopener">外部联系管理员</a></div></section>`);
 }
 function toast(message, type = '') {
   ensureMountRoots();
@@ -840,7 +854,7 @@ Object.assign(I18N_EN, {
 });
 
 Object.assign(I18N_EN, {
-  '操作日志':'Operation Logs','最近操作记录':'Recent Operation Logs','仅显示最近 4 天内的账号、登录、域名、DNS、消息、设置等操作记录。':'Only account, domain, DNS and related operations from the last 4 days are shown.','管理员可查看近 4 天内未注销账号的完整操作记录；普通用户仅查看自己的记录。':'Admins can view logs for non-deleted accounts from the last 4 days. Regular users can only view their own logs.','暂无操作记录。':'No operation logs.','操作类型':'Action','操作人':'Operator','操作说明':'Description','目标对象':'Target','IP 地址':'IP Address','保留时间':'Retention','7 天':'4 days','日志会自动清理：超过 4 天、或账号注销后的记录会从 D1 中删除。':'Logs are automatically cleaned from D1 after 4 days or when the account is cancelled.','正在读取操作日志…':'Loading operation logs…','系统':'System','未知用户':'Unknown User',
+  '操作日志':'Operation Logs','最近操作记录':'Recent Operation Logs','仅显示最近 ${retentionDays} 天内的账号、登录、域名、DNS、消息、设置等操作记录。':'Only account, domain, DNS and related operations from the last 4 days are shown.','管理员可查看近 ${retentionDays} 天内未注销账号的完整操作记录；普通用户仅查看自己的记录。':'Admins can view logs for non-deleted accounts from the last 4 days. Regular users can only view their own logs.','暂无操作记录。':'No operation logs.','操作类型':'Action','操作人':'Operator','操作说明':'Description','目标对象':'Target','IP 地址':'IP Address','保留时间':'Retention','7 天':'4 days','日志会自动清理：超过 ${retentionDays} 天、或账号注销后的记录会从 D1 中删除。':'Logs are automatically cleaned from D1 after 4 days or when the account is cancelled.','正在读取操作日志…':'Loading operation logs…','系统':'System','未知用户':'Unknown User',
   '方式一：站内消息':'Method 1: In-site message','在下方填写标题和内容，消息会直接进入管理员的消息中心，适合已经登录后反馈域名、DNS、额度、审核等问题。':'Fill in the title and content below. The message will go directly to the admin Message Center. Use it for domain, DNS, quota, and review issues after login.','方式二：外部联系':'Method 2: External contact','点击右上角“其他：联系我们”会打开外部反馈页面，适合无法登录、无法收到消息、需要提交截图或更详细资料的情况。':'Click “Other: Contact Us” in the upper right to open the external contact form. Use it when you cannot log in, cannot receive messages, or need to submit screenshots/details.','其他：联系我们':'Other: Contact Us','直接发消息给管理员':'Send a message to admin','发送给管理员':'Send to Admin','请填写要反馈的问题标题':'Enter the issue title','请详细描述您遇到的问题、页面位置、操作步骤和错误提示':'Describe the issue, page, steps, and error message in detail','消息已发送到管理员消息中心':'Message sent to admin Message Center','请填写标题和内容':'Please enter title and content','回复':'Reply','撤销':'Withdraw','撤销消息':'Withdraw Message','确认撤销这条已发送消息？撤销后对方将无法继续查看。':'Withdraw this sent message? The recipient will no longer be able to view it.','消息已撤销':'Message withdrawn','已超过 15 分钟，不能撤销':'More than 15 minutes have passed; this message cannot be withdrawn.','回复消息':'Reply Message','回复内容':'Reply Content','请输入回复内容':'Enter reply content','发送回复':'Send Reply','消息已回复':'Reply sent','原信息':'Original Message','已转到消息中心':'Moved to Message Center','资料已保存':'Profile saved','账号已复制':'Account copied','复制账号':'Copy account','手机号':'Phone','保存账户资料':'Save Account Info','未注销域名':'Uncancelled Domains','账户下还有未注销域名':'Uncancelled domains remain','请选择要回复的消息':'Select messages to reply','已引用':'Quoted','条消息，请在发送消息中填写回复内容':'messages. Please write the reply in Send Message','客服回复':'Support Reply'
 });
 
@@ -992,6 +1006,7 @@ async function route() {
 
   state.widgetId = null;
 
+  if (isAccountDisabled() && hash.startsWith('#/domain/')) return disabledAccountPage('域名管理', '账户已被禁用无法管理域名，请通过帮助中心联系管理人员');
   if (hash.startsWith('#/domain/')) return renderDomainDetail(hash.replace('#/domain/', ''));
   if (hash === '#/setup') return renderSetup();
   if (hash === '#/login') return renderLogin();
@@ -1240,7 +1255,11 @@ async function renderLogin() {
         identity:f.get('identity'), password:f.get('password'), remember:f.get('remember') === 'on', turnstileToken:token,
       }});
       state.me = result.user;
-      toast('登录成功', 'success');
+      if (result.accountDisabled || result.user?.status === 'disabled') {
+        toast('你的账户已被禁用', 'error');
+      } else {
+        toast('登录成功', 'success');
+      }
       go(result.user.role === 'admin' ? '#/admin' : '#/apply');
     } catch (error) {
       toast(error.message, 'error');
@@ -1406,6 +1425,7 @@ async function loadApplications() {
 }
 
 async function renderApply() {
+  if (isAccountDisabled()) return disabledAccountPage('域名注册', '账户已被禁用无法注册域名，请通过帮助中心联系管理人员');
   shell('域名注册', `<div class="loading-card">正在读取域名数据…</div>`);
   try {
     await loadApplications();
@@ -2281,17 +2301,18 @@ async function renderOperationLogs() {
   try {
     const result = await api('/api/operation-logs');
     const logs = result.logs || [];
+    const retentionDays = Math.max(1, Number(result.retentionDays || 7));
     const filteredLogs = filterOperationLogs(logs);
     shell('操作日志', `
       <section class="card operation-log-card">
         <div class="operation-log-title">
-          <div class="operation-title-left"><span class="operation-title-icon">↩</span><div><h2>最近操作记录</h2><p>仅显示最近 4 天内的账号、登录、域名、DNS、消息、设置等操作记录。</p></div></div>
-          <span class="status-pill status-active">4 天</span>
+          <div class="operation-title-left"><span class="operation-title-icon">↩</span><div><h2>最近操作记录</h2><p>仅显示最近 ${retentionDays} 天内的账号、登录、域名、DNS、消息、设置等操作记录。</p></div></div>
+          <span class="status-pill status-active">${retentionDays} 天</span>
         </div>
-        <div class="operation-log-note">管理员可查看近 4 天内未注销账号的完整操作记录；普通用户仅查看自己的记录。</div>
+        <div class="operation-log-note">管理员可查看近 ${retentionDays} 天内未注销账号的完整操作记录；普通用户仅查看自己的记录。</div>
         ${operationLogFilterPanelHtml(logs, filteredLogs)}
         ${operationLogListHtml(filteredLogs)}
-        <p class="operation-retention">日志会自动清理：超过 4 天、或账号注销后的记录会从 D1 中删除。</p>
+        <p class="operation-retention">日志会自动清理：超过 ${retentionDays} 天、或账号注销后的记录会从 D1 中删除。</p>
       </section>`);
     bindOperationLogFilters();
   } catch (error) {
@@ -2550,6 +2571,7 @@ async function renderMessageCenter(preset = null) {
 }
 
 async function renderDomains() {
+  if (isAccountDisabled()) return disabledAccountPage('域名管理', '账户已被禁用无法管理域名，请通过帮助中心联系管理人员');
   shell('域名管理', `<div class="loading-card">正在读取域名列表…</div>`);
   try {
     await loadApplications();
@@ -2588,6 +2610,7 @@ function domainCard(a, options = {}) {
       <div><span>DNS</span><strong class="mono">${esc(dns)}</strong></div>
     </div>
     ${a.errorMessage ? `<p class="error-line">${esc(a.errorMessage)}</p>` : ''}
+    ${a.controlled ? `<p class="note-line"><b>管控状态：</b>管理员已管控该域名，只允许删除 DNS 或申请删除域名。</p>` : ''}
     ${a.deleteRequested ? `<p class="note-line"><b>删除申请：</b>${a.canCancelDeleteRequest ? '12 小时内可以撤销删除申请。' : '12 小时撤销窗口已过，请等待管理员审核。'}</p>` : ''}
     ${options.readonly ? '' : `<div class="card-actions">
       <button class="btn soft" data-manage="${attr(a.id)}">管理域名</button>
@@ -2609,6 +2632,7 @@ function bindDomainCardActions() {
 }
 
 async function renderDomainDetail(id) {
+  if (isAccountDisabled()) return disabledAccountPage('域名管理', '账户已被禁用无法管理域名，请通过帮助中心联系管理人员');
   shell('域名管理', `<div class="loading-card">正在读取域名详情…</div>`);
   try {
     const [{ application: a }, dnsResult] = await Promise.all([
@@ -2617,12 +2641,13 @@ async function renderDomainDetail(id) {
     ]);
     const records = dnsResult.records || [];
     const approved = a.status === 'approved';
-    const dnsRows = records.map(r => dnsRecordRow(r, approved)).join('');
+    const controlled = Boolean(a.controlled);
+    const dnsRows = records.map(r => dnsRecordRow(r, approved, controlled)).join('');
     const expiryLine = approved && a.expiresAt ? fmtDate(a.expiresAt, true) : '—';
     const remainingLine = approved ? esc(a.remainingText || '') : '—';
-    const addDnsButton = approved ? '<button class="btn primary" id="add-dns">＋ 添加解析</button>' : '<button class="btn secondary" disabled>审核通过后可配置 DNS</button>';
-    const openDnsButton = approved ? '<button class="btn primary" data-open-dns>＋ 添加解析</button>' : '<button class="btn secondary" disabled>审核通过后可添加解析</button>';
-    const emptyDnsText = approved ? '暂无 DNS 解析，请点击“添加解析”。' : '域名审核通过后才能添加解析。';
+    const addDnsButton = approved ? (controlled ? '<button class="btn secondary" disabled>管控中，只能删除解析</button>' : '<button class="btn primary" id="add-dns">＋ 添加解析</button>') : '<button class="btn secondary" disabled>审核通过后可配置 DNS</button>';
+    const openDnsButton = approved ? (controlled ? '<button class="btn secondary" disabled>管控中，只能删除解析</button>' : '<button class="btn primary" data-open-dns>＋ 添加解析</button>') : '<button class="btn secondary" disabled>审核通过后可添加解析</button>';
+    const emptyDnsText = controlled ? '该域名已被管理员管控，只允许删除 DNS 或申请删除域名。' : (approved ? '暂无 DNS 解析，请点击“添加解析”。' : '域名审核通过后才能添加解析。');
 
     shell('域名管理', `
       <section class="detail-hero">
@@ -2630,7 +2655,7 @@ async function renderDomainDetail(id) {
         <div class="detail-main">
           <div class="globe big">🌐</div>
           <div><h1>${esc(a.fqdnUnicode)}</h1><code>${esc(a.fqdnAscii)}</code></div>
-          ${statusBadge(a.status, a.statusText)}
+          ${statusBadge(a.status, a.statusText)}${controlled ? '<span class="status-pill status-pending">管控中</span>' : ''}
           <div class="detail-actions">
             ${addDnsButton}
             ${a.canRenew ? `<button class="btn success" id="renew-domain">▣ 续期</button>` : ''}
@@ -2672,7 +2697,7 @@ async function renderDomainDetail(id) {
         </div>
 
         <div class="tab-page" data-page="dns">
-          <div class="section-head"><div><h2>DNS 解析</h2><p>${approved ? `用户可自由添加解析记录，支持三级/多级子域名。主机填 @ 表示当前域名，填 www 表示 www.${esc(a.fqdnUnicode)}，填 api.v1 表示 api.v1.${esc(a.fqdnUnicode)}。` : '当前域名还未通过审核，暂时不能设置 DNS 解析。'}</p></div>${openDnsButton}</div>
+          <div class="section-head"><div><h2>DNS 解析</h2><p>${controlled ? '该域名已被管理员管控，只允许删除 DNS 解析或申请删除域名，不能新增/编辑解析。' : (approved ? `用户可自由添加解析记录，支持三级/多级子域名。主机填 @ 表示当前域名，填 www 表示 www.${esc(a.fqdnUnicode)}，填 api.v1 表示 api.v1.${esc(a.fqdnUnicode)}。` : '当前域名还未通过审核，暂时不能设置 DNS 解析。')}</p></div>${openDnsButton}</div>
           <div class="table-wrap"><table><thead><tr><th>主机</th><th>类型</th><th>目标/内容</th><th>优先级</th><th>TTL</th><th>状态</th><th>操作</th></tr></thead><tbody>${dnsRows || `<tr><td colspan="7">${emptyDnsText}</td></tr>`}</tbody></table></div>
         </div>
 
@@ -2694,9 +2719,9 @@ async function renderDomainDetail(id) {
       btn.classList.add('active');
       document.querySelector(`[data-page="${btn.dataset.tab}"]`)?.classList.add('active');
     }));
-    if (approved) document.querySelectorAll('#add-dns,[data-open-dns]').forEach(btn => btn.addEventListener('click', () => showDnsModal(a)));
+    if (approved && !controlled) document.querySelectorAll('#add-dns,[data-open-dns]').forEach(btn => btn.addEventListener('click', () => showDnsModal(a)));
     if (approved) {
-      document.querySelectorAll('[data-edit-dns]').forEach(btn => btn.addEventListener('click', () => {
+      if (!controlled) document.querySelectorAll('[data-edit-dns]').forEach(btn => btn.addEventListener('click', () => {
         const record = records.find(x => x.id === btn.dataset.editDns);
         if (record) showDnsModal(a, record);
       }));
@@ -2714,8 +2739,10 @@ async function renderDomainDetail(id) {
   }
 }
 
-function dnsRecordRow(r, approved = true) {
-  const actions = approved ? `<button class="btn soft small" data-edit-dns="${attr(r.id)}">编辑</button><button class="btn danger-soft small" data-delete-dns="${attr(r.id)}">删除</button>` : '<span class="muted">审核通过后可操作</span>';
+function dnsRecordRow(r, approved = true, controlled = false) {
+  const actions = approved
+    ? (controlled ? `<button class="btn danger-soft small" data-delete-dns="${attr(r.id)}">删除</button>` : `<button class="btn soft small" data-edit-dns="${attr(r.id)}">编辑</button><button class="btn danger-soft small" data-delete-dns="${attr(r.id)}">删除</button>`)
+    : '<span class="muted">审核通过后可操作</span>';
   return `<tr>
     <td><code>${esc(r.host || '@')}</code><br><small>${esc(r.name || '')}</small></td>
     <td><b>${esc(r.type)}</b></td>
@@ -3103,23 +3130,23 @@ async function renderAdminApplications() {
       <td><strong>${esc(a.fqdnUnicode)}</strong><br><code>${esc(a.fqdnAscii)}</code></td>
       <td>${esc(a.username || '—')}</td>
       <td>${a.dnsConfigured ? `<code>${esc(appDnsDisplay(a))}</code>` : '<span class="muted">未配置 DNS</span>'}</td>
-      <td>${statusBadge(a.status, a.statusText)}</td>
+      <td>${statusBadge(a.status, a.statusText)}${a.controlled ? '<br><small class="danger-text">管控中</small>' : ''}</td>
       <td>${a.status === 'approved' && a.expiresAt ? fmtDate(a.expiresAt) : '—'}<br><small>${a.status === 'approved' ? esc(a.remainingText || '') : ''}</small></td>
       <td class="actions-cell">
         ${a.status === 'pending' ? `<button class="btn success small" data-review="approve" data-id="${a.id}">批准</button><button class="btn danger-soft small" data-review="reject" data-id="${a.id}">拒绝</button>` : ''}
         ${a.deleteRequested ? `<button class="btn danger small" data-review="approve-delete" data-id="${a.id}">批准删除</button><button class="btn soft small" data-review="reject-delete" data-id="${a.id}">拒绝删除</button>` : ''}
         ${(a.statusText === '已禁用' || a.disabled === true) ? `<button class="btn success small" data-review="enable" data-id="${a.id}">取消禁用</button>` : ''}
-        ${a.status === 'approved' && !a.deleteRequested ? `<button class="btn danger-soft small" data-review="revoke" data-id="${a.id}">撤销</button><button class="btn danger-soft small" data-review="disable" data-id="${a.id}">禁用</button>` : ''}
+        ${a.status === 'approved' && !a.deleteRequested ? `<button class="btn danger-soft small" data-review="revoke" data-id="${a.id}">撤销</button><button class="btn danger-soft small" data-review="disable" data-id="${a.id}">禁用</button><button class="btn soft small" data-review="${a.controlled ? 'uncontrol' : 'control'}" data-id="${a.id}">${a.controlled ? '取消管控' : '管控'}</button>` : ''}
         ${['rejected','revoked','disabled'].includes(a.status) && !(a.statusText === '已禁用' || a.disabled === true) ? `<button class="btn danger-soft small" data-review="delete" data-id="${a.id}">删除</button>` : ''}
       </td>
     </tr>`).join('');
     shell('域名审核', `<section class="card"><div class="section-head"><div><h2>域名审核</h2><p>先审核域名；审核通过后，用户才能进入域名管理添加 DNS 解析。</p></div></div><div class="table-wrap"><table><thead><tr><th>域名</th><th>用户</th><th>DNS</th><th>状态</th><th>到期</th><th>操作</th></tr></thead><tbody>${rows || '<tr><td colspan="6">暂无申请</td></tr>'}</tbody></table></div></section>`);
     document.querySelectorAll('[data-review]').forEach(btn => btn.addEventListener('click', async () => {
       const action = btn.dataset.review;
-      const label = { approve:'批准', reject:'拒绝', revoke:'撤销', disable:'禁用', enable:'取消禁用', delete:'删除', 'approve-delete':'批准删除', 'reject-delete':'拒绝删除' }[action];
+      const label = { approve:'批准', reject:'拒绝', revoke:'撤销', disable:'禁用', enable:'取消禁用', control:'管控', uncontrol:'取消管控', delete:'删除', 'approve-delete':'批准删除', 'reject-delete':'拒绝删除' }[action];
       const confirmMessage = action === 'disable'
         ? '确认禁用该域名？禁用后将删除该域名所有 DNS 解析，用户不能继续管理该域名。'
-        : (action === 'enable' ? '确认取消禁用该域名？取消后域名恢复正常，但 DNS 记录需要用户重新添加。' : `确认${label}该域名？`);
+        : (action === 'enable' ? '确认取消禁用该域名？取消后域名恢复正常，但 DNS 记录需要用户重新添加。' : (action === 'control' ? '确认管控该域名？管控后用户只可以删除 DNS 解析或申请删除域名，不能新增/编辑 DNS。' : (action === 'uncontrol' ? '确认取消管控该域名？取消后用户可以继续正常新增/编辑 DNS。' : `确认${label}该域名？`)));
       if (!confirm(translateTextValue(confirmMessage))) return;
       const note = (action === 'delete' || action === 'approve-delete') ? '' : (prompt(translateTextValue('管理员留言，可留空；填写后会发送到用户消息中心'), '') ?? '');
       btn.disabled = true;
@@ -3745,7 +3772,7 @@ async function renderAdminSettings() {
     const dns = settings.dns || { suffixes: [] };
     const bl = settings.blacklist || { prefixes: [], ips: [], emails: [], registration: [], access: [], userIds: [] };
     const notification = settings.notification || { events: {}, expiryTemplate: '' };
-    const security = settings.security || { adminSessionTimeoutHours:24, adminIpWhitelist:'', auditRetentionDays:4 };
+    const security = settings.security || { adminSessionTimeoutHours:24, adminIpWhitelist:'', auditRetentionDays:7 };
     const automation = settings.automation || { enabled:false, scanCycleMinutes:60, checkExpiringDomains:true, cleanupExpiredDns:true };
 
     shell('管理员设置', `<section class="card admin-settings admin-settings-v79">
@@ -3907,7 +3934,7 @@ async function renderAdminSettings() {
         <form id="security-form" class="form-grid settings-grid">
           <div class="settings-section-heading wide"><span>01</span><div><h3>会话与登录保护</h3><p>控制会话时长、失败锁定和管理员访问来源。</p></div></div>
           <label class="field"><span>管理员会话超时/小时</span><input name="adminSessionTimeoutHours" type="number" min="1" value="${fieldValue(security.adminSessionTimeoutHours || 24)}"><em>超过时间后需要重新登录。</em></label>
-          <label class="field"><span>操作日志保留天数</span><input name="auditRetentionDays" type="number" min="1" value="${fieldValue(security.auditRetentionDays || 4)}"><em>联动侧边栏“操作日志”。</em></label>
+          <label class="field"><span>操作日志保留天数</span><input name="auditRetentionDays" type="number" min="1" value="${fieldValue(security.auditRetentionDays || 7)}"><em>联动侧边栏“操作日志”。</em></label>
           <label class="field"><span>登录失败锁定阈值</span><input name="failedLoginLockThreshold" type="number" min="0" value="${fieldValue(security.failedLoginLockThreshold || 0)}"><em>0 表示关闭自动锁定。</em></label>
           <label class="field"><span>登录失败锁定分钟</span><input name="failedLoginLockMinutes" type="number" min="0" value="${fieldValue(security.failedLoginLockMinutes || 0)}"><em>达到阈值后的锁定时长。</em></label>
           <label class="field"><span>后台访问路径别名（预留）</span><input name="adminPath" value="${fieldValue(security.adminPath || '')}" placeholder="/admin-secret"><em>当前仅保存配置，不会自动修改现有 #/admin 路由；正式启用前需配套路由改造。</em></label>
@@ -4175,7 +4202,7 @@ function buildSecuritySettingsPayload(form) {
   return {
     ...Object.fromEntries(form),
     adminSessionTimeoutHours: formNumber(form, 'adminSessionTimeoutHours', 24),
-    auditRetentionDays: formNumber(form, 'auditRetentionDays', 4),
+    auditRetentionDays: formNumber(form, 'auditRetentionDays', 7),
     failedLoginLockThreshold: formNumber(form, 'failedLoginLockThreshold'),
     failedLoginLockMinutes: formNumber(form, 'failedLoginLockMinutes'),
   };
