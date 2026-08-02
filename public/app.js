@@ -3619,10 +3619,21 @@ function bindAnalyticsChartInteractions(root=document) {
       else tip.textContent = text;
       tip.hidden = false;
       const boxRect = box.getBoundingClientRect();
-      let left = (event?.clientX || (boxRect.left + boxRect.width / 2)) - boxRect.left + 16;
-      let top = (event?.clientY || (boxRect.top + 72)) - boxRect.top + 16;
-      left = Math.max(12, Math.min(left, boxRect.width - 260));
-      top = Math.max(12, Math.min(top, boxRect.height - 92));
+      const pointerX = event?.clientX || (boxRect.left + boxRect.width / 2);
+      const pointerY = event?.clientY || (boxRect.top + 72);
+      tip.style.left = '-9999px';
+      tip.style.top = '-9999px';
+      const tipRect = tip.getBoundingClientRect();
+      const tipWidth = Math.min(Math.max(tipRect.width || 260, 180), Math.max(180, boxRect.width - 24));
+      const tipHeight = Math.max(tipRect.height || 92, 64);
+      const gap = 16;
+      let left = pointerX - boxRect.left - tipWidth - gap;
+      if (left < 12) {
+        left = pointerX - boxRect.left + gap;
+      }
+      left = Math.max(12, Math.min(left, boxRect.width - tipWidth - 12));
+      let top = pointerY - boxRect.top - (tipHeight / 2);
+      top = Math.max(12, Math.min(top, boxRect.height - tipHeight - 12));
       tip.style.left = left + 'px';
       tip.style.top = top + 'px';
       if (target.classList?.contains('chart-hit')) {
