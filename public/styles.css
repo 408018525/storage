@@ -2675,3 +2675,114 @@ html[data-theme="dark"] .admin-settings-v79 .settings-section-heading{
     justify-content:flex-start;
   }
 }
+
+/* v81 管理员设置显示与翻译修复 */
+.admin-settings-v79 .settings-grid > .check,
+.admin-settings-v79 label.check,
+.admin-settings-v79 .event-grid label.check {
+  display: grid !important;
+  grid-template-columns: 24px minmax(0, 1fr) !important;
+  align-items: start !important;
+  justify-content: start !important;
+  gap: 4px 12px !important;
+  text-align: left !important;
+  min-height: auto !important;
+}
+.admin-settings-v79 label.check input[type="checkbox"],
+.admin-settings-v79 .event-grid label.check input[type="checkbox"] {
+  grid-column: 1 !important;
+  grid-row: 1 / span 2 !important;
+  justify-self: start !important;
+  align-self: start !important;
+  width: 18px !important;
+  height: 18px !important;
+  margin: 2px 0 0 0 !important;
+  accent-color: var(--accent, #4f63f6);
+}
+.admin-settings-v79 label.check em,
+.admin-settings-v79 .event-grid label.check em {
+  grid-column: 2 !important;
+  margin: 2px 0 0 !important;
+  white-space: normal !important;
+}
+.admin-settings-v79 .event-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)) !important;
+  align-items: stretch !important;
+}
+.admin-settings-v79 .event-grid label.check {
+  padding: 12px 14px !important;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 6px 16px rgba(32,45,84,.035);
+}
+.admin-settings-v79 .suffix-editor-row.v80 {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 14px !important;
+  align-items: start !important;
+  overflow: visible !important;
+  padding: 18px !important;
+  border-radius: 22px !important;
+}
+.admin-settings-v79 .suffix-editor-row.v80 label,
+.admin-settings-v79 .suffix-editor-row.v80 .suffix-toggle-cell {
+  min-width: 0 !important;
+  width: 100% !important;
+}
+.admin-settings-v79 .suffix-editor-row.v80 input,
+.admin-settings-v79 .suffix-editor-row.v80 select {
+  width: 100% !important;
+  min-width: 0 !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.admin-settings-v79 .suffix-editor-row.v80 .zone-field,
+.admin-settings-v79 .suffix-editor-row.v80 .suffix-token-field {
+  grid-column: span 2;
+}
+.admin-settings-v79 .suffix-editor-row.v80 .suffix-actions {
+  grid-column: span 2;
+  min-height: 0 !important;
+  align-items: end !important;
+  justify-content: flex-start !important;
+  padding-top: 22px;
+}
+.admin-settings-v79 .suffix-toggle-cell input[type="checkbox"] {
+  width: 36px !important;
+  height: 36px !important;
+}
+.admin-settings-v79 .suffix-toggle-cell em,
+.admin-settings-v79 .suffix-token-field em,
+.admin-settings-v79 .suffix-editor-row.v80 label span {
+  white-space: normal !important;
+  word-break: break-word !important;
+}
+.admin-settings-v79 .notification-template {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  align-items: start;
+}
+.admin-settings-v79 .notification-template h3,
+.admin-settings-v79 .notification-template .wide {
+  grid-column: 1 / -1;
+}
+.admin-settings-v79 .settings-grid > .field span,
+.admin-settings-v79 .settings-grid > .check,
+.admin-settings-v79 .suffix-editor-row.v80 label span,
+.admin-settings-v79 .suffix-toggle-cell label span {
+  line-height: 1.35;
+}
+@media (max-width: 1380px) {
+  .admin-settings-v79 .suffix-editor-row.v80 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .admin-settings-v79 .suffix-editor-row.v80 .zone-field,
+  .admin-settings-v79 .suffix-editor-row.v80 .suffix-token-field,
+  .admin-settings-v79 .suffix-editor-row.v80 .suffix-actions { grid-column: 1 / -1; }
+}
+@media (max-width: 760px) {
+  .admin-settings-v79 .suffix-editor-row.v80,
+  .admin-settings-v79 .notification-template { grid-template-columns: 1fr !important; }
+  .admin-settings-v79 .suffix-editor-row.v80 .zone-field,
+  .admin-settings-v79 .suffix-editor-row.v80 .suffix-token-field,
+  .admin-settings-v79 .suffix-editor-row.v80 .suffix-actions { grid-column: auto; }
+  .admin-settings-v79 .event-grid { grid-template-columns: 1fr !important; }
+}
