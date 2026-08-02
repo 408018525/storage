@@ -884,12 +884,39 @@ async function register(request: Request, env: Env): Promise<Response> {
   return ok({ registered: true, pendingActivation: status !== 'active' });
 }
 
+type LoginLockState = { count: number; lockedUntil: number };
+
+async function readLoginLockState(env: Env, key: string): Promise<LoginLockState> {
+  try {
+    const raw = await env.APP_KV.get(key);
+    if (!raw) return { count: 0, lockedUntil: 0 };
+    const parsed = JSON.parse(raw) as Partial<LoginLockState>;
+    return { count: Math.max(0, Number(parsed.count || 0)), lockedUntil: Math.max(0, Number(parsed.lockedUntil || 0)) };
+  } catch { return { count: 0, lockedUntil: 0 }; }
+}
+
+async function registerLoginFailure(env: Env, key: string, threshold: number, lockMinutes: number): Promise<void> {
+  if (threshold <= 0 || lockMinutes <= 0) return;
+  const current = await readLoginLockState(env, key);
+  const count = current.count + 1;
+  const lockedUntil = count >= threshold ? Date.now() + lockMinutes * 60000 : 0;
+  await env.APP_KV.put(key, JSON.stringify({ count: lockedUntil ? 0 : count, lockedUntil }), { expirationTtl: Math.max(300, lockMinutes * 60 + 3600) });
+}
+
 async function login(request: Request, env: Env): Promise<Response> {
   await rateLimit(env, request, 'login', 20, 600);
   const body = await readJson<Record<string, unknown>>(request);
   const identity = String(body.identity || '').trim().toLowerCase();
   const password = String(body.password || '');
   if (!identity || !password) throw new HttpError(400, 'MISSING_CREDENTIALS', '请输入用户名/邮箱和密码');
+
+  const loginSettings = await loadSettings(env);
+  const lockKey = `login_lock:${await sha256(`${identity}|${clientIp(request)}`)}`;
+  const lockState = await readLoginLockState(env, lockKey);
+  if (lockState.lockedUntil > Date.now()) {
+    const waitMinutes = Math.max(1, Math.ceil((lockState.lockedUntil - Date.now()) / 60000));
+    throw new HttpError(429, 'LOGIN_TEMP_LOCKED', `登录失败次数过多，请 ${waitMinutes} 分钟后再试`);
+  }
 
   if (isEnabled(env.TURNSTILE_ENABLE_LOGIN, false)) {
     await verifyTurnstile(env, request, body.turnstileToken, env.TURNSTILE_ACTION_LOGIN || 'login');
@@ -910,11 +937,12 @@ async function login(request: Request, env: Env): Promise<Response> {
   }
 
   if (!user || !passwordOk) {
+    await registerLoginFailure(env, lockKey, loginSettings.security?.failedLoginLockThreshold || 0, loginSettings.security?.failedLoginLockMinutes || 0);
     await audit(env, request, user?.id || null, 'auth.login_failed', 'user', user?.id || null, { identity });
     throw new HttpError(401, 'INVALID_CREDENTIALS', '用户名或密码错误');
   }
+  await env.APP_KV.delete(lockKey).catch(() => undefined);
   if (user.status !== 'active') throw new HttpError(403, 'ACCOUNT_DISABLED', '账户已被禁用');
-  const loginSettings = await loadSettings(env);
   if (user.role === 'admin') {
     const allowedIps = sanitizeStringList(loginSettings.security?.adminIpWhitelist || '');
     if (allowedIps.length && !allowedIps.includes(clientIp(request))) {
@@ -1284,8 +1312,8 @@ async function updateOwnDns(request: Request, env: Env, id: string): Promise<Res
   if (!app) throw new HttpError(404, 'NOT_FOUND', '域名不存在');
   if (app.status !== 'approved') throw new HttpError(409, 'DOMAIN_NOT_APPROVED', '域名审核通过后才能设置解析');
 
-  const suffix = settings.dns.suffixes.find(x => x.suffixAscii === app.suffix_ascii);
-  if (!suffix) throw new HttpError(409, 'SUFFIX_MISSING', '根域名配置不存在');
+  const suffix = settings.dns.suffixes.find(x => x.enabled && x.suffixAscii === app.suffix_ascii);
+  if (!suffix) throw new HttpError(409, 'SUFFIX_DISABLED', '该根域名已停用，暂时不能修改解析');
 
   if (app.status === 'approved' && !settings.domain.allowDnsEditAfterApproved) {
     throw new HttpError(403, 'DNS_EDIT_CLOSED', '管理员已关闭生效域名的 DNS 修改');
@@ -1293,6 +1321,7 @@ async function updateOwnDns(request: Request, env: Env, id: string): Promise<Res
 
   const recordType = normalizeRecordType(body.recordType || app.record_type || suffix.defaultType, suffix.allowedTypes);
   const recordContent = normalizeDnsTarget(recordType, body.target, app.fqdn_ascii);
+  if (recordType === 'CNAME') assertCnameTargetAllowed(recordContent, settings.dns.cnameTargetBlacklist);
 
   let dnsRecordId = app.dns_record_id || '';
   let newStatus = app.status;
@@ -1367,19 +1396,20 @@ async function createOwnDnsRecord(request: Request, env: Env, applicationId: str
   if (app.status !== 'approved') throw new HttpError(409, 'DOMAIN_NOT_APPROVED', '域名审核通过后才能添加解析');
   if (app.delete_requested_at) throw new HttpError(409, 'DELETE_REQUESTED', '该域名正在等待删除审核，不能添加解析');
 
-  const suffix = settings.dns.suffixes.find(x => x.suffixAscii === app.suffix_ascii);
-  if (!suffix) throw new HttpError(409, 'SUFFIX_MISSING', '根域名配置不存在');
+  const suffix = settings.dns.suffixes.find(x => x.enabled && x.suffixAscii === app.suffix_ascii);
+  if (!suffix) throw new HttpError(409, 'SUFFIX_DISABLED', '该根域名已停用，暂时不能新增解析');
 
-  const host = normalizeDnsHost(body.host);
+  const host = normalizeDnsHost(body.host, settings.dns.blockWildcardRecords !== false);
   const name = fullRecordName(host, app.fqdn_ascii);
   const type = normalizeRecordType(body.type || body.recordType, suffix.allowedTypes);
   if (type === 'MX' && settings.dns.allowMxRecords === false) throw new HttpError(403, 'MX_DISABLED', '管理员已禁止用户创建 MX 解析记录');
   const recordCount = await env.DB.prepare(`SELECT COUNT(*) AS count FROM dns_records WHERE application_id=? AND (deleted_at IS NULL OR deleted_at='')`).bind(applicationId).first<{ count: number }>();
   if (Number(recordCount?.count || 0) >= (settings.domain.maxDnsRecordsPerDomain || 20)) throw new HttpError(403, 'DNS_RECORD_LIMIT', `单个域名最多可创建 ${settings.domain.maxDnsRecordsPerDomain || 20} 条 DNS 解析`);
   const content = normalizeDnsTarget(type, body.content || body.target, name);
+  if (type === 'CNAME') assertCnameTargetAllowed(content, settings.dns.cnameTargetBlacklist);
   const priority = type === 'MX' ? clamp(Number(body.priority || 10), 0, 65535) : null;
   const ttl = clamp(Number(body.ttl || suffix.ttl || 1), 1, 86400);
-  const proxied = ['A', 'AAAA', 'CNAME'].includes(type) && asBoolean(body.proxied, suffix.proxied) ? 1 : 0;
+  const proxied = ['A', 'AAAA', 'CNAME'].includes(type) && asBoolean(body.proxied, suffix.proxied ?? settings.dns.defaultProxied ?? false) ? 1 : 0;
 
   const duplicate = await env.DB.prepare(`
     SELECT id FROM dns_records
@@ -1428,15 +1458,16 @@ async function updateOwnDnsRecordManaged(request: Request, env: Env, recordId: s
   if (!row) throw new HttpError(404, 'NOT_FOUND', '解析记录不存在');
   if (row.delete_requested_at) throw new HttpError(409, 'DELETE_REQUESTED', '该域名正在等待删除审核，不能修改解析');
 
-  const suffix = settings.dns.suffixes.find(x => x.suffixAscii === row.suffix_ascii);
-  if (!suffix) throw new HttpError(409, 'SUFFIX_MISSING', '根域名配置不存在');
+  const suffix = settings.dns.suffixes.find(x => x.enabled && x.suffixAscii === row.suffix_ascii);
+  if (!suffix) throw new HttpError(409, 'SUFFIX_DISABLED', '该根域名已停用，暂时不能修改解析');
   if (row.app_status === 'approved' && !settings.domain.allowDnsEditAfterApproved) throw new HttpError(403, 'DNS_EDIT_CLOSED', '管理员已关闭生效域名的 DNS 修改');
 
-  const host = normalizeDnsHost(body.host ?? row.host);
+  const host = normalizeDnsHost(body.host ?? row.host, settings.dns.blockWildcardRecords !== false);
   const name = fullRecordName(host, row.fqdn_ascii);
   const type = normalizeRecordType(body.type || body.recordType || row.type, suffix.allowedTypes);
   if (type === 'MX' && settings.dns.allowMxRecords === false) throw new HttpError(403, 'MX_DISABLED', '管理员已禁止用户创建 MX 解析记录');
   const content = normalizeDnsTarget(type, body.content || body.target || row.content, name);
+  if (type === 'CNAME') assertCnameTargetAllowed(content, settings.dns.cnameTargetBlacklist);
   const priority = type === 'MX' ? clamp(Number(body.priority || row.priority || 10), 0, 65535) : null;
   const ttl = clamp(Number(body.ttl || row.ttl || suffix.ttl || 1), 1, 86400);
   const proxied = ['A', 'AAAA', 'CNAME'].includes(type) && asBoolean(body.proxied, Boolean(row.proxied)) ? 1 : 0;
@@ -2876,9 +2907,18 @@ function cleanHtmlText(value: unknown, max = 8000): string {
     .trim();
 }
 
+function adminSettingsView(settings: AppSettings, env: Env): any {
+  const safeSettings: any = JSON.parse(JSON.stringify(settings));
+  safeSettings.registration.turnstileSecretConfigured = Boolean(settings.registration.turnstileSecret || env.TURNSTILE_SECRET);
+  safeSettings.registration.turnstileSecret = '';
+  safeSettings.dns.cfApiTokenConfigured = Boolean(settings.dns.cfApiToken || env.CF_API_TOKEN);
+  safeSettings.dns.cfApiToken = '';
+  return safeSettings;
+}
+
 async function adminSettings(request: Request, env: Env): Promise<Response> {
   await requireAdmin(env, request);
-  return ok({ settings: await loadSettings(env) });
+  return ok({ settings: adminSettingsView(await loadSettings(env), env) });
 }
 
 type AdminSettingGroup = 'site' | 'registration' | 'domain' | 'dns' | 'blacklist' | 'notification' | 'security' | 'automation';
@@ -2927,7 +2967,9 @@ async function adminUpdateSettings(request: Request, env: Env, group: AdminSetti
       defaultStatus: String(body.defaultStatus || 'auto') === 'manual' ? 'manual' : 'auto',
       disabledMessage: cleanText(body.disabledMessage, 500) || '当前暂未开放用户注册',
       turnstileSiteKey: cleanText(body.turnstileSiteKey, 300),
-      turnstileSecret: cleanText(body.turnstileSecret, 500),
+      turnstileSecret: Object.prototype.hasOwnProperty.call(body, 'turnstileSecret')
+        ? cleanText(body.turnstileSecret, 500)
+        : (settings.registration.turnstileSecret || ''),
       emailDomainBlacklist: cleanText(body.emailDomainBlacklist, 10000),
       emailVerificationEnabled: asBoolean(body.emailVerificationEnabled, false),
       dailyDomainApplyLimit: clamp(Number(body.dailyDomainApplyLimit || 0), 0, 10000),
@@ -2981,6 +3023,8 @@ async function adminUpdateSettings(request: Request, env: Env, group: AdminSetti
       ...settings.dns,
       defaultProxied: asBoolean(body.defaultProxied, settings.dns.defaultProxied ?? false),
       allowMxRecords: asBoolean(body.allowMxRecords, settings.dns.allowMxRecords ?? true),
+      blockWildcardRecords: asBoolean(body.blockWildcardRecords, settings.dns.blockWildcardRecords ?? true),
+      cnameTargetBlacklist: cleanText(body.cnameTargetBlacklist, 10000),
       cfApiToken: asBoolean((body as any).clearCfApiToken, false) ? '' : (cleanText((body as any).cfApiToken, 2000) || settings.dns.cfApiToken || ''),
       reservedPrefixes: sanitizeStringList(body.reservedPrefixes || settings.dns.reservedPrefixes.join('\n')).slice(0, 500),
       suffixes: sanitizeDnsSuffixes(suffixesInput, settings.dns.suffixes),
@@ -3037,7 +3081,7 @@ async function adminUpdateSettings(request: Request, env: Env, group: AdminSetti
 
   await env.APP_KV.put(SETTINGS_KEY, JSON.stringify(settings));
   await audit(env, request, admin.id, `admin.settings_${group}`, 'setting', group);
-  return ok({ settings });
+  return ok({ settings: adminSettingsView(settings, env) });
 }
 
 async function loadSettings(env: Env): Promise<AppSettings> {
@@ -3589,19 +3633,19 @@ async function adminSystemStatus(request: Request, env: Env): Promise<Response> 
       (SELECT COUNT(*) FROM audit_logs WHERE datetime(created_at) >= datetime('now','-4 days')) AS logs4d
   `).first<any>();
   return ok({
-    version: 'v78',
+    version: 'v79',
     settingsKey: SETTINGS_KEY,
     kv: { storage: 'Workers KV', estimatedKeys: '由 Cloudflare 控制台查看实际占用' },
     cfApi: { configured: Boolean(resolveDnsToken(env, settings)), status: resolveDnsToken(env, settings) ? '已配置' : '未配置' },
     cron: { enabled: Boolean(settings.automation?.enabled), expression: settings.automation?.cronExpression || '' },
     counts,
-    update: { current: 'v78', latest: '请以当前部署包为准' },
+    update: { current: 'v79', latest: '请以当前部署包为准' },
   });
 }
 
 async function adminExportSettings(request: Request, env: Env): Promise<Response> {
   await requireAdmin(env, request);
-  return ok({ exportedAt: new Date().toISOString(), version: 'v78', settings: await loadSettings(env) });
+  return ok({ exportedAt: new Date().toISOString(), version: 'v79', settings: await loadSettings(env) });
 }
 
 async function adminImportSettings(request: Request, env: Env): Promise<Response> {
@@ -3623,7 +3667,7 @@ async function adminImportSettings(request: Request, env: Env): Promise<Response
   } as AppSettings;
   await env.APP_KV.put(SETTINGS_KEY, JSON.stringify(merged));
   await audit(env, request, admin.id, 'admin.settings_import', 'setting', SETTINGS_KEY);
-  return ok({ settings: await loadSettings(env) });
+  return ok({ settings: adminSettingsView(await loadSettings(env), env) });
 }
 
 async function adminTestCloudflareApi(request: Request, env: Env): Promise<Response> {
@@ -3909,27 +3953,38 @@ function normalizeOptionalSuffix(value: unknown): string {
 
 function normalizeRecordType(raw: unknown, allowed: string[]): DnsRecordType {
   const type = String(raw || 'CNAME').trim().toUpperCase();
-  // 用户子域解析默认开放 A / AAAA / CNAME / TXT / MX。
-  // 这样即使旧环境变量 DNS_ALLOWED_TYPES 仍是 CNAME,A,AAAA，也不会阻止用户添加 TXT/MX。
   const publicTypes = ['CNAME', 'A', 'AAAA', 'TXT', 'MX'];
-  const allowedSet = new Set([...(allowed || []), ...publicTypes].map(x => String(x).toUpperCase()));
+  const configured = (allowed || []).map(x => String(x).trim().toUpperCase()).filter(x => publicTypes.includes(x));
+  const allowedSet = new Set(configured.length ? configured : publicTypes);
   if (!publicTypes.includes(type) || !allowedSet.has(type)) {
-    throw new HttpError(400, 'INVALID_RECORD_TYPE', 'DNS 记录类型不可用');
+    throw new HttpError(400, 'INVALID_RECORD_TYPE', `当前根域名未开放 ${type} 记录`);
   }
   return type as DnsRecordType;
 }
 
-function normalizeDnsHost(raw: unknown): string {
+function normalizeDnsHost(raw: unknown, blockWildcard = true): string {
   const host = String(raw || '@').trim().toLowerCase().replace(/^\.+|\.+$/g, '');
   if (!host || host === '@') return '@';
   if (host.length > 80) throw new HttpError(400, 'INVALID_DNS_HOST', '主机记录过长');
   const labels = host.split('.');
-  for (const label of labels) {
+  for (let index = 0; index < labels.length; index += 1) {
+    const label = labels[index];
+    if (label === '*' && index === 0) {
+      if (blockWildcard) throw new HttpError(403, 'WILDCARD_BLOCKED', '管理员已禁止用户创建泛解析');
+      continue;
+    }
     if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label)) {
       throw new HttpError(400, 'INVALID_DNS_HOST', '主机记录只能包含字母、数字、连字符和点，且不能以连字符开头或结尾');
     }
   }
   return host;
+}
+
+function assertCnameTargetAllowed(target: string, blacklist: unknown): void {
+  const blocked = sanitizeStringList(blacklist).map(x => x.toLowerCase().replace(/^\*\./, ''));
+  const value = String(target || '').toLowerCase().replace(/\.$/, '');
+  const hit = blocked.find(rule => value === rule || value.endsWith(`.${rule}`) || value.includes(rule));
+  if (hit) throw new HttpError(403, 'CNAME_TARGET_BLOCKED', `CNAME 目标命中管理员黑名单：${hit}`);
 }
 
 function fullRecordName(host: string, fqdn: string): string {
