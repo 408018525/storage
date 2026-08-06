@@ -3909,7 +3909,21 @@ async function renderAdminSettings() {
           <label class="field"><span>发件邮箱</span><input name="emailFrom" type="email" value="${fieldValue(reg.emailFrom || '')}" placeholder="noreply@example.com"><em>必须是 Resend 中已验证域名的邮箱，也可用 EMAIL_FROM 环境变量。</em></label>
           <label class="field"><span>发件名称</span><input name="emailFromName" value="${fieldValue(reg.emailFromName || '域名注册中心')}" placeholder="域名注册中心"><em>显示在收件箱的发件人名称。</em></label>
           <label class="field"><span>验证码有效期/分钟</span><input name="emailCodeExpiryMinutes" type="number" min="2" max="60" value="${fieldValue(reg.emailCodeExpiryMinutes || 10)}"><em>建议 5-15 分钟。</em></label>
-          <div class="readonly-box wide email-test-box"><b>发送测试邮件</b><p>先保存上方邮件配置，再输入收件邮箱进行测试。</p><div class="email-test-row"><input id="email-test-recipient" type="email" placeholder="测试收件邮箱"><button class="btn soft" id="test-email-delivery" type="button">发送测试邮件</button><span id="email-test-result" class="muted"></span></div></div>
+          <label class="field"><span>允许发送的运行环境</span><input name="emailAllowedEnvironments" value="${fieldValue(reg.emailAllowedEnvironments || '*')}" placeholder="production,preview"><em>* 表示全部；当前环境：${esc(reg.emailRuntimeEnvironment || 'production')}。可用 Worker 变量 APP_ENVIRONMENT 指定环境名。</em></label>
+          <label class="check"><input name="emailRegistrationSceneEnabled" type="checkbox" ${yn(reg.emailRegistrationSceneEnabled !== false)}> 启用注册验证码场景 <em>关闭后用户无法请求注册验证码邮件。</em></label>
+          <label class="check"><input name="emailTestSceneEnabled" type="checkbox" ${yn(reg.emailTestSceneEnabled !== false)}> 启用管理员测试场景 <em>关闭后后台不能发送测试邮件。</em></label>
+          <label class="field"><span>注册验证码收件对象</span><select name="emailRegistrationRecipientMode"><option value="user" ${reg.emailRegistrationRecipientMode !== 'user_bcc_fixed' ? 'selected' : ''}>仅注册用户邮箱</option><option value="user_bcc_fixed" ${reg.emailRegistrationRecipientMode === 'user_bcc_fixed' ? 'selected' : ''}>注册用户 + 固定邮箱密送</option></select><em>验证码始终发送给注册用户；固定邮箱使用 BCC，不向用户暴露。</em></label>
+          <label class="field"><span>测试邮件收件对象</span><select name="emailTestRecipientMode"><option value="manual" ${reg.emailTestRecipientMode !== 'admin' && reg.emailTestRecipientMode !== 'fixed' ? 'selected' : ''}>测试时手动填写</option><option value="admin" ${reg.emailTestRecipientMode === 'admin' ? 'selected' : ''}>当前管理员邮箱</option><option value="fixed" ${reg.emailTestRecipientMode === 'fixed' ? 'selected' : ''}>固定收件邮箱</option></select><em>用于管理员测试邮件。</em></label>
+          <label class="field wide"><span>固定收件邮箱</span><textarea name="emailFixedRecipients" rows="3" placeholder="admin@example.com&#10;ops@example.com">${esc(reg.emailFixedRecipients || '')}</textarea><em>一行一个或逗号分隔；最多 50 个。</em></label>
+          <div class="settings-section-heading wide"><span>04-A</span><div><h3>注册验证码邮件内容</h3><p>支持 {{siteName}}、{{code}}、{{expiryMinutes}}、{{email}}、{{environment}}、{{time}} 占位符。</p></div></div>
+          <label class="field wide"><span>注册邮件主题</span><input name="emailRegistrationSubjectTemplate" value="${fieldValue(reg.emailRegistrationSubjectTemplate || '【{{siteName}}】注册验证码')}"></label>
+          <label class="field wide"><span>注册邮件纯文本内容</span><textarea name="emailRegistrationTextTemplate" rows="7">${esc(reg.emailRegistrationTextTemplate || '')}</textarea><em>用于不支持 HTML 的邮箱客户端。</em></label>
+          <label class="field wide"><span>注册邮件 HTML 内容</span><textarea name="emailRegistrationHtmlTemplate" rows="9">${esc(reg.emailRegistrationHtmlTemplate || '')}</textarea><em>可留空，系统会把纯文本自动转换成 HTML。</em></label>
+          <div class="settings-section-heading wide"><span>04-B</span><div><h3>测试邮件内容</h3><p>测试时可选择预览测试模板或注册验证码模板。</p></div></div>
+          <label class="field wide"><span>测试邮件主题</span><input name="emailTestSubjectTemplate" value="${fieldValue(reg.emailTestSubjectTemplate || '【{{siteName}}】邮件服务测试')}"></label>
+          <label class="field wide"><span>测试邮件纯文本内容</span><textarea name="emailTestTextTemplate" rows="5">${esc(reg.emailTestTextTemplate || '')}</textarea></label>
+          <label class="field wide"><span>测试邮件 HTML 内容</span><textarea name="emailTestHtmlTemplate" rows="7">${esc(reg.emailTestHtmlTemplate || '')}</textarea><em>可留空，系统会把纯文本自动转换成 HTML。</em></label>
+          <div class="readonly-box wide email-test-box"><b>发送测试邮件</b><p>先保存上方配置。收件对象由“测试邮件收件对象”决定。</p><div class="email-test-row"><select id="email-test-scene"><option value="test">测试邮件模板</option><option value="registration">注册验证码模板（示例验证码 123456）</option></select><input id="email-test-recipient" type="email" placeholder="手动测试收件邮箱"><button class="btn soft" id="test-email-delivery" type="button">发送测试邮件</button><span id="email-test-result" class="muted"></span></div></div>
           <div class="settings-section-heading wide"><span>05</span><div><h3>邮箱规则与关闭提示</h3><p>管理邮箱后缀限制和注册关闭时的前台说明。</p></div></div>
           <label class="field wide"><span>邮箱后缀拦截黑名单</span><textarea name="emailDomainBlacklist" rows="4" placeholder="tempmail.com&#10;mailinator.com">${esc(reg.emailDomainBlacklist || '')}</textarea><em>一行一个邮箱后缀，不要带 @ 也可以。</em></label>
           <label class="field wide"><span>关闭注册时前台提示文案</span><textarea name="disabledMessage" rows="3">${esc(reg.disabledMessage || '')}</textarea><em>注册关闭时显示给用户。</em></label>
@@ -4070,12 +4084,14 @@ async function renderAdminSettings() {
     document.querySelector('#test-email-delivery')?.addEventListener('click', async event => {
       const button = event.currentTarget;
       const email = String(document.querySelector('#email-test-recipient')?.value || '').trim();
+      const scene = String(document.querySelector('#email-test-scene')?.value || 'test');
+      const recipientMode = String(document.querySelector('#registration-form [name="emailTestRecipientMode"]')?.value || 'manual');
       const resultEl = document.querySelector('#email-test-result');
-      if (!email) { toast('请输入测试收件邮箱', 'error'); return; }
+      if (recipientMode === 'manual' && !email) { toast('当前收件对象为手动填写，请输入测试收件邮箱', 'error'); return; }
       button.disabled = true;
       if (resultEl) resultEl.textContent = '发送中…';
       try {
-        const result = await api('/api/admin/email/test', { method:'POST', body:{ email } });
+        const result = await api('/api/admin/email/test', { method:'POST', body:{ email, scene } });
         if (resultEl) resultEl.textContent = result.message || '发送成功';
         toast('测试邮件发送成功', 'success');
       } catch (error) {
@@ -4286,6 +4302,18 @@ function buildRegistrationSettingsPayload(form) {
     emailFrom: formString(form, 'emailFrom'),
     emailFromName: formString(form, 'emailFromName'),
     emailCodeExpiryMinutes: formNumber(form, 'emailCodeExpiryMinutes', 10),
+    emailAllowedEnvironments: formString(form, 'emailAllowedEnvironments'),
+    emailRegistrationSceneEnabled: formBoolean(form, 'emailRegistrationSceneEnabled'),
+    emailTestSceneEnabled: formBoolean(form, 'emailTestSceneEnabled'),
+    emailFixedRecipients: formString(form, 'emailFixedRecipients'),
+    emailRegistrationRecipientMode: formString(form, 'emailRegistrationRecipientMode'),
+    emailTestRecipientMode: formString(form, 'emailTestRecipientMode'),
+    emailRegistrationSubjectTemplate: formString(form, 'emailRegistrationSubjectTemplate'),
+    emailRegistrationTextTemplate: formString(form, 'emailRegistrationTextTemplate'),
+    emailRegistrationHtmlTemplate: formString(form, 'emailRegistrationHtmlTemplate'),
+    emailTestSubjectTemplate: formString(form, 'emailTestSubjectTemplate'),
+    emailTestTextTemplate: formString(form, 'emailTestTextTemplate'),
+    emailTestHtmlTemplate: formString(form, 'emailTestHtmlTemplate'),
     blockVpnProxy: formBoolean(form, 'blockVpnProxy'),
     maxAccountsPerIp: formNumber(form, 'maxAccountsPerIp'),
     ipRegisterCooldownMinutes: formNumber(form, 'ipRegisterCooldownMinutes'),
@@ -4364,6 +4392,15 @@ function validateSettingsPayload(group, data) {
     if (data.turnstileRegisterEnabled && !String(data.turnstileSiteKey || '').trim() && !state.config?.turnstile?.siteKey) throw new Error('启用注册人机验证前必须配置 Turnstile Site Key');
     if (data.emailVerificationEnabled && !String(data.emailFrom || '').trim()) throw new Error('启用邮箱验证前必须填写发件邮箱');
     if (String(data.emailFrom || '').trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(data.emailFrom).trim())) throw new Error('发件邮箱格式不正确');
+    const fixedEmails = String(data.emailFixedRecipients || '').split(/[\n,;]+/).map(x=>x.trim()).filter(Boolean);
+    if (fixedEmails.some(email => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) throw new Error('固定收件邮箱中存在格式错误的地址');
+    if (data.emailRegistrationRecipientMode === 'user_bcc_fixed' && !fixedEmails.length) throw new Error('注册验证码选择固定邮箱密送时，必须填写固定收件邮箱');
+    if (data.emailTestRecipientMode === 'fixed' && !fixedEmails.length) throw new Error('测试邮件选择固定收件邮箱时，必须填写固定收件邮箱');
+    if (!String(data.emailAllowedEnvironments || '*').trim()) throw new Error('允许发送的运行环境不能为空，可填写 *');
+    if (!String(data.emailRegistrationSubjectTemplate || '').trim()) throw new Error('注册邮件主题不能为空');
+    if (!String(data.emailRegistrationTextTemplate || '').trim() && !String(data.emailRegistrationHtmlTemplate || '').trim()) throw new Error('注册邮件纯文本或 HTML 内容至少填写一项');
+    if (!String(data.emailTestSubjectTemplate || '').trim()) throw new Error('测试邮件主题不能为空');
+    if (!String(data.emailTestTextTemplate || '').trim() && !String(data.emailTestHtmlTemplate || '').trim()) throw new Error('测试邮件纯文本或 HTML 内容至少填写一项');
     if (n(data.emailCodeExpiryMinutes, 10) < 2 || n(data.emailCodeExpiryMinutes, 10) > 60) throw new Error('邮箱验证码有效期必须在 2 到 60 分钟之间');
     if (n(data.failedRegisterBanThreshold) > 0 && n(data.failedRegisterBanMinutes) <= 0) throw new Error('设置失败封禁阈值后，封禁时长必须大于 0');
   }
@@ -4558,6 +4595,6 @@ Object.assign(I18N_EN, {
 });
 
 Object.assign(I18N_EN, {
-  '拖动排序':'Drag to Reorder','拖动整个域名框调换顺序':'Drag the whole domain card to reorder','注册显示顺序':'Registration Display Order','数字越小，在注册选择框中越靠前。':'Lower numbers appear earlier in registration.','留空则注册时只显示根域名':'Leave blank to show only the root domain','留空不会显示“免费二级域名”等名称。':'Leave blank to hide the display name.','邮件发送服务':'Email Delivery Service','使用 Resend API 发送真实注册验证码邮件。':'Use the Resend API to send real registration verification emails.','发件邮箱':'Sender Email','发件名称':'Sender Name','验证码有效期/分钟':'Verification Code Validity / Minutes','发送测试邮件':'Send Test Email','先保存上方邮件配置，再输入收件邮箱进行测试。':'Save the email settings above, then enter a recipient to test.','邮箱验证码':'Email Verification Code','发送验证码':'Send Code','验证码会发送到上方邮箱，请先完成邮箱填写。':'The code will be sent to the email above.','测试所有可用根域名':'Test All Available Root Domains','正在同时测试所有根域名…':'Testing all root domains…'
+  '拖动排序':'Drag to Reorder','拖动整个域名框调换顺序':'Drag the whole domain card to reorder','注册显示顺序':'Registration Display Order','数字越小，在注册选择框中越靠前。':'Lower numbers appear earlier in registration.','留空则注册时只显示根域名':'Leave blank to show only the root domain','留空不会显示“免费二级域名”等名称。':'Leave blank to hide the display name.','邮件发送服务':'Email Delivery Service','使用 Resend API 发送真实注册验证码邮件。':'Use the Resend API to send real registration verification emails.','发件邮箱':'Sender Email','发件名称':'Sender Name','验证码有效期/分钟':'Verification Code Validity / Minutes','允许发送的运行环境':'Allowed Sending Environments','启用注册验证码场景':'Enable Registration Code Scene','启用管理员测试场景':'Enable Admin Test Scene','注册验证码收件对象':'Registration Code Recipients','测试邮件收件对象':'Test Email Recipients','仅注册用户邮箱':'Registering User Only','注册用户 + 固定邮箱密送':'Registering User + Fixed BCC','测试时手动填写':'Enter Manually When Testing','当前管理员邮箱':'Current Admin Email','固定收件邮箱':'Fixed Recipient Emails','注册验证码邮件内容':'Registration Code Email Content','注册邮件主题':'Registration Email Subject','注册邮件纯文本内容':'Registration Plain-text Body','注册邮件 HTML 内容':'Registration HTML Body','测试邮件内容':'Test Email Content','测试邮件主题':'Test Email Subject','测试邮件纯文本内容':'Test Plain-text Body','测试邮件 HTML 内容':'Test HTML Body','测试邮件模板':'Test Email Template','发送测试邮件':'Send Test Email','邮箱验证码':'Email Verification Code','发送验证码':'Send Code','验证码会发送到上方邮箱，请先完成邮箱填写。':'The code will be sent to the email above.','测试所有可用根域名':'Test All Available Root Domains','正在同时测试所有根域名…':'Testing all root domains…'
 });
 if (typeof applyI18n === 'function') setTimeout(() => { try { applyI18n(document.body); } catch (_) {} }, 80);
