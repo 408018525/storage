@@ -55,6 +55,8 @@ const state = {
   widgetId: null,
   turnstileTokenValue: '',
   turnstileWidgetAction: '',
+  turnstileSelector: '',
+  humanChallenges: {},
   operationLogFilters: { dateMode: 'all', day: '', hour: '', sort: 'desc', type: 'all', actor: 'all' },
   messageUnread: 0,
 };
@@ -77,17 +79,23 @@ function suffixList() {
     .map(entry => entry.item);
 }
 
+function humanVerificationMode() {
+  const mode = String(state.config?.turnstile?.mode || state.config?.registration?.humanVerificationMode || 'turnstile_fallback');
+  return ['image','turnstile','turnstile_fallback'].includes(mode) ? mode : 'turnstile_fallback';
+}
+
 function hasTurnstileSiteKey() {
   return Boolean(String(state.config?.turnstile?.siteKey || '').trim());
 }
 
 function shouldShowTurnstile(kind) {
+  if (humanVerificationMode() === 'image') return false;
   const turn = state.config?.turnstile || {};
   if (!hasTurnstileSiteKey()) return false;
-  if (kind === 'login') return true;
-  if (kind === 'register') return true;
-  if (kind === 'apply') return Boolean(turn.enabledApply);
-  return false;
+  if (kind === 'apply') return turn.enabledApply !== false;
+  if (kind === 'register') return turn.enabledRegister !== false;
+  if (kind === 'login') return turn.enabledLogin !== false;
+  return true;
 }
 
 let turnstileApiPromise = null;
@@ -98,11 +106,20 @@ function loadTurnstileScript(forceReload = false) {
     const oldScripts = Array.from(document.querySelectorAll('script[data-turnstile-api],script[src*="challenges.cloudflare.com/turnstile"]'));
     if (forceReload) oldScripts.forEach(node => { try { node.remove(); } catch {} });
     const existing = !forceReload ? oldScripts.find(Boolean) : null;
-    const done = () => window.turnstile ? resolve(window.turnstile) : reject(new Error('Turnstile 对象未就绪'));
+    let settled = false;
+    let timeoutId = null;
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+      fn(value);
+    };
+    const done = () => window.turnstile ? finish(resolve, window.turnstile) : finish(reject, new Error('Turnstile 接口加载超时'));
+    const failed = () => finish(reject, new Error('Turnstile 脚本加载失败'));
+    timeoutId = setTimeout(done, 4200);
     if (existing) {
       existing.addEventListener('load', done, { once:true });
-      existing.addEventListener('error', () => reject(new Error('Turnstile 脚本加载失败')), { once:true });
-      setTimeout(done, 12000);
+      existing.addEventListener('error', failed, { once:true });
       return;
     }
     const script = document.createElement('script');
@@ -111,9 +128,8 @@ function loadTurnstileScript(forceReload = false) {
     script.defer = true;
     script.dataset.turnstileApi = '1';
     script.onload = done;
-    script.onerror = () => reject(new Error('Turnstile 脚本加载失败'));
+    script.onerror = failed;
     document.head.appendChild(script);
-    setTimeout(done, 15000);
   }).catch(error => {
     turnstileApiPromise = null;
     throw error;
@@ -121,7 +137,7 @@ function loadTurnstileScript(forceReload = false) {
   return turnstileApiPromise;
 }
 function ensureTurnstileApi() {
-  return loadTurnstileScript(false).catch(() => loadTurnstileScript(true));
+  return loadTurnstileScript(false);
 }
 
 
@@ -640,6 +656,7 @@ const AUTO_REFRESH_MS = 10 * 60 * 1000;
 let autoRefreshTimer = null;
 let autoRefreshRunning = false;
 let lastAutoRefreshAt = Date.now();
+let autoRefreshVisibilityBound = false;
 
 function isEditingElement(el = document.activeElement) {
   if (!el) return false;
@@ -665,6 +682,7 @@ function currentRouteCanAutoRefresh() {
     || hash === '#/admin/registration-keys'
     || hash === '#/admin/settings'
     || hash === '#/admin/help-settings'
+    || hash === '#/admin/help'
     || hash.startsWith('#/admin/analytics')
     || hash.startsWith('#/domain/');
 }
@@ -689,12 +707,30 @@ async function autoRefreshCurrentData() {
   }
 }
 
+function scheduleAutoRefresh(delay = AUTO_REFRESH_MS) {
+  if (autoRefreshTimer) clearTimeout(autoRefreshTimer);
+  if (window.__storageAutoRefreshTimer) clearTimeout(window.__storageAutoRefreshTimer);
+  const safeDelay = Math.max(1000, Number(delay) || AUTO_REFRESH_MS);
+  autoRefreshTimer = setTimeout(async () => {
+    try { await autoRefreshCurrentData(); }
+    finally { scheduleAutoRefresh(AUTO_REFRESH_MS); }
+  }, safeDelay);
+  window.__storageAutoRefreshTimer = autoRefreshTimer;
+}
+
 function startAutoRefresh() {
-  if (autoRefreshTimer) return;
   lastAutoRefreshAt = Date.now();
-  autoRefreshTimer = setInterval(autoRefreshCurrentData, AUTO_REFRESH_MS);
+  scheduleAutoRefresh(AUTO_REFRESH_MS);
+  if (autoRefreshVisibilityBound) return;
+  autoRefreshVisibilityBound = true;
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && Date.now() - lastAutoRefreshAt >= AUTO_REFRESH_MS) autoRefreshCurrentData();
+    if (document.hidden) return;
+    const elapsed = Date.now() - lastAutoRefreshAt;
+    if (elapsed >= AUTO_REFRESH_MS) {
+      autoRefreshCurrentData().finally(() => scheduleAutoRefresh(AUTO_REFRESH_MS));
+    } else {
+      scheduleAutoRefresh(AUTO_REFRESH_MS - elapsed);
+    }
   });
 }
 
@@ -773,21 +809,163 @@ function openModal(title, subtitle, content, size = '') {
   applyI18n(modalRoot);
 }
 async function api(path, options = {}) {
-  const opts = { method: options.method || 'GET', headers: { ...(options.headers || {}) }, credentials: 'same-origin' };
+  const method = String(options.method || 'GET').toUpperCase();
+  const opts = { method, headers: { ...(options.headers || {}) }, credentials: 'same-origin' };
   if (options.body !== undefined) {
     opts.headers['content-type'] = 'application/json';
     opts.body = JSON.stringify(options.body);
   }
-  const res = await fetch(path, opts);
-  let data;
-  try { data = await res.json(); } catch { data = { ok:false, message:`HTTP ${res.status}` }; }
-  if (!res.ok || data.ok === false) {
-    const error = new Error(data.message || '请求失败');
-    error.code = data.code;
-    error.details = data.details;
+  const requestOnce = async () => {
+    const res = await fetch(path, opts);
+    const contentType = String(res.headers.get('content-type') || '');
+    let data = null;
+    if (contentType.includes('application/json')) {
+      try { data = await res.json(); } catch {}
+    } else {
+      const text = await res.text().catch(() => '');
+      data = { ok:false, message:text && text.length < 500 ? text : '' };
+    }
+    data ||= { ok:false };
+    if (!res.ok || data.ok === false) {
+      const ray = res.headers.get('cf-ray');
+      let message = data.message || `HTTP ${res.status}`;
+      if (res.status === 403 && !data.code) {
+        message = `请求被 Cloudflare 安全策略暂时拦截（HTTP 403）${ray ? `，Ray ID：${ray}` : ''}。请稍后重试、关闭代理或刷新页面后再操作。`;
+      }
+      const error = new Error(message || '请求失败');
+      error.code = data.code;
+      error.details = data.details;
+      error.status = res.status;
+      error.ray = ray || '';
+      throw error;
+    }
+    return data;
+  };
+  try { return await requestOnce(); }
+  catch (error) {
+    if (['GET','HEAD'].includes(method) && [403,502,503,504].includes(Number(error.status)) && !options.__retried) {
+      await new Promise(resolve => setTimeout(resolve, 350));
+      return api(path, { ...options, __retried:true });
+    }
     throw error;
   }
-  return data;
+}
+
+function humanVerificationHtml(scene, extraClass = '') {
+  return `<div class="human-verification ${attr(extraClass)}" data-human-verification="${attr(scene)}">
+    <div class="human-verification-status muted">正在准备人机验证…</div>
+    <div class="human-turnstile-slot"></div>
+    <div class="human-image-slot" hidden>
+      <div class="image-captcha-row">
+        <input class="image-captcha-answer" autocomplete="off" spellcheck="false" placeholder="请输入图形中的字符" aria-label="图形验证码">
+        <button class="image-captcha-picture" type="button" title="点击刷新图形验证码"><span>加载中…</span></button>
+      </div>
+      <div class="image-captcha-actions"><span class="muted">看不清可点击图片刷新</span><button type="button" class="link-button" data-try-turnstile hidden>尝试 Turnstile</button></div>
+    </div>
+  </div>`;
+}
+
+function humanSceneState(scene) {
+  if (!state.humanChallenges[scene]) state.humanChallenges[scene] = { method:'', challengeId:'', root:null, action:'' };
+  return state.humanChallenges[scene];
+}
+
+async function loadImageCaptcha(root, scene) {
+  const record = humanSceneState(scene);
+  const picture = root.querySelector('.image-captcha-picture');
+  const input = root.querySelector('.image-captcha-answer');
+  const status = root.querySelector('.human-verification-status');
+  record.method = 'image';
+  record.root = root;
+  record.challengeId = '';
+  root.querySelector('.human-turnstile-slot').innerHTML = '';
+  root.querySelector('.human-image-slot').hidden = false;
+  if (picture) { picture.disabled = true; picture.innerHTML = '<span>正在生成…</span>'; }
+  if (input) input.value = '';
+  if (status) status.textContent = '当前使用图形验证';
+  try {
+    const result = await api(state.config?.turnstile?.captchaEndpoint || '/api/auth/captcha/challenge', { method:'POST', body:{ scene } });
+    record.challengeId = String(result.challengeId || '');
+    if (picture) picture.innerHTML = result.imageSvg || '<span>验证码生成失败</span>';
+  } catch (error) {
+    if (picture) picture.innerHTML = '<span>生成失败，点击重试</span>';
+    if (status) status.textContent = error.message;
+  } finally {
+    if (picture) picture.disabled = false;
+  }
+}
+
+async function switchHumanToImage(root, scene, reason = '') {
+  if (reason) {
+    const status = root.querySelector('.human-verification-status');
+    if (status) status.textContent = `${reason}，已切换图形验证`;
+  }
+  await loadImageCaptcha(root, scene);
+}
+
+async function mountHumanVerification(selector, scene, action) {
+  const root = document.querySelector(selector);
+  if (!root) return;
+  const mode = humanVerificationMode();
+  const record = humanSceneState(scene);
+  record.root = root;
+  record.action = action || scene;
+  const picture = root.querySelector('.image-captcha-picture');
+  picture?.addEventListener('click', () => loadImageCaptcha(root, scene));
+  const tryTurnstile = root.querySelector('[data-try-turnstile]');
+  tryTurnstile?.addEventListener('click', async () => {
+    root.querySelector('.human-image-slot').hidden = true;
+    try { await mountTurnstile(`${selector} .human-turnstile-slot`, action, { scene, allowFallback:mode === 'turnstile_fallback', root }); }
+    catch (error) { await switchHumanToImage(root, scene, error.message); }
+  });
+  if (mode === 'image') return loadImageCaptcha(root, scene);
+  if (!hasTurnstileSiteKey()) {
+    if (mode === 'turnstile_fallback') return switchHumanToImage(root, scene, 'Turnstile Site Key 未配置');
+    root.querySelector('.human-verification-status').textContent = 'Turnstile Site Key 未配置，当前设置为仅使用 Turnstile';
+    return;
+  }
+  try {
+    await mountTurnstile(`${selector} .human-turnstile-slot`, action, { scene, allowFallback:mode === 'turnstile_fallback', root });
+    if (mode === 'turnstile_fallback') {
+      const status = root.querySelector('.human-verification-status');
+      if (status) status.innerHTML = '优先使用 Turnstile　<button type="button" class="link-button" data-use-image>Turnstile 无法使用？切换图形验证</button>';
+      status?.querySelector('[data-use-image]')?.addEventListener('click', () => switchHumanToImage(root, scene, '已手动切换').catch(error => toast(error.message, 'error')));
+    }
+  } catch (error) {
+    if (mode === 'turnstile_fallback') await switchHumanToImage(root, scene, error.message);
+    else {
+      const status = root.querySelector('.human-verification-status');
+      if (status) status.textContent = error.message;
+    }
+  }
+}
+
+async function humanVerificationPayload(scene) {
+  const record = humanSceneState(scene);
+  if (record.method === 'image') {
+    const answer = String(record.root?.querySelector('.image-captcha-answer')?.value || '').trim();
+    if (!record.challengeId || !answer) throw new Error('请输入图形验证码');
+    return { captchaChallengeId:record.challengeId, captchaAnswer:answer };
+  }
+  return { turnstileToken:await stableTurnstileToken(scene) };
+}
+
+async function resetHumanVerification(scene) {
+  const record = humanSceneState(scene);
+  if (record.method === 'image' && record.root) return loadImageCaptcha(record.root, scene);
+  resetTurnstile();
+}
+
+async function recoverHumanVerification(scene, error) {
+  const record = humanSceneState(scene);
+  const code = String(error?.code || '');
+  const turnstileFailure = code.startsWith('TURNSTILE_') || /Turnstile|人机验证接口|验证组件/i.test(String(error?.message || ''));
+  if (humanVerificationMode() === 'turnstile_fallback' && record.root && record.method !== 'image' && turnstileFailure) {
+    await switchHumanToImage(record.root, scene, 'Turnstile 无法使用');
+    return true;
+  }
+  await resetHumanVerification(scene);
+  return false;
 }
 
 function applyTheme() {
@@ -1030,6 +1208,7 @@ async function route() {
   if (hash.startsWith('#/admin/analytics')) return renderAdminAnalytics();
   if (hash === '#/admin/settings') return renderAdminSettings();
   if (hash === '#/admin/help-settings') return renderAdminHelpSettings();
+  if (hash === '#/admin/help') return renderAdminHelpCenter();
 
   return renderNotFound();
 }
@@ -1203,7 +1382,7 @@ function bindAuthAgreementState(formSelector, buttonSelector = 'button[type="sub
   sync();
 }
 
-const REMEMBERED_LOGIN_KEY = 'storage_remembered_login_v86';
+const REMEMBERED_LOGIN_KEY = 'storage_remembered_login_v88';
 function loadRememberedLogin() {
   try {
     const value = JSON.parse(localStorage.getItem(REMEMBERED_LOGIN_KEY) || 'null');
@@ -1246,7 +1425,7 @@ async function renderLogin() {
             <label class="login-check"><input name="remember" type="checkbox"> <span>记住我</span></label>
             <button type="button" id="forgot-password" class="login-link-btn">忘记密码？</button>
           </div>
-          ${hasTurnstileSiteKey() ? '<div class="turnstile-holder"><div id="turnstile-box"></div></div>' : '<div class="notice small turnstile-missing">人机验证未显示：请检查 TURNSTILE_SITE_KEY 是否配置。</div>'}
+          ${humanVerificationHtml('login', 'turnstile-holder')}
           ${authAgreementHtml('agreeTerms')}
           <button class="btn primary login-submit" type="submit" disabled>登录账户</button>
         </form>
@@ -1255,7 +1434,7 @@ async function renderLogin() {
         <p class="login-feedback-row"><span>出现问题？</span><a href="https://mailform.flore.top" target="_blank" rel="noopener">点击反馈</a></p>
       </section>
     </main>`;
-  if (hasTurnstileSiteKey()) await mountTurnstile('#turnstile-box', turn.actionLogin || 'login');
+  await mountHumanVerification('[data-human-verification="login"]', 'login', turn.actionLogin || 'login');
   bindAgreementLinks();
   bindAuthAgreementState('#login-form', '.login-submit');
   const rememberedLogin = loadRememberedLogin();
@@ -1284,9 +1463,9 @@ async function renderLogin() {
     const f = new FormData(e.currentTarget);
     try {
       if (f.get('agreeTerms') !== 'on') throw new Error('请先阅读并同意服务协议');
-      const token = await stableTurnstileToken('login');
+      const verification = await humanVerificationPayload('login');
       const result = await api('/api/auth/login', { method:'POST', body:{
-        identity:f.get('identity'), password:f.get('password'), remember:f.get('remember') === 'on', turnstileToken:token,
+        identity:f.get('identity'), password:f.get('password'), remember:f.get('remember') === 'on', ...verification,
       }});
       state.me = result.user;
       if (f.get('remember') === 'on') saveRememberedLogin(f.get('identity'), f.get('password'));
@@ -1298,8 +1477,8 @@ async function renderLogin() {
       }
       go(result.user.role === 'admin' ? '#/admin' : '#/apply');
     } catch (error) {
-      toast(error.message, 'error');
-      resetTurnstile();
+      const switched = await recoverHumanVerification('login', error);
+      toast(switched ? `${error.message}，已自动切换图形验证，请重新提交` : error.message, 'error');
       btn.disabled = document.querySelector('#login-form input[name=\"agreeTerms\"]')?.checked ? false : true;
     }
   });
@@ -1314,15 +1493,15 @@ async function renderRegister() {
       <label class="field"><span>用户名</span><input name="username" required></label>
       <label class="field"><span>手机号（选填）</span><input name="phone" type="tel" inputmode="tel" placeholder="请输入手机号"></label>
       <label class="field"><span>邮箱${state.config?.registration?.emailVerificationEnabled ? '' : '（选填）'}</span><input name="email" type="email" inputmode="email" placeholder="请输入邮箱" ${state.config?.registration?.emailVerificationEnabled ? 'required' : ''}></label>
-      ${state.config?.registration?.emailVerificationEnabled ? '<label class="field wide"><span>邮箱验证码</span><div class="email-code-row"><input name="emailVerificationCode" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" required placeholder="请输入 6 位验证码"><button type="button" class="btn soft" id="send-email-code">发送验证码</button></div><em>验证码会发送到上方邮箱，请先完成邮箱填写。</em></label>' : ''}
+      ${state.config?.registration?.emailVerificationEnabled ? `<label class="field wide"><span>邮箱验证码</span><div class="email-code-row"><input name="emailVerificationCode" ${/^[0-9]+$/.test(String(state.config?.registration?.emailCodeCharset || '0123456789')) ? 'inputmode="numeric"' : 'inputmode="text"'} minlength="${attr(Number(state.config?.registration?.emailCodeLength || 6))}" maxlength="${attr(Number(state.config?.registration?.emailCodeLength || 6))}" required placeholder="请输入 ${esc(Number(state.config?.registration?.emailCodeLength || 6))} 位验证码"><button type="button" class="btn soft" id="send-email-code">发送验证码</button></div><em>验证码会发送到上方邮箱；请按邮件中的字符原样输入。</em></label>` : ''}
       ${state.config?.registration?.requireRegistrationKey ? '<label class="field wide"><span>注册码</span><input name="registrationCode" required placeholder="请输入注册码"><em>管理员开启注册码后必须填写有效注册码。</em></label>' : ''}
       <label class="field wide"><span>密码</span><input name="password" type="password" required minlength="8"><em>手机号和邮箱至少填写一个；密码至少 8 位。</em></label>
-      ${hasTurnstileSiteKey() ? '<div class="wide"><div id="turnstile-box"></div></div>' : '<div class="notice small wide turnstile-missing">人机验证未显示：请检查 TURNSTILE_SITE_KEY 是否配置。</div>'}
+      <div class="wide">${humanVerificationHtml('register')}</div>
       <div class="wide">${authAgreementHtml('agreeTerms')}</div>
       <button class="btn primary wide" type="submit" disabled>注册</button>
     </form>
     <p class="auth-link">已有账户？ <a href="#/login">登录</a></p>`);
-  if (hasTurnstileSiteKey()) await mountTurnstile('#turnstile-box', turn.actionRegister || 'register');
+  await mountHumanVerification('[data-human-verification="register"]', 'register', turn.actionRegister || 'register');
   bindAgreementLinks();
   bindAuthAgreementState('#register-form', 'button[type="submit"]');
   document.querySelector('#send-email-code')?.addEventListener('click', async event => {
@@ -1365,7 +1544,7 @@ async function renderRegister() {
       return;
     }
     try {
-      body.turnstileToken = await stableTurnstileToken('register');
+      Object.assign(body, await humanVerificationPayload('register'));
       const result = await api('/api/auth/register', { method:'POST', body });
       if (result.pendingActivation) {
         toast('注册成功，请等待管理员启用账户', 'success');
@@ -1374,8 +1553,8 @@ async function renderRegister() {
       }
       go('#/login');
     } catch (error) {
-      toast(error.message, 'error');
-      resetTurnstile();
+      const switched = await recoverHumanVerification('register', error);
+      toast(switched ? `${error.message}，已自动切换图形验证，请重新提交` : error.message, 'error');
       btn.disabled = document.querySelector('#register-form input[name=\"agreeTerms\"]')?.checked ? false : true;
     }
   });
@@ -1435,7 +1614,7 @@ function shell(title, content) {
         ${!isAdmin ? nav('#/messages','✉','消息中心') : ''}
         ${nav('#/logs','↩','操作日志')}
         ${nav('#/help','☸','帮助中心')}
-        ${isAdmin ? `<hr>${nav('#/admin','▦','管理概览')}${nav('#/admin/analytics','◌','分析页')}${nav('#/admin/applications','✓','域名审核')}${nav('#/admin/users','♟','用户管理')}${nav('#/admin/registration-keys','⌘','注册密钥')}${nav('#/admin/settings','⚙','管理员设置')}${nav('#/messages','✉','消息中心')}${nav('#/admin/help-settings','☸','帮助中心设置')}` : ''}
+        ${isAdmin ? `<hr>${nav('#/admin','▦','管理概览')}${nav('#/admin/analytics','◌','分析页')}${nav('#/admin/applications','✓','域名审核')}${nav('#/admin/users','♟','用户管理')}${nav('#/admin/registration-keys','⌘','注册密钥')}${nav('#/admin/settings','⚙','管理员设置')}${nav('#/messages','✉','消息中心')}${nav('#/admin/help-settings','☸','帮助中心设置')}${nav('#/admin/help','🛠','管理员帮助中心')}` : ''}
       </nav>
       <div class="side-user"><strong>${esc(state.me.username)}</strong><small>${isAdmin ? '管理员' : '普通用户'}</small><button id="logout" class="btn ghost">退出登录</button></div>
     </aside>
@@ -1548,7 +1727,7 @@ function showRegisterDomainModal() {
         <strong id="full-preview">请选择根域名并输入前缀</strong>
       </div>
       <div class="dns-note"><span>ℹ</span><strong>管理员审核通过后，您才可以设置 DNS 解析</strong><button type="button" id="dns-help">查看完整说明 ›</button></div>
-      ${state.config.turnstile.enabledApply ? '<div id="turnstile-box" class="turnstile-holder"></div>' : ''}
+      ${humanVerificationHtml('apply', 'turnstile-holder')}
       <div class="modal-actions"><button type="button" class="btn secondary" data-cancel>取消</button><button id="confirm-register" class="btn primary" type="submit" disabled>确认注册</button></div>
     </form>
   `, 'wide');
@@ -1566,18 +1745,18 @@ function showRegisterDomainModal() {
   prefix.addEventListener('input', refresh);
   document.querySelector('[data-cancel]').addEventListener('click', closeModal);
   document.querySelector('#dns-help').addEventListener('click', showRegisterGuideModal);
-  if (state.config.turnstile.enabledApply) mountTurnstile('#turnstile-box', state.config.turnstile.actionApply);
+  mountHumanVerification('[data-human-verification="apply"]', 'apply', state.config.turnstile.actionApply || 'domain_apply');
   document.querySelector('#domain-register-form').addEventListener('submit', async e => {
     e.preventDefault();
     submit.disabled = true;
     try {
-      await api('/api/applications', { method:'POST', body:{ prefix:prefix.value, suffix:suffix.value, turnstileToken:turnstileToken() } });
+      await api('/api/applications', { method:'POST', body:{ prefix:prefix.value, suffix:suffix.value, ...(await humanVerificationPayload('apply')) } });
       closeModal();
       toast('域名已提交，请等待管理员审核通过后再配置 DNS 解析', 'success');
       await renderApply();
     } catch (error) {
-      toast(error.message, 'error');
-      resetTurnstile();
+      const switched = await recoverHumanVerification('apply', error);
+      toast(switched ? `${error.message}，已自动切换图形验证，请重新提交` : error.message, 'error');
       submit.disabled = false;
     }
   });
@@ -2431,6 +2610,7 @@ function messageListHtml(messages, admin = false) {
       ${!admin && !m.isRead && !sentByMe ? `<button class="btn small soft" data-read-message="${attr(m.id)}">标为已读</button>` : ''}
       ${!admin && sentByMe && canWithdrawMessage(localMessage) ? `<button class="btn small danger-soft" data-withdraw-message="${attr(m.id)}">撤销</button>` : ''}
       ${!admin && !sentByMe ? `<button class="btn small secondary" data-reply-message="${attr(m.id)}">回复</button>` : ''}
+      ${!admin ? `<button class="btn small danger-soft" data-delete-own-message="${attr(m.id)}">删除</button>` : ''}
       ${admin && sentByMe && m.status === 'sent' && canWithdrawMessage(localMessage) ? `<button class="btn small danger-soft" data-withdraw-message="${attr(m.id)}">撤销</button>` : ''}
       ${admin && m.status === 'sent' ? `<button class="btn small soft" data-copy-message="${attr(m.id)}" data-copy-status="template">转为模板</button><button class="btn small secondary" data-copy-message="${attr(m.id)}" data-copy-status="draft">转为草稿</button>` : ''}
       ${admin && m.status !== 'sent' ? `<button class="btn small primary" data-send-message="${attr(m.id)}">发送草稿</button><button class="btn small soft" data-edit-message="${attr(m.id)}">编辑草稿</button>` : ''}
@@ -2562,12 +2742,20 @@ async function renderMessageCenter(preset = null) {
     const sent = adminMessages.filter(m => m.status === 'sent');
     shell('消息中心', `
       <section class="message-hero card"><div><h2>消息中心</h2><p>${isAdmin ? '管理员可以在这里发送系统通知、保存草稿和维护常用模板。' : '用户可以在这里查看系统通知、管理员消息、域名处理结果和维护提醒。'}</p></div><div class="message-count"><strong>${mine.unread || 0}</strong><span>未读</span></div></section>
-      <section class="card"><div class="section-head"><div><h2>我的消息</h2><p>系统消息、管理员通知和域名处理结果都会显示在这里。</p></div><div class="message-toolbar"><button class="btn small soft" id="mark-selected-read">批量已读</button><button class="btn small secondary" id="mark-all-read">全部已读</button>${isAdmin ? '<button class="btn small primary" id="reply-selected-message">回复</button>' : ''}</div></div><div class="message-list">${messageListHtml(inbox, false)}</div></section>
+      <section class="card"><div class="section-head"><div><h2>我的消息</h2><p>系统消息、管理员通知和域名处理结果都会显示在这里。</p></div><div class="message-toolbar"><button class="btn small secondary" id="select-all-messages">全选</button><button class="btn small danger-soft" id="delete-selected-messages">删除所选</button><button class="btn small soft" id="mark-selected-read">批量已读</button><button class="btn small secondary" id="mark-all-read">全部已读</button>${isAdmin ? '<button class="btn small primary" id="reply-selected-message">回复</button>' : ''}</div></div><div class="message-list">${messageListHtml(inbox, false)}</div></section>
       ${isAdmin ? `<section class="card"><div class="section-head"><div><h2>发送消息</h2><p>可以发送给全部用户、普通用户、管理员或指定用户。</p></div></div>${messageComposeForm(users, preset || {})}</section>
       <section class="card"><div class="section-head"><div><h2>草稿信息</h2><p>未发送的消息可以继续编辑或直接发送。</p></div></div><div class="message-list">${messageListHtml(drafts, true)}</div></section>
       <section class="card"><div class="section-head"><div><h2>消息模板</h2><p>保存常用通知，下次可以直接套用。</p></div></div><div class="message-list">${messageListHtml(templates, true)}</div></section>
       <section class="card"><div class="section-head"><div><h2>已发送消息</h2><p>查看已发送的系统通知和用户阅读情况。</p></div></div><div class="message-list">${messageListHtml(sent, true)}</div></section>` : ''}
     `);
+    async function deleteOwnMessages(ids) {
+      const cleanIds = Array.from(new Set((ids || []).filter(Boolean)));
+      if (!cleanIds.length) { toast('请选择要删除的消息', 'error'); return; }
+      if (!confirm(`确认从自己的消息中心删除所选 ${cleanIds.length} 条消息？删除后不会影响其他用户。`)) return;
+      await api('/api/messages/delete-batch', { method:'POST', body:{ ids:cleanIds } });
+      toast(`已删除 ${cleanIds.length} 条消息`, 'success');
+      await renderMessageCenter();
+    }
     async function markMessagesRead(ids) {
       const cleanIds = Array.from(new Set((ids || []).filter(Boolean)));
       if (!cleanIds.length) { toast('请选择要标记的消息', 'error'); return; }
@@ -2583,6 +2771,19 @@ async function renderMessageCenter(preset = null) {
     document.querySelectorAll('[data-withdraw-message]').forEach(btn => btn.addEventListener('click', () => {
       const msg = inbox.find(m => m.id === btn.dataset.withdrawMessage);
       showWithdrawMessageModal(msg);
+    }));
+    document.querySelector('#select-all-messages')?.addEventListener('click', event => {
+      const checks = [...document.querySelectorAll('.message-check')];
+      const shouldCheck = checks.some(item => !item.checked);
+      checks.forEach(item => { item.checked = shouldCheck; });
+      event.currentTarget.textContent = shouldCheck ? '取消全选' : '全选';
+    });
+    document.querySelector('#delete-selected-messages')?.addEventListener('click', async () => {
+      const ids = [...document.querySelectorAll('.message-check:checked')].map(x => x.value);
+      await deleteOwnMessages(ids);
+    });
+    document.querySelectorAll('[data-delete-own-message]').forEach(btn => btn.addEventListener('click', async () => {
+      await deleteOwnMessages([btn.dataset.deleteOwnMessage]);
     }));
     document.querySelector('#mark-selected-read')?.addEventListener('click', async () => {
       const ids = [...document.querySelectorAll('.message-check:checked')].map(x => x.value);
@@ -3249,7 +3450,7 @@ async function renderAdminUsers() {
 async function showCreateUserModal() {
   const defaultQuota = domainConfig().defaultQuota || 3;
   const turn = state.config.turnstile || {};
-  const useTurnstile = !!turn.siteKey;
+  const useHumanVerification = true;
   openModal(tr('添加用户'), tr('管理员手动创建用户账号'), `
     <form id="create-user-form" class="modal-form">
       <div class="form-grid">
@@ -3261,14 +3462,14 @@ async function showCreateUserModal() {
         <label class="field"><span>${tr('状态')}</span><select name="status"><option value="active">${tr('启用')}</option><option value="disabled">${tr('禁用')}</option></select></label>
         <label class="field wide"><span>${tr('域名额度')}</span><input name="domainQuota" type="number" min="0" step="1" value="${attr(defaultQuota)}"><em>管理员可以单独设置该用户额度。</em></label>
         <div class="wide">${authAgreementHtml('agreeTerms')}</div>
-        ${useTurnstile ? '<div class="wide"><div id="admin-create-user-turnstile" class="turnstile-holder"></div></div>' : `<div class="notice wide danger">${tr('Turnstile 未配置，无法显示人机验证。请先到“注册设置”填写 Site Key / Secret。')}</div>`}
+        <div class="wide">${humanVerificationHtml('admin_create')}</div>
       </div>
       <div class="modal-actions"><button class="btn secondary" type="button" data-cancel>${tr('取消')}</button><button class="btn primary is-disabled" type="submit" disabled>${tr('创建用户')}</button></div>
     </form>`, 'wide');
   document.querySelector('[data-cancel]').addEventListener('click', closeModal);
   bindAgreementLinks();
   bindAuthAgreementState('#create-user-form');
-  if (useTurnstile) await mountTurnstile('#admin-create-user-turnstile', turn.actionRegister || 'register');
+  await mountHumanVerification('[data-human-verification="admin_create"]', 'admin_create', turn.actionRegister || 'register');
   document.querySelector('#create-user-form').addEventListener('submit', async e => {
     e.preventDefault();
     const btn = e.submitter;
@@ -3291,14 +3492,14 @@ async function showCreateUserModal() {
       return;
     }
     try {
-      body.turnstileToken = await stableTurnstileToken('register');
+      Object.assign(body, await humanVerificationPayload('admin_create'));
       await api('/api/admin/users', { method:'POST', body });
       closeModal();
       toast(tr('用户已创建'), 'success');
       renderAdminUsers();
     } catch (error) {
-      toast(error.message, 'error');
-      resetTurnstile();
+      const switched = await recoverHumanVerification('admin_create', error);
+      toast(switched ? `${error.message}，已自动切换图形验证，请重新提交` : error.message, 'error');
       btn.disabled = false;
     }
   });
@@ -3325,6 +3526,57 @@ function showUserModal(u) {
   });
 }
 
+
+
+const ADMIN_HELP_CATEGORIES_V88 = [{"key":"deploy","title":"部署、版本与缓存","items":[{"q":"覆盖文件后页面仍是旧功能","symptom":"GitHub 已上传新文件，但页面按钮、刷新周期或版本号没有变化。","cause":"浏览器、Cloudflare Cache 或旧 Service Worker 仍在返回旧 app.js/index.html。","steps":["核对覆盖文件路径必须完全一致，例如 public/app.js。","打开页面源代码确认 app.js?v=88；再在开发者工具 Network 查看实际响应。","执行 Ctrl+F5，必要时清除此站点数据；Cloudflare 有缓存规则时清除对应 URL。","确认 Workers 部署记录使用了最新 Git 提交。"],"prevention":"每次修改 index.html 中静态资源版本号，并只上传明确列出的覆盖文件。"},{"q":"前端按钮出现但点击接口 404","symptom":"页面展示了新按钮，点击后提示接口不存在。","cause":"public/app.js 已更新，但 src/index.ts 仍是旧版本，前后端版本不一致。","steps":["在 Network 中确认失败路径。","检查 GitHub 的 src/index.ts 是否包含对应路由。","重新部署 Worker 后再强制刷新前端。"],"prevention":"同一功能涉及前后端时，必须一次覆盖全部列出的文件。"},{"q":"部署后整个页面白屏","symptom":"页面只剩空白或一直显示正在加载。","cause":"app.js 语法错误、第三方头部 JS 抛错，或旧 index.html 引用了不存在的资源。","steps":["打开浏览器 Console，复制第一条红色错误。","临时清空管理员设置中的自定义头部 JS。","使用 node --check public/app.js 检查语法。","确认 index.html 中脚本路径和文件名正确。"],"prevention":"高风险自定义 JS 修改前导出配置；部署前执行静态语法检查。"},{"q":"Workers 部署成功但接口仍返回旧版本","symptom":"系统状态版本、错误文案或行为没有变化。","cause":"流量命中了另一个 Worker、旧自定义域路由，或 Pages/Workers 项目不是当前仓库。","steps":["在 Cloudflare 路由中确认自定义域绑定的 Worker 名称。","查看响应头和 Workers 日志，确认请求进入目标部署。","核对 GitHub 集成的仓库、分支和最新提交 SHA。"],"prevention":"给生产、预览 Worker 使用明确不同名称和 APP_ENVIRONMENT。"},{"q":"静态资源加载 404","symptom":"Network 中 app.js、styles.css 或 favicon 返回 404。","cause":"public 目录结构被压平上传，或 wrangler assets.directory 指向错误目录。","steps":["确认仓库中路径为 public/app.js，而不是根目录 app.js。","检查 wrangler.jsonc 的 assets 配置。","直接访问 /app.js?v=88 验证是否存在。"],"prevention":"覆盖包保留目录结构，不使用会丢失路径的上传方式。"},{"q":"部署后样式错乱但功能正常","symptom":"按钮无样式、弹窗超宽或移动端布局异常。","cause":"styles.css 未覆盖、缓存未刷新，或只更新 app.js 引入了新 class。","steps":["检查 Network 中 styles.css 的版本和状态码。","确认本次覆盖清单是否包含 public/styles.css。","清缓存后重新加载，并检查 CSS 是否被安全策略拦截。"],"prevention":"新增界面 class 时同步评估 styles.css 是否必须修改。"},{"q":"预览环境正常、生产环境失败","symptom":"同一提交在 workers.dev 可用，在正式域名报错。","cause":"生产绑定、Secret、KV/D1 或主机名校验与预览环境不同。","steps":["分别查看两个环境的变量和绑定。","检查 TURNSTILE_EXPECTED_HOSTNAME、APP_ENVIRONMENT 和 Cookie 域。","在生产 Workers 日志中按 Ray ID 查请求。"],"prevention":"维护生产/预览配置清单，Secret 变更后都要重新部署。"},{"q":"GitHub 自动部署没有触发","symptom":"提交已推送但 Cloudflare 没有新部署记录。","cause":"GitHub 集成断开、监听分支错误或构建失败。","steps":["查看 Cloudflare Deployments 的构建日志。","确认生产分支是 main。","重新授权 GitHub 集成或手动重试部署。"],"prevention":"重要发布同时记录提交 SHA 和 Cloudflare 部署 ID。"}]},{"key":"d1","title":"D1 数据库与表结构","items":[{"q":"提示 no such table","symptom":"接口报 no such table: 某表。","cause":"ensureSchema 尚未执行、D1 绑定指向空数据库，或部署使用了错误数据库。","steps":["确认 wrangler.jsonc 的 D1 binding 名称是 DB。","访问一次公开配置接口触发 schema 初始化。","在 D1 Console 查询 sqlite_master 确认表是否存在。","不要直接在错误数据库手工建表。"],"prevention":"生产数据库 ID 固定后不要随意替换；部署后做一次健康检查。"},{"q":"提示 no such column","symptom":"接口报 no such column: controlled_at、sent_at 等。","cause":"旧数据库缺少新字段，ALTER TABLE 初始化未成功或代码查询早于迁移。","steps":["查看 Workers 日志中 ensureSchema 的 ALTER 错误。","在 D1 执行 PRAGMA table_info(表名)。","按代码中的字段类型补列，随后重新请求。"],"prevention":"每版新增字段都放入幂等 ALTER 列表，并在测试库模拟旧结构。"},{"q":"注册码提示 registration_keys.name NOT NULL","symptom":"添加注册码时报 NOT NULL constraint failed: registration_keys.name。","cause":"历史表保留 name TEXT NOT NULL，而新版主要写 code。","steps":["确认部署的是兼容旧列的 src/index.ts。","执行 PRAGMA table_info(registration_keys) 保存结果。","再次创建注册码，代码应同时填 name 和 code。"],"prevention":"不要直接删除旧列；使用列探测兼容，迁移后再考虑重建表。"},{"q":"注册码提示 registration_keys.key_hash NOT NULL","symptom":"添加注册码时报 key_hash 不能为空。","cause":"更早版本的表要求保存哈希，新版本若只写明文 code 就会失败。","steps":["确认 v88 的创建逻辑会读取 PRAGMA 并写入 SHA-256 key_hash。","检查 key_hash 字段类型和额外 CHECK 约束。","部署后重新创建，不要重复点击旧失败请求。"],"prevention":"对所有无默认值的 NOT NULL 历史列做动态填充测试。"},{"q":"提示 UNIQUE constraint failed","symptom":"注册用户、域名或注册码时出现 UNIQUE 约束错误。","cause":"用户名、邮箱、手机号、完整域名或注册码已存在，可能是软删除数据仍占唯一值。","steps":["根据错误中的表和列查询重复记录。","确认是否为用户重复提交，而不是接口重试。","需要释放值时先评估关联记录，再执行受控清理。"],"prevention":"前端提交按钮立即禁用，后端在写入前做重复检查并保留唯一约束。"},{"q":"提示 CHECK constraint failed","symptom":"修改状态时触发 CHECK constraint。","cause":"旧表限制了 status 允许值，而新代码写入了旧约束不认识的状态。","steps":["PRAGMA table_info 不能显示 CHECK，查看 sqlite_master 中建表 SQL。","使用兼容状态映射或重建表迁移。","迁移前导出数据库。"],"prevention":"状态枚举新增时检查历史建表 SQL，避免直接依赖新字符串。"},{"q":"D1_ERROR database is locked","symptom":"并发操作时偶发数据库锁定。","cause":"大量写事务、批量操作或定时任务与人工操作同时写同一表。","steps":["稍后重试一次，避免连续点击。","检查 Cron 是否在同一时间批量清理。","将大批量操作拆分，减少长事务。"],"prevention":"写接口保持短事务，批处理限制条数并设置幂等键。"},{"q":"日期查询多一天或少一天","symptom":"日志、消息或到期时间与本地日期不一致。","cause":"D1 datetime(now) 使用 UTC，前端按本地时区显示，字符串解析方式不一致。","steps":["检查数据库原始时间是否无 Z。","前端统一把 D1 时间按 UTC 解析再转本地。","筛选日期时明确使用 UTC 或本地边界。"],"prevention":"所有时间字段统一存 UTC，并在接口返回 ISO 格式。"},{"q":"ALTER TABLE 重复执行报 duplicate column","symptom":"日志出现 duplicate column name，但功能可能仍正常。","cause":"幂等初始化每次尝试添加字段，D1 对已存在字段报错。","steps":["确认错误被 catch 且后续初始化继续。","只要接口最终正常，可视为兼容日志。","若初始化被中断，改为逐条执行并忽略重复列。"],"prevention":"迁移代码区分可忽略错误与真正失败，避免一个字段阻断全部迁移。"},{"q":"删除用户后残留关联数据","symptom":"用户已删，但消息已读、验证码、域名或日志仍残留。","cause":"历史版本删除流程没有覆盖新表，或外键未启用级联。","steps":["按 user_id 查询 sessions、domain_applications、message_reads、user_message_deletions。","使用后台删除流程，不直接删 users 单表。","清理前导出相关记录。"],"prevention":"每新增用户关联表，同步更新 hardDeleteUser 清理清单。"}]},{"key":"auth","title":"登录、会话与 HTTP 403","items":[{"q":"偶发 HTTP 403 且没有业务错误码","symptom":"红色提示只有 HTTP 403，刷新后可能恢复。","cause":"Cloudflare WAF、Bot Fight、自定义规则或来源校验拦截，请求甚至未进入业务代码。","steps":["记录提示中的 Ray ID 和发生时间。","到 Cloudflare Security Events 按 Ray ID 查询命中规则。","确认没有把 /api/* 的 POST 误设为 Managed Challenge。","临时跳过可信管理路径后复测。"],"prevention":"WAF 规则按接口风险分层，管理接口依赖登录权限而不是全站挑战。"},{"q":"403 ORIGIN_MISMATCH","symptom":"POST 请求被提示来源不匹配。","cause":"Origin/Host 在反向代理、自定义域或预览域之间不一致。","steps":["查看请求 Origin、Host、X-Forwarded-Host。","确认正式域名没有跨域嵌入或从旧域名调用 API。","使用 v88 放宽后的同源判断，并保持 HTTPS。"],"prevention":"前后端部署在同一站点；切换域名时同步更新书签和嵌入链接。"},{"q":"登录成功后立刻回到登录页","symptom":"登录接口成功，但 /api/auth/me 返回 401。","cause":"Cookie 被浏览器阻止、域名/协议变化，或 session 写入失败。","steps":["检查响应 Set-Cookie 和后续请求 Cookie。","允许站点 Cookie，关闭无痕或隐私插件测试。","查询 sessions 中是否有新记录及 expires_at。"],"prevention":"始终使用 HTTPS，同一域名完成登录和后续操作。"},{"q":"账户禁用后仍能登录但不能操作","symptom":"用户看到“你的账户已被禁用”，域名页面被限制。","cause":"这是当前设计：普通用户可登录查看提示和帮助，但不能注册/管理域名。","steps":["在用户管理核对 status。","查看操作日志确认谁禁用了账号。","确认恢复后重新登录或刷新会话。"],"prevention":"禁用用户时填写原因并通过消息中心通知。"},{"q":"管理员账户被禁用无法登录","symptom":"管理员登录直接 403。","cause":"出于安全考虑，禁用管理员不允许保留后台访问。","steps":["使用其他管理员恢复该账号。","没有其他管理员时在 D1 谨慎把目标管理员 status 改回 active。","恢复后立即检查禁用原因和密码安全。"],"prevention":"至少保留两个受控管理员账号，并启用强密码。"},{"q":"登录失败次数过多被锁定","symptom":"正确密码也提示暂时锁定。","cause":"失败登录阈值触发 KV 锁定，可能由误输或撞库造成。","steps":["等待提示的锁定时间。","检查 IP 和账号近期失败日志。","确认密码后再试，避免继续延长锁定。"],"prevention":"设置合理阈值，管理员定期检查异常 IP。"},{"q":"记住我没有自动填充","symptom":"下次打开登录页没有用户名或密码。","cause":"浏览器清除了 localStorage、使用了不同域名/隐私模式，或未勾选记住我。","steps":["确认登录时勾选并成功登录。","检查 Application→Local Storage 是否有 storage_remembered_login_v86。","不要在无痕模式测试。"],"prevention":"公共设备不要使用；重要安全场景建议仅记用户名不记密码。"},{"q":"管理员 IP 白名单把自己挡住","symptom":"管理员账号密码正确但提示 IP 不允许。","cause":"安全设置中的白名单不包含当前出口 IP，或 IPv4/IPv6 发生变化。","steps":["从 Cloudflare 日志确认 client IP。","由其他管理员更新白名单。","紧急恢复时在 KV 安全设置中移除错误值。"],"prevention":"录入 IPv4 和可能使用的 IPv6，并保留第二管理通道。"},{"q":"CSRF 或跨站请求被拒绝","symptom":"从第三方页面、旧域名或 iframe 操作时 POST 失败。","cause":"系统要求同源 Cookie 和 Origin，跨站写请求不受支持。","steps":["直接打开正式站点后操作。","不要通过第三方网页嵌入管理后台。","检查浏览器扩展是否改写 Origin。"],"prevention":"管理操作只在正式域名完成，避免开放跨域凭据。"}]},{"key":"captcha","title":"Turnstile 与图形验证","items":[{"q":"Turnstile 显示“系统接口加载超时”","symptom":"组件连续超时，登录或注册无法继续。","cause":"Cloudflare challenge 域名被网络、DNS、广告拦截器或地区链路阻断。","steps":["使用默认“优先 Turnstile，失败后图形验证”模式。","等待自动切换，或点击“切换图形验证”。","关闭广告拦截、换网络后再测试 Turnstile。"],"prevention":"不要把系统设置为仅 Turnstile，除非已确认所有用户网络可访问。"},{"q":"Turnstile Site Key 未配置","symptom":"验证区域提示 Site Key 缺失。","cause":"Worker 变量和后台设置都没有有效 Site Key。","steps":["在 Turnstile 控制台创建站点。","把公开 Site Key 填入后台或 TURNSTILE_SITE_KEY。","Secret 必须另存为 Worker Secret。"],"prevention":"Site Key 可公开，Secret 绝不能写入 GitHub。"},{"q":"Turnstile Secret 未配置","symptom":"前端验证成功，后端却返回 503。","cause":"只有 Site Key，没有 TURNSTILE_SECRET 或后台 Secret。","steps":["在 Worker Secrets 添加 TURNSTILE_SECRET。","重新部署后测试。","回退模式下可临时使用图形验证。"],"prevention":"变量变更后确认生产部署确实包含新 Secret。"},{"q":"TURNSTILE_ACTION_MISMATCH","symptom":"组件完成后提交仍提示 Action 不匹配。","cause":"前端 actionLogin/actionRegister/actionApply 与 Worker 期望值不同。","steps":["查看公开配置返回的 action。","核对 TURNSTILE_ACTION_* 变量。","清缓存，避免旧 app.js 发送旧 Action。"],"prevention":"Action 修改必须前后端一起发布。"},{"q":"TURNSTILE_HOSTNAME_MISMATCH","symptom":"预览域或新域名无法验证。","cause":"TURNSTILE_EXPECTED_HOSTNAME 固定为另一个主机名。","steps":["正式环境填正式域名。","预览环境单独配置或不设置严格主机名。","在 Turnstile 域名允许列表加入实际域名。"],"prevention":"生产和预览使用独立 Widget 或独立环境变量。"},{"q":"图形验证码一直提示不正确","symptom":"肉眼输入正确仍失败。","cause":"验证码一次性、绑定 IP 和场景；代理换 IP、重复提交或过期都会失效。","steps":["点击图片生成新验证码。","关闭会切换出口 IP 的代理。","只提交一次，不要多标签页共用同一图。"],"prevention":"验证码失败后前端必须自动刷新，避免再次使用旧 challenge。"},{"q":"图形验证码背景不显示","symptom":"设置了上传背景但验证码仍是随机背景。","cause":"背景模式未选“上传”、图片超过限制、隐藏字段未保存或 KV 仍保留旧设置。","steps":["重新选择小于 500KB 的 PNG/JPG/WebP/GIF。","确认预览出现后保存注册设置。","重新生成验证码，不要观察旧图片。"],"prevention":"使用横向低体积图片，上传替换后立即做一次登录测试。"},{"q":"验证码字符难以辨认","symptom":"字符颜色与背景接近、线条过多或字符集包含相似字符。","cause":"背景、干扰线和字符集设置过于激进。","steps":["线条范围先设 2-4。","字符集移除 0/O、1/I/l 等相似字符。","改用随机背景或关闭背景对比。"],"prevention":"每次更改后在桌面和手机各生成 10 次抽查可读性。"}]},{"key":"email","title":"邮件验证码与 Resend","items":[{"q":"发送测试邮件提示 Resend API Key 未配置","symptom":"后台点测试立即失败。","cause":"RESEND_API_KEY Secret 不存在或未随当前部署生效。","steps":["在 Worker 变量和机密中新增 RESEND_API_KEY。","值应为新生成的 re_ 开头密钥。","保存并重新部署 Worker。"],"prevention":"密钥只存 Secret，不截图、不提交 GitHub。"},{"q":"Resend 返回 403","symptom":"日志显示 forbidden、domain not verified 或 sender not allowed。","cause":"发件邮箱域名未验证，或 API Key 权限不包含该域。","steps":["确认 Resend Domains 中 flore.top 为 Verified。","EMAIL_FROM 使用该已验证域下地址。","创建 Sending access 且允许该域的 API Key。"],"prevention":"域名/DNS 变化后重新检查 Resend 验证状态。"},{"q":"Resend 返回 429","symptom":"短时间大量验证码邮件被限流。","cause":"用户频繁点击、攻击流量或账户发送额度限制。","steps":["检查验证码发送冷却是否为 60 秒。","查看 Resend Logs 和 Metrics。","对异常 IP 提高风控或临时封禁。"],"prevention":"发送接口同时做 IP、邮箱和全局频率限制。"},{"q":"邮件显示发送成功但收不到","symptom":"Resend 接受请求，收件箱没有邮件。","cause":"邮件进入垃圾箱、收件服务器延迟/拒收，或地址输入错误。","steps":["在 Resend Logs 查看 delivered/bounced 状态。","检查垃圾邮件和邮箱规则。","用另一主流邮箱交叉测试。"],"prevention":"配置 SPF、DKIM，正文避免过度营销和可疑链接。"},{"q":"注册验证码总是无效","symptom":"收到邮件但提交提示验证码错误。","cause":"输入长度/字符集设置已改、旧验证码失效，或用户把相似字符看错。","steps":["重新发送并使用最新一封。","按当前设置的位数完整输入。","验证码不区分大小写，但不能有空格。"],"prevention":"修改位数或字符集后提醒用户重新获取验证码。"},{"q":"邮箱验证码过期太快或太慢","symptom":"用户来不及输入，或安全窗口过长。","cause":"有效期设置与用户网络、邮件延迟不匹配。","steps":["一般设置 10 分钟。","检查邮件实际投递延迟。","超时后必须重新发送，不手工复用。"],"prevention":"有效期控制在 5-15 分钟并限制错误尝试次数。"},{"q":"自定义邮件变量没有替换","symptom":"邮件正文直接显示 {{code}}。","cause":"变量拼写错误、使用了全角括号或模板字段未经过渲染。","steps":["对照后台变量说明逐字使用。","保存后发送注册模板测试邮件。","不要在 HTML 属性中拼接未知脚本。"],"prevention":"模板变更先测试；保留纯文本版本作为兜底。"},{"q":"特定环境禁止发信","symptom":"测试提示当前 environment 不在允许列表。","cause":"APP_ENVIRONMENT 与 emailAllowedEnvironments 不匹配。","steps":["查看后台显示的当前运行环境。","允许列表填 production、preview 或 *。","确认大小写和逗号分隔。"],"prevention":"生产建议只允许 production；预览使用独立测试收件人。"},{"q":"固定密送收件人泄露风险","symptom":"用户担心验证码被发给管理员。","cause":"选择了“注册用户 + 固定邮箱密送”，系统会 BCC 复制验证码。","steps":["没有审计需求时改为“仅注册用户邮箱”。","清空固定收件邮箱。","检查 Resend Logs 验证实际收件人。"],"prevention":"验证码属于敏感信息，默认不要密送给任何固定邮箱。"}]},{"key":"users","title":"注册码与用户管理","items":[{"q":"注册码创建失败","symptom":"点击添加后出现 D1 NOT NULL 或字段约束错误。","cause":"registration_keys 是历史表结构，含 name/key_hash 等强制字段。","steps":["部署 v88 后重试。","保存 PRAGMA table_info(registration_keys)。","仍失败时把完整错误和表结构用于补充兼容。"],"prevention":"升级前在复制的旧库上测试创建、使用、删除全流程。"},{"q":"注册码提示已用完","symptom":"有效注册码却不能注册。","cause":"used_count 已达到 max_uses。","steps":["后台查看已使用/可用次数。","确认是否被测试账号消耗。","需要继续使用时新建注册码，不直接改历史用量。"],"prevention":"为单次邀请设置 maxUses=1；批量邀请按人数预留。"},{"q":"注册码过期","symptom":"提交提示已过期。","cause":"expires_at 早于当前 UTC 时间。","steps":["后台查看有效期。","重新创建一个新码。","确认日期控件时区是否正确。"],"prevention":"短期活动码写清截止时间，长期码可留空。"},{"q":"注册码角色不符合预期","symptom":"使用注册码后用户变成管理员或普通用户。","cause":"注册码 role 字段决定注册角色，创建时选择错误。","steps":["立即禁用错误账号。","核对注册码权限身份。","删除高权限码并重新创建普通用户码。"],"prevention":"管理员注册码极少使用，创建前强制二次确认。"},{"q":"管理员添加用户失败","symptom":"表单提交失败或人机验证不通过。","cause":"邮箱/手机号重复、密码不足、图形验证码过期或 Turnstile 故障。","steps":["看具体错误码。","确认邮箱或手机号至少一个且唯一。","刷新验证后重新提交一次。"],"prevention":"后台创建同样执行风控和唯一约束，不绕过验证。"},{"q":"用户额度修改后页面没变化","symptom":"后台保存了新额度，用户仍显示旧数字。","cause":"用户页面缓存或 /api/applications 未重新加载。","steps":["让用户手动刷新或重新登录。","后台重新打开用户确认数据库值。","检查是否编辑了正确用户。"],"prevention":"额度变化通过消息中心通知，并让前端重新拉取 quota。"},{"q":"无法删除用户","symptom":"后台删除时报仍有域名或外部 DNS 清理异常。","cause":"用户有关联域名、消息、会话，删除流程需要级联处理。","steps":["先处理用户所有有效域名。","导出需要保留的日志。","使用后台删除，不直接执行 DELETE users。"],"prevention":"删除前展示影响范围并二次确认。"},{"q":"邮箱或手机号被旧账号占用","symptom":"新用户提示联系方式已存在，但列表找不到活跃账号。","cause":"禁用/软删除账号仍保留唯一字段。","steps":["按邮箱/手机号在 D1 查询所有状态。","确认旧账号身份后恢复或安全清理。","不要直接改成空值而不记录原因。"],"prevention":"账号注销使用完整硬删除流程，避免残留唯一值。"}]},{"key":"domain","title":"域名申请、审核与生命周期","items":[{"q":"申请一直待审核","symptom":"用户提交成功但长时间无变化。","cause":"审核模式为人工，或命中风险规则等待管理员。","steps":["在域名审核按 pending 筛选。","核对前缀、用户和风险信息。","批准或拒绝并填写留言。"],"prevention":"设置消息提醒，避免待审核队列积压。"},{"q":"批准域名失败","symptom":"管理员点击批准后报 Cloudflare 或数据库错误。","cause":"状态写入、到期时间、Zone 配置或旧 CHECK 约束异常。","steps":["先看完整错误，不要连续点击。","确认根域名仍启用且 Zone ID 正确。","查看 application 当前状态，防止部分成功。"],"prevention":"批准操作设计为幂等，并记录审计日志。"},{"q":"管控后用户还能删除 DNS","symptom":"用户不能新增编辑，但仍可删除记录。","cause":"这是管控设计：保留清理 DNS 和申请删除域名的能力。","steps":["确认 controlled_at 已写入。","测试新增/编辑应被 403，删除应允许。","需要完全冻结时应禁用域名而不是管控。"],"prevention":"管理员操作前区分“管控”和“禁用”。"},{"q":"禁用域名后 DNS 消失","symptom":"取消禁用后原记录没有自动恢复。","cause":"禁用会删除 Cloudflare DNS，系统不会保存可直接恢复的外部记录。","steps":["从操作日志或备份找原 DNS。","取消禁用后由用户重新添加。","必要时管理员协助重建。"],"prevention":"禁用前提示不可自动恢复并记录 DNS 快照。"},{"q":"删除申请占用额度","symptom":"用户提交删除后仍显示额度已用。","cause":"管理员批准前域名仍归用户，防止删除中重复占用前缀。","steps":["及时处理删除审核。","12 小时内允许用户撤销。","批准后刷新额度。"],"prevention":"对待删除队列设置管理员提醒。"},{"q":"新根域名没有出现在注册页","symptom":"后台已添加但用户选择框看不到。","cause":"enabled 或 allowRegister 未开启、未保存、排序数据异常或缓存旧。","steps":["确认启用解析和允许申请都勾选。","保存 DNS 配置并强制刷新。","查看 /api/config suffixes 是否包含它。"],"prevention":"新增后立即用无痕窗口做申请页验收。"},{"q":"显示名称留空仍出现默认文字","symptom":"注册选择框显示“免费二级域名”。","cause":"前端仍是旧 app.js，或后端返回了历史 label。","steps":["检查 app.js?v=88。","在 DNS 配置把显示名称真正清空并保存。","查看公开配置中的 label。"],"prevention":"留空时只渲染 suffix，不在前端补默认名称。"},{"q":"域名到期时间异常","symptom":"批准后到期日不符合设置。","cause":"用户类型有效期、默认有效天数或批准时间解析不一致。","steps":["确认用户是否白名单。","检查 domain 设置中的对应有效期。","查看 expires_at 原始 UTC 值。"],"prevention":"有效期规则变更只影响新批准/续期时要明确说明。"}]},{"key":"dns","title":"Cloudflare DNS 与多根域名","items":[{"q":"测试所有根域名部分失败","symptom":"批量测试显示某些成功、某些失败。","cause":"每个根域名的 Zone ID、Token、账号权限独立，失败不代表全部配置错误。","steps":["逐条查看失败原因。","确认失败根域名属于哪个 Cloudflare 账号。","为跨账号根域名单独填 API Token。"],"prevention":"每次新增根域名都运行全量测试。"},{"q":"Cloudflare Authentication error","symptom":"创建或删除 DNS 返回认证错误。","cause":"Token 失效、权限不足或 Token 不属于该 Zone。","steps":["在 Cloudflare API Tokens 验证 Token。","至少授予 Zone:DNS Edit 和 Zone:Zone Read。","确认 Token 资源范围包含目标 Zone。"],"prevention":"使用最小权限 Token，并记录所属账号/Zone。"},{"q":"Zone ID 错误","symptom":"测试提示找不到 Zone 或记录写入错误区域。","cause":"复制了 Account ID、其他域名 Zone ID 或包含空格。","steps":["在目标域名 Overview 复制 Zone ID。","核对 32 位标识。","重新保存并只测试该根域名。"],"prevention":"显示名称、根域名、Zone ID 三项一起核对。"},{"q":"DNS 记录已存在","symptom":"新增时 Cloudflare 返回 duplicate/record already exists。","cause":"同名同类型记录已由外部创建，D1 尚未同步。","steps":["在 Cloudflare DNS 页面搜索完整记录。","决定导入、删除外部记录或改主机名。","不要重复点击新增。"],"prevention":"尽量只通过本系统管理其授权子域记录。"},{"q":"删除 DNS 本地成功但 Cloudflare 仍存在","symptom":"页面记录消失，Cloudflare 控制台还有记录。","cause":"外部删除请求因权限/网络失败，但 best-effort 流程清理了本地记录。","steps":["查看操作日志中的 warning。","在 Cloudflare 手动删除残留记录。","修复 Token 后重新测试。"],"prevention":"高风险删除应定期对账 D1 与 Cloudflare。"},{"q":"CNAME 无法开启代理","symptom":"代理开关被强制关闭或 Cloudflare 拒绝。","cause":"目标/记录类型不支持代理，或后缀策略关闭默认代理。","steps":["确认类型是 A、AAAA 或 CNAME。","MX/TXT 必须仅 DNS。","检查目标是否允许 Cloudflare 代理。"],"prevention":"前端只对可代理类型展示有效开关。"},{"q":"MX 记录添加失败","symptom":"邮箱配置时提示类型不允许或优先级错误。","cause":"根域名 allowedTypes 未包含 MX、全局关闭 MX，或内容格式不符合要求。","steps":["开启允许 MX。","把 MX 加入该后缀允许类型。","填写合法邮件服务器和优先级。"],"prevention":"邮件域名变更前先记录原 MX/TXT。"},{"q":"TXT 验证长期不生效","symptom":"第三方平台查不到 TXT。","cause":"主机名填成完整域导致重复后缀，或 DNS 缓存未过期。","steps":["在系统中核对生成的完整记录名。","使用 dig/nslookup 查询权威结果。","等待 TTL 后再验证。"],"prevention":"输入框明确主机记录规则，避免重复拼接根域。"},{"q":"多个根域名顺序不正确","symptom":"注册页排列与后台卡片不同。","cause":"registerOrder 重复、未保存，或拖动后浏览器旧缓存。","steps":["拖动后确认编号自动重排。","保存 DNS 配置。","公开配置按 registerOrder 验证。"],"prevention":"保持顺序值唯一连续，拖动后自动编号。"},{"q":"Cloudflare 81044/记录不存在","symptom":"编辑或删除时提示指定记录不存在。","cause":"记录已在 Cloudflare 外部删除，D1 仍保存旧 cf_record_id。","steps":["在 Cloudflare 控制台确认记录。","清理本地旧记录或重新创建。","检查是否有人绕过系统操作。"],"prevention":"限制直接改 Cloudflare，并定期做同步检查。"}]},{"key":"messages","title":"消息中心与帮助中心","items":[{"q":"新注册用户看到注册前的群发消息","symptom":"8 月注册用户看到了 7 月全体通知。","cause":"旧查询只按 target_type 匹配，没有比较用户 created_at。","steps":["部署 v88 的 src/index.ts。","用新账号验证只显示 sent_at 不早于 created_at 的全体/角色消息。","直接发给该用户的消息仍应显示。"],"prevention":"所有广播查询加入用户创建时间边界。"},{"q":"用户删除消息后管理员仍能看到","symptom":"用户消息中心消失，但管理员已发送列表还在。","cause":"用户删除是个人隐藏记录，不是全局撤回或物理删除。","steps":["这是预期行为。","管理员需要全局删除时使用管理员消息列表删除。","撤销仅在发送后允许时间内使用。"],"prevention":"界面文案明确“从自己的消息中心删除”。"},{"q":"批量删除没有反应","symptom":"选择消息后点击删除仍提示未选择。","cause":"勾选框来自不同区域、页面重渲染后选择丢失，或旧前端。","steps":["只选择“我的消息”区域的复选框。","确认 app.js?v=88。","重新全选后执行并通过二次确认。"],"prevention":"批量操作按钮与选择范围放在同一卡片。"},{"q":"未读数字与列表不一致","symptom":"侧边栏数字未及时减少。","cause":"标记已读后徽标缓存尚未刷新或消息被其他标签处理。","steps":["刷新消息中心。","确认 read-batch 请求成功。","关闭重复标签页再测试。"],"prevention":"操作成功后立即重新请求消息列表并更新徽标。"},{"q":"管理员群发对象选错","symptom":"普通用户收到管理员内部消息。","cause":"targetType/targetRole 在发送表单中选错。","steps":["需要时尽快撤销。","查看已发送消息的目标。","重新发送正确范围并说明。"],"prevention":"发送前二次确认展示最终目标人数/角色。"},{"q":"用户回复没有进入管理员视图","symptom":"用户点回复后管理员找不到。","cause":"回复作为新消息发送给原发送者/管理员，筛选区域可能不同。","steps":["查看管理员“我的消息”和未读徽标。","按发送人和时间查找。","确认原消息 sender_user_id 存在。"],"prevention":"客服对话统一使用站内消息，不混用外部表单。"},{"q":"帮助中心搜索不到管理员新增内容","symptom":"后台已保存问题，用户搜索无结果。","cause":"帮助内容未保存到 KV、分类为空，或用户端缓存旧 config。","steps":["后台重新打开确认内容存在。","查看 /api/config help。","强制刷新用户页面。"],"prevention":"每次编辑后用关键词在用户帮助中心验收。"},{"q":"恢复默认帮助内容覆盖自定义问题","symptom":"点击恢复默认后自定义 FAQ 丢失。","cause":"恢复操作设计为整体替换。","steps":["从之前导出的配置恢复 help。","没有备份时只能从历史 KV/代码重建。","恢复默认前先复制或导出。"],"prevention":"高风险按钮二次确认并定期导出设置。"}]},{"key":"settings","title":"Workers KV、设置与导入导出","items":[{"q":"保存设置后刷新恢复旧值","symptom":"提示保存成功但再次打开是旧配置。","cause":"APP_KV 绑定错误、写入失败，或另一个环境读取不同 KV。","steps":["确认 binding 名称 APP_KV。","查看 Worker 日志是否 put 失败。","对比生产/预览 KV namespace ID。"],"prevention":"生产和预览使用明确独立或明确共享的 KV。"},{"q":"导入配置后系统异常","symptom":"导入 JSON 后页面或 DNS 设置错误。","cause":"导入文件来自旧版本、字段格式不兼容或含错误密钥信息。","steps":["先恢复导入前备份。","只导入可信 JSON。","逐组检查注册、DNS、安全设置。"],"prevention":"每次导入前自动导出当前配置并标注版本。"},{"q":"Secret 在后台显示为空","symptom":"RESEND/Turnstile/CF Token 已配置，但输入框为空。","cause":"安全设计不会回显 Secret，留空代表保持原值。","steps":["看“已配置”提示。","不要为查看而重新粘贴。","仅需要替换时输入新值。"],"prevention":"密钥状态显示布尔值，不向前端返回明文。"},{"q":"Worker 变量优先级造成后台值无效","symptom":"后台改了发件邮箱或 Site Key，实际仍用旧值。","cause":"代码优先读取 Worker 环境变量/Secret。","steps":["检查 EMAIL_FROM、TURNSTILE_SITE_KEY 等变量。","决定统一由变量还是后台管理。","修改变量后重新部署。"],"prevention":"在后台说明环境变量优先级，避免两处长期配置不同。"},{"q":"设置表单提示参数格式错误","symptom":"无法保存邮箱、颜色、URL 或范围。","cause":"前端校验发现格式或上下限不合法。","steps":["根据具体提示修正。","颜色使用 #RRGGBB。","邮箱一行一个，数值在允许范围内。"],"prevention":"保存前做前后端双重验证。"},{"q":"APP_KV 未绑定","symptom":"接口报 KV undefined 或读取设置失败。","cause":"wrangler 没有 kv_namespaces binding，或名称不是 APP_KV。","steps":["在 Cloudflare Worker Bindings 添加 KV。","变量名必须与 Env 接口一致。","重新部署并访问 /api/config。"],"prevention":"新环境建立时使用绑定检查清单。"},{"q":"配置文件包含敏感信息","symptom":"导出的 JSON 被公开上传。","cause":"部分后台保存的 Token 可能包含在完整设置导出中。","steps":["立即撤销泄露密钥。","删除公开文件和 Git 历史。","重新生成 Resend/Cloudflare/Turnstile Secret。"],"prevention":"配置备份按机密文件保存，不放公共仓库。"}]},{"key":"automation","title":"定时任务、日志与维护","items":[{"q":"定时任务从未运行","symptom":"后台开启自动化但没有日志。","cause":"Cloudflare Worker 没配置 Cron Trigger，仅保存设置不会自动触发。","steps":["在 Triggers 添加 Cron。","表达式与后台预期一致。","等待一次周期后查日志。"],"prevention":"部署清单同时包含代码、绑定和触发器。"},{"q":"日志保留天数设置无效","symptom":"设置 7 天却只看到更短时间。","cause":"旧代码硬编码 4 天清理，或 Cron 使用旧部署。","steps":["确认 v88 cleanup 使用 auditRetentionDays。","检查系统状态和当前部署版本。","不要手工运行旧清理脚本。"],"prevention":"保留天数只从一个设置来源读取。"},{"q":"自动清理误删风险","symptom":"域名刚过期就被清理 DNS。","cause":"保护天数过短、时区误判或任务条件错误。","steps":["立即暂停 cleanupExpiredDns。","核对 expires_at 和当前 UTC。","从备份/日志恢复 DNS。"],"prevention":"至少设置 7 天保护期并先用只报告模式验收。"},{"q":"任务失败没有管理员通知","symptom":"Cron 日志报错但消息中心无告警。","cause":"notifyAdminOnFailure 关闭，或写消息本身失败。","steps":["开启失败推送。","确认至少有 active 管理员。","检查 system_messages 写入错误。"],"prevention":"告警路径定期用测试失败演练。"},{"q":"操作日志增长过快","symptom":"D1 容量快速增加、查询变慢。","cause":"保留天数过长、重复刷新或高频攻击产生大量日志。","steps":["设置合理保留天数。","分析高频 action/IP。","为重复失败事件做限流。"],"prevention":"日志用于审计而非无限保存，长期归档到外部存储。"},{"q":"系统状态显示旧版本","symptom":"状态卡片仍是 v86/v81。","cause":"前端或后端版本字符串未同步，或缓存旧文件。","steps":["查看 /api/admin/system-status 原始响应。","确认 src/index.ts 与 app.js 都更新为 v88。","强制刷新。"],"prevention":"每次发布统一更新一个版本常量。"}]},{"key":"security","title":"安全、性能、备份与恢复","items":[{"q":"API Key 曾发到聊天或截图","symptom":"完整 re_ 或 Cloudflare Token 已公开。","cause":"任何看到内容的人都可能调用接口。","steps":["立即撤销旧 Key。","生成最小权限新 Key。","更新 Worker Secret 并重新部署。","检查服务日志是否有异常调用。"],"prevention":"密钥永不发聊天、工单截图或 GitHub。"},{"q":"疑似账号被盗","symptom":"出现陌生登录、DNS 修改或消息发送。","cause":"密码泄露、共享账号或会话 Cookie 被窃取。","steps":["立即禁用账号。","清理该用户 sessions。","重置密码并检查操作日志/IP。","核对并恢复 DNS。"],"prevention":"管理员不共用账号，定期轮换密码和密钥。"},{"q":"接口被高频刷导致性能下降","symptom":"429、D1 延迟或 KV 写入激增。","cause":"机器人重复登录、验证码、注册或 DNS 请求。","steps":["按路径/IP 查看日志。","提高相应 rateLimit。","在 WAF 对异常来源做限速而非全站挑战。"],"prevention":"限流分场景，避免正常用户被同一粗糙规则误伤。"},{"q":"D1 数据需要恢复","symptom":"误删用户、域名或消息。","cause":"硬删除不可从应用内撤销，需依赖备份。","steps":["立即停止相关写入。","使用 D1 Time Travel/备份能力恢复到新数据库。","对比并迁移需要的记录。","重新绑定前先测试。"],"prevention":"定期导出关键表并演练恢复流程。"},{"q":"Cloudflare DNS 与 D1 不一致","symptom":"系统显示记录和实际解析不同。","cause":"有人直接在 Cloudflare 修改，或 API 部分失败。","steps":["导出双方记录做 fqdn/type/content 对账。","决定以哪边为准。","修复 Token 后逐条同步。"],"prevention":"生产 DNS 修改统一走系统并保留审计。"},{"q":"页面加载慢","symptom":"首屏长时间加载或接口串行。","cause":"Turnstile 外部脚本超时、一次查询数据过多或网络不稳。","steps":["v88 让 Turnstile 懒加载并可回退图形验证码。","检查 Network 最慢请求。","管理员大列表限制数量并分页。"],"prevention":"外部依赖设超时和降级，不阻塞整个应用启动。"},{"q":"发布新版本前如何安全验收","symptom":"担心覆盖后影响生产用户。","cause":"直接在生产修改没有回滚点。","steps":["导出 KV 设置和 D1 备份。","在预览 Worker 使用复制数据库测试。","执行登录、注册、注册码、邮件、申请、DNS、消息七条主流程。","保留上一版覆盖包和提交 SHA。"],"prevention":"采用预览→小范围→生产的发布顺序，并记录验收结果。"}]}];
+
+function adminHelpItemHtml(item, index) {
+  const search = [item.q,item.symptom,item.cause,...(item.steps||[]),item.prevention].join(' ').toLowerCase();
+  return `<details class="admin-help-item" data-admin-help-item data-search="${attr(search)}">
+    <summary><span class="admin-help-number">${index + 1}</span><strong>${esc(item.q)}</strong></summary>
+    <div class="admin-help-answer">
+      <p><b>故障表现：</b>${esc(item.symptom)}</p>
+      <p><b>主要原因：</b>${esc(item.cause)}</p>
+      <div><b>处理步骤：</b><ol>${(item.steps || []).map(step => `<li>${esc(step)}</li>`).join('')}</ol></div>
+      <p class="admin-help-prevention"><b>预防措施：</b>${esc(item.prevention)}</p>
+    </div>
+  </details>`;
+}
+
+async function renderAdminHelpCenter() {
+  const total = ADMIN_HELP_CATEGORIES_V88.reduce((sum, category) => sum + category.items.length, 0);
+  shell('管理员帮助中心', `
+    <section class="message-hero card admin-help-hero"><div><h2>管理员帮助中心</h2><p>覆盖部署、D1、登录、验证、邮件、注册码、域名、DNS、消息、设置、定时任务、安全与恢复。每条均给出故障表现、具体原因、处理步骤和预防措施。</p></div><div class="message-count"><strong>${total}</strong><span>处理手册</span></div></section>
+    <section class="card admin-help-controls"><label class="field"><span>搜索问题或错误关键词</span><input id="admin-help-search" placeholder="例如：403、key_hash、Turnstile、Zone ID"></label><label class="field"><span>分类</span><select id="admin-help-category"><option value="all">全部分类</option>${ADMIN_HELP_CATEGORIES_V88.map(category => `<option value="${attr(category.key)}">${esc(category.title)}（${category.items.length}）</option>`).join('')}</select></label><div class="admin-help-match" id="admin-help-match">显示 ${total} 条</div></section>
+    <div id="admin-help-categories">${ADMIN_HELP_CATEGORIES_V88.map(category => `<section class="card admin-help-category" data-admin-help-category="${attr(category.key)}"><div class="section-head"><div><h2>${esc(category.title)}</h2><p>${category.items.length} 条专项处理方法</p></div><button class="btn small soft" type="button" data-expand-help="${attr(category.key)}">展开本类</button></div><div>${category.items.map(adminHelpItemHtml).join('')}</div></section>`).join('')}</div>
+  `);
+  const applyFilter = () => {
+    const keyword = String(document.querySelector('#admin-help-search')?.value || '').trim().toLowerCase();
+    const categoryKey = String(document.querySelector('#admin-help-category')?.value || 'all');
+    let shown = 0;
+    document.querySelectorAll('[data-admin-help-category]').forEach(section => {
+      const categoryMatch = categoryKey === 'all' || section.dataset.adminHelpCategory === categoryKey;
+      let categoryShown = 0;
+      section.querySelectorAll('[data-admin-help-item]').forEach(detail => {
+        const match = categoryMatch && (!keyword || String(detail.dataset.search || '').includes(keyword));
+        detail.hidden = !match;
+        if (match) { shown += 1; categoryShown += 1; }
+      });
+      section.hidden = categoryShown === 0;
+    });
+    const result = document.querySelector('#admin-help-match');
+    if (result) result.textContent = `显示 ${shown} 条`;
+  };
+  document.querySelector('#admin-help-search')?.addEventListener('input', applyFilter);
+  document.querySelector('#admin-help-category')?.addEventListener('change', applyFilter);
+  document.querySelectorAll('[data-expand-help]').forEach(button => button.addEventListener('click', () => {
+    const section = button.closest('[data-admin-help-category]');
+    const details = [...section.querySelectorAll('[data-admin-help-item]:not([hidden])')];
+    const open = details.some(detail => !detail.open);
+    details.forEach(detail => { detail.open = open; });
+    button.textContent = open ? '收起本类' : '展开本类';
+  }));
+}
 
 async function renderAdminHelpSettings() {
   shell('帮助中心设置', `<div class="loading-card">正在读取帮助内容…</div>`);
@@ -3891,12 +4143,23 @@ async function renderAdminSettings() {
           <label class="check"><input name="autoActivate" type="checkbox" ${yn(reg.autoActivate)}> 注册后自动启用账户 <em>关闭后新用户需要管理员启用。</em></label>
           <label class="check"><input name="requireRegistrationKey" type="checkbox" ${yn(reg.requireRegistrationKey)}> 开启注册码注册 <em>开启后注册页显示注册码输入框，必须填写有效注册码。</em></label>
           <label class="check"><input name="blockTempEmail" type="checkbox" ${yn(reg.blockTempEmail)}> 拦截临时邮箱注册 <em>用于减少垃圾账号。</em></label>
-          <div class="settings-section-heading wide"><span>02</span><div><h3>Turnstile 人机验证</h3><p>保护普通注册和管理员手动添加用户。</p></div></div>
-          <label class="check"><input name="turnstileRegisterEnabled" type="checkbox" ${yn(reg.turnstileRegisterEnabled)}> 注册启用 Turnstile 人机验证 <em>普通注册和管理员添加用户都会使用。</em></label>
+          <div class="settings-section-heading wide"><span>02</span><div><h3>Turnstile 人机验证</h3><p>配置 Turnstile 公钥和密钥；是否使用由下方“人机验证方式”统一控制，作用于登录、注册、域名申请和管理员添加用户。</p></div></div>
           <label class="field"><span>Turnstile Site Key</span><input name="turnstileSiteKey" value="${fieldValue(reg.turnstileSiteKey)}" placeholder="0x4..."><em>前台显示验证模块用；环境变量优先。</em></label>
           <label class="field"><span>Turnstile Secret Key</span><input name="turnstileSecret" type="password" value="" autocomplete="new-password" placeholder="${reg.turnstileSecretConfigured ? '已配置，留空保持不变' : '请输入 Secret Key'}"><em>密钥不会回显；留空保持原值。建议优先使用 Worker Secret。</em></label>
           <label class="field"><span>新注册账号默认状态</span><select name="defaultStatus"><option value="auto" ${reg.defaultStatus !== 'manual' ? 'selected' : ''}>自动启用</option><option value="manual" ${reg.defaultStatus === 'manual' ? 'selected' : ''}>需要人工审核</option></select><em>用于注册后的账号状态。</em></label>
-          <div class="settings-section-heading wide"><span>03</span><div><h3>注册频率与风险控制</h3><p>限制单 IP、失败次数、代理网络和每日域名申请量。</p></div></div>
+          <div class="settings-section-heading wide"><span>03</span><div><h3>图形验证设置</h3><p>Turnstile 无法加载时可自动回退到本地生成的一次性图形验证码。</p></div></div>
+          <label class="field wide"><span>人机验证方式</span><select name="humanVerificationMode"><option value="image" ${reg.humanVerificationMode === 'image' ? 'selected' : ''}>仅使用图形验证</option><option value="turnstile" ${reg.humanVerificationMode === 'turnstile' ? 'selected' : ''}>仅使用 Turnstile 验证</option><option value="turnstile_fallback" ${!reg.humanVerificationMode || reg.humanVerificationMode === 'turnstile_fallback' ? 'selected' : ''}>优先 Turnstile 验证，失败后使用图形验证（默认）</option></select><em>作用于登录、注册、域名申请和管理员添加用户。</em></label>
+          <label class="check"><input name="captchaBackgroundEnabled" type="checkbox" ${yn(reg.captchaBackgroundEnabled !== false)}> 开启图形验证码背景 <em>关闭后使用纯色浅色背景。</em></label>
+          <label class="field"><span>背景生成方式</span><select name="captchaBackgroundMode"><option value="random" ${reg.captchaBackgroundMode !== 'upload' ? 'selected' : ''}>随机生成背景</option><option value="upload" ${reg.captchaBackgroundMode === 'upload' ? 'selected' : ''}>使用上传背景</option></select><em>上传图仅保存在 Workers KV 设置中。</em></label>
+          <label class="field wide"><span>上传验证码背景</span><input id="captcha-background-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif"><input name="captchaBackgroundImage" id="captcha-background-data" type="hidden" value=""><em>建议横向图片，最大 500KB；重新上传才会覆盖原背景。</em><div id="captcha-background-preview" class="captcha-background-preview">${reg.captchaBackgroundMode === 'upload' ? '已配置上传背景；如需替换请重新选择图片。' : '当前使用随机背景。'}</div></label>
+          <label class="check"><input name="captchaNoiseLinesEnabled" type="checkbox" ${yn(reg.captchaNoiseLinesEnabled !== false)}> 开启随机干扰线条 <em>线条绘制在字符前方。</em></label>
+          <label class="field"><span>随机线条最少条数</span><input name="captchaNoiseLinesMin" type="number" min="0" max="20" value="${fieldValue(reg.captchaNoiseLinesMin ?? 2)}"></label>
+          <label class="field"><span>随机线条最多条数</span><input name="captchaNoiseLinesMax" type="number" min="0" max="20" value="${fieldValue(reg.captchaNoiseLinesMax ?? 5)}"></label>
+          <label class="field"><span>线条颜色方式</span><select name="captchaNoiseLineColorMode"><option value="random" ${reg.captchaNoiseLineColorMode !== 'fixed' ? 'selected' : ''}>随机颜色</option><option value="fixed" ${reg.captchaNoiseLineColorMode === 'fixed' ? 'selected' : ''}>固定颜色</option></select></label>
+          <label class="field"><span>固定线条颜色</span><input name="captchaNoiseLineFixedColor" type="color" value="${fieldValue(reg.captchaNoiseLineFixedColor || '#64748b')}"><em>仅选择固定颜色时生效。</em></label>
+          <label class="field wide"><span>图形验证码可用字符</span><input name="captchaCharset" value="${fieldValue(reg.captchaCharset || 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789')}" placeholder="ABCDEFG1234567@"><em>随机字符只会从这里生成；系统会自动去重和移除空格。</em></label>
+          <label class="field"><span>图形验证码字符数量</span><input name="captchaLength" type="number" min="3" max="8" step="1" value="${fieldValue(reg.captchaLength || 4)}"><em>允许 3-8 位。</em></label>
+          <div class="settings-section-heading wide"><span>04</span><div><h3>注册频率与风险控制</h3><p>限制单 IP、失败次数、代理网络和每日域名申请量。</p></div></div>
           <label class="field"><span>单 IP 最大注册账号数量</span><input name="maxAccountsPerIp" type="number" min="0" value="${fieldValue(reg.maxAccountsPerIp || 0)}"><em>0 表示不限制。</em></label>
           <label class="field"><span>同一 IP 注册冷却/分钟</span><input name="ipRegisterCooldownMinutes" type="number" min="0" value="${fieldValue(reg.ipRegisterCooldownMinutes || 0)}"><em>0 表示无冷却。</em></label>
           <label class="field"><span>单账号每日域名申请上限</span><input name="dailyDomainApplyLimit" type="number" min="0" value="${fieldValue(reg.dailyDomainApplyLimit || 0)}"><em>0 表示不限制。</em></label>
@@ -3904,27 +4167,30 @@ async function renderAdminSettings() {
           <label class="field"><span>注册失败封禁时长/分钟</span><input name="failedRegisterBanMinutes" type="number" min="0" value="${fieldValue(reg.failedRegisterBanMinutes || 0)}"><em>配合上方阈值使用。</em></label>
           <label class="check"><input name="emailVerificationEnabled" type="checkbox" ${yn(reg.emailVerificationEnabled)}> 注册邮箱验证开关 <em>开启后注册必须填写邮箱并通过邮件验证码。</em></label>
           <label class="check"><input name="blockVpnProxy" type="checkbox" ${yn(reg.blockVpnProxy)}> 拦截 VPN / 代理注册 <em>仅在 Worker 能读取可信代理风险字段时生效；未接入检测源时不会自动判断 VPN。</em></label>
-          <div class="settings-section-heading wide"><span>04</span><div><h3>邮件发送服务</h3><p>使用 Resend API 发送真实注册验证码邮件。</p></div></div>
+          <div class="settings-section-heading wide"><span>05</span><div><h3>邮件发送服务</h3><p>使用 Resend API 发送真实注册验证码邮件。</p></div></div>
           <label class="field"><span>Resend API Key</span><input name="emailApiKey" type="password" autocomplete="new-password" placeholder="${reg.emailApiKeyConfigured ? '已配置，留空保持不变' : 're_...'}"><em>建议使用 Worker Secret：RESEND_API_KEY；这里留空会保留原值。</em></label>
           <label class="field"><span>发件邮箱</span><input name="emailFrom" type="email" value="${fieldValue(reg.emailFrom || '')}" placeholder="noreply@example.com"><em>必须是 Resend 中已验证域名的邮箱，也可用 EMAIL_FROM 环境变量。</em></label>
           <label class="field"><span>发件名称</span><input name="emailFromName" value="${fieldValue(reg.emailFromName || '域名注册中心')}" placeholder="域名注册中心"><em>显示在收件箱的发件人名称。</em></label>
           <label class="field"><span>验证码有效期/分钟</span><input name="emailCodeExpiryMinutes" type="number" min="2" max="60" value="${fieldValue(reg.emailCodeExpiryMinutes || 10)}"><em>建议 5-15 分钟。</em></label>
+          <label class="field"><span>邮件验证码位数</span><input name="emailCodeLength" type="number" min="4" max="12" step="1" value="${fieldValue(reg.emailCodeLength || 6)}"><em>允许 4-12 位。</em></label>
+          <label class="field wide"><span>邮件验证码可用字符</span><input name="emailCodeCharset" value="${fieldValue(reg.emailCodeCharset || '0123456789')}" placeholder="ABCDEFG1234567"><em>随机验证码只会从这里生成；系统会去重并移除空格。</em></label>
           <label class="field"><span>允许发送的运行环境</span><input name="emailAllowedEnvironments" value="${fieldValue(reg.emailAllowedEnvironments || '*')}" placeholder="production,preview"><em>* 表示全部；当前环境：${esc(reg.emailRuntimeEnvironment || 'production')}。可用 Worker 变量 APP_ENVIRONMENT 指定环境名。</em></label>
           <label class="check"><input name="emailRegistrationSceneEnabled" type="checkbox" ${yn(reg.emailRegistrationSceneEnabled !== false)}> 启用注册验证码场景 <em>关闭后用户无法请求注册验证码邮件。</em></label>
           <label class="check"><input name="emailTestSceneEnabled" type="checkbox" ${yn(reg.emailTestSceneEnabled !== false)}> 启用管理员测试场景 <em>关闭后后台不能发送测试邮件。</em></label>
           <label class="field"><span>注册验证码收件对象</span><select name="emailRegistrationRecipientMode"><option value="user" ${reg.emailRegistrationRecipientMode !== 'user_bcc_fixed' ? 'selected' : ''}>仅注册用户邮箱</option><option value="user_bcc_fixed" ${reg.emailRegistrationRecipientMode === 'user_bcc_fixed' ? 'selected' : ''}>注册用户 + 固定邮箱密送</option></select><em>验证码始终发送给注册用户；固定邮箱使用 BCC，不向用户暴露。</em></label>
           <label class="field"><span>测试邮件收件对象</span><select name="emailTestRecipientMode"><option value="manual" ${reg.emailTestRecipientMode !== 'admin' && reg.emailTestRecipientMode !== 'fixed' ? 'selected' : ''}>测试时手动填写</option><option value="admin" ${reg.emailTestRecipientMode === 'admin' ? 'selected' : ''}>当前管理员邮箱</option><option value="fixed" ${reg.emailTestRecipientMode === 'fixed' ? 'selected' : ''}>固定收件邮箱</option></select><em>用于管理员测试邮件。</em></label>
           <label class="field wide"><span>固定收件邮箱</span><textarea name="emailFixedRecipients" rows="3" placeholder="admin@example.com&#10;ops@example.com">${esc(reg.emailFixedRecipients || '')}</textarea><em>一行一个或逗号分隔；最多 50 个。</em></label>
-          <div class="settings-section-heading wide"><span>04-A</span><div><h3>注册验证码邮件内容</h3><p>支持 {{siteName}}、{{code}}、{{expiryMinutes}}、{{email}}、{{environment}}、{{time}} 占位符。</p></div></div>
+          <div class="settings-section-heading wide"><span>05-A</span><div><h3>注册验证码邮件内容</h3><p>可以自定义主题、纯文本和 HTML 内容。</p></div></div>
+          <div class="template-variable-help wide"><b>模板变量说明</b><div><code>{{siteName}}</code><span>网站标题</span><code>{{code}}</code><span>本次生成的验证码</span><code>{{expiryMinutes}}</code><span>验证码有效分钟数</span><code>{{email}}</code><span>当前收件邮箱</span><code>{{adminEmail}}</code><span>当前管理员邮箱，注册用户邮件通常为空</span><code>{{environment}}</code><span>Worker 当前运行环境，例如 production</span><code>{{time}}</code><span>邮件生成时间（ISO 时间）</span></div></div>
           <label class="field wide"><span>注册邮件主题</span><input name="emailRegistrationSubjectTemplate" value="${fieldValue(reg.emailRegistrationSubjectTemplate || '【{{siteName}}】注册验证码')}"></label>
           <label class="field wide"><span>注册邮件纯文本内容</span><textarea name="emailRegistrationTextTemplate" rows="7">${esc(reg.emailRegistrationTextTemplate || '')}</textarea><em>用于不支持 HTML 的邮箱客户端。</em></label>
           <label class="field wide"><span>注册邮件 HTML 内容</span><textarea name="emailRegistrationHtmlTemplate" rows="9">${esc(reg.emailRegistrationHtmlTemplate || '')}</textarea><em>可留空，系统会把纯文本自动转换成 HTML。</em></label>
-          <div class="settings-section-heading wide"><span>04-B</span><div><h3>测试邮件内容</h3><p>测试时可选择预览测试模板或注册验证码模板。</p></div></div>
+          <div class="settings-section-heading wide"><span>05-B</span><div><h3>测试邮件内容</h3><p>测试时可选择预览测试模板或注册验证码模板。</p></div></div>
           <label class="field wide"><span>测试邮件主题</span><input name="emailTestSubjectTemplate" value="${fieldValue(reg.emailTestSubjectTemplate || '【{{siteName}}】邮件服务测试')}"></label>
           <label class="field wide"><span>测试邮件纯文本内容</span><textarea name="emailTestTextTemplate" rows="5">${esc(reg.emailTestTextTemplate || '')}</textarea></label>
           <label class="field wide"><span>测试邮件 HTML 内容</span><textarea name="emailTestHtmlTemplate" rows="7">${esc(reg.emailTestHtmlTemplate || '')}</textarea><em>可留空，系统会把纯文本自动转换成 HTML。</em></label>
-          <div class="readonly-box wide email-test-box"><b>发送测试邮件</b><p>先保存上方配置。收件对象由“测试邮件收件对象”决定。</p><div class="email-test-row"><select id="email-test-scene"><option value="test">测试邮件模板</option><option value="registration">注册验证码模板（示例验证码 123456）</option></select><input id="email-test-recipient" type="email" placeholder="手动测试收件邮箱"><button class="btn soft" id="test-email-delivery" type="button">发送测试邮件</button><span id="email-test-result" class="muted"></span></div></div>
-          <div class="settings-section-heading wide"><span>05</span><div><h3>邮箱规则与关闭提示</h3><p>管理邮箱后缀限制和注册关闭时的前台说明。</p></div></div>
+          <div class="readonly-box wide email-test-box"><b>发送测试邮件</b><p>先保存上方配置。收件对象由“测试邮件收件对象”决定。</p><div class="email-test-row"><select id="email-test-scene"><option value="test">测试邮件模板</option><option value="registration">注册验证码模板（按当前位数和字符集生成）</option></select><input id="email-test-recipient" type="email" placeholder="手动测试收件邮箱"><button class="btn soft" id="test-email-delivery" type="button">发送测试邮件</button><span id="email-test-result" class="muted"></span></div></div>
+          <div class="settings-section-heading wide"><span>06</span><div><h3>邮箱规则与关闭提示</h3><p>管理邮箱后缀限制和注册关闭时的前台说明。</p></div></div>
           <label class="field wide"><span>邮箱后缀拦截黑名单</span><textarea name="emailDomainBlacklist" rows="4" placeholder="tempmail.com&#10;mailinator.com">${esc(reg.emailDomainBlacklist || '')}</textarea><em>一行一个邮箱后缀，不要带 @ 也可以。</em></label>
           <label class="field wide"><span>关闭注册时前台提示文案</span><textarea name="disabledMessage" rows="3">${esc(reg.disabledMessage || '')}</textarea><em>注册关闭时显示给用户。</em></label>
           <button class="btn primary wide" type="submit">保存设置</button>
@@ -4054,6 +4320,7 @@ async function renderAdminSettings() {
 
     bindAdminSettingsTabs();
     bindColorPickers();
+    bindCaptchaBackgroundUpload();
     bindSettingsTools();
     bindDnsSuffixEditor();
     bindCronBuilder();
@@ -4103,6 +4370,34 @@ async function renderAdminSettings() {
   } catch (error) { toast(error.message, 'error'); }
 }
 
+function bindCaptchaBackgroundUpload() {
+  const fileInput = document.querySelector('#captcha-background-file');
+  const dataInput = document.querySelector('#captcha-background-data');
+  const preview = document.querySelector('#captcha-background-preview');
+  if (!fileInput || !dataInput || !preview) return;
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    try {
+      if (!/^image\/(png|jpeg|webp|gif)$/i.test(file.type)) throw new Error('只支持 PNG、JPG、WebP 或 GIF 图片');
+      if (file.size > 500 * 1024) throw new Error('验证码背景图片不能超过 500KB');
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('图片读取失败'));
+        reader.readAsDataURL(file);
+      });
+      dataInput.value = dataUrl;
+      const mode = document.querySelector('#registration-form [name="captchaBackgroundMode"]');
+      if (mode) mode.value = 'upload';
+      preview.innerHTML = `<img src="${attr(dataUrl)}" alt="验证码背景预览"><span>${esc(file.name)} · ${Math.round(file.size/1024)}KB</span>`;
+    } catch (error) {
+      fileInput.value = '';
+      toast(error.message, 'error');
+    }
+  });
+}
+
 function bindAdminSettingsTabs() {
   const activate = name => {
     const target = document.querySelector(`[data-tab="${name}"]`) || document.querySelector('[data-tab="site"]');
@@ -4118,7 +4413,7 @@ function bindAdminSettingsTabs() {
   activate(sessionStorage.getItem('adminSettingsActiveTab') || 'site');
 }
 function toLocalDateTimeValue(value) { if (!value) return ''; const d=new Date(value); if(Number.isNaN(d.getTime())) return String(value).slice(0,16); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16); }
-function renderSuffixEditorRows(suffixes=[]) { return (suffixes.length?suffixes:[{label:'',suffix:'flore.top',zoneId:'',allowedTypes:['A','AAAA','CNAME','TXT','MX'],defaultType:'CNAME',ttl:1,proxied:false,enabled:true,allowRegister:true,registerOrder:1}]).map((s,i)=>`<div class="suffix-editor-row v86" data-suffix-row draggable="true">
+function renderSuffixEditorRows(suffixes=[]) { return (suffixes.length?suffixes:[{label:'',suffix:'flore.top',zoneId:'',allowedTypes:['A','AAAA','CNAME','TXT','MX'],defaultType:'CNAME',ttl:1,proxied:false,enabled:true,allowRegister:true,registerOrder:1}]).map((s,i)=>`<div class="suffix-editor-row v88" data-suffix-row draggable="true">
   <div class="suffix-drag-handle" data-drag-handle title="拖动整个域名框调换顺序">⋮⋮ <span>拖动排序</span></div>
   <div class="suffix-toggle-cell compact enabled-toggle"><label><span>启用解析</span><input data-k="enabled" type="checkbox" ${yn(s.enabled!==false)}></label><em>关闭后该根域名不能写入 DNS。</em></div>
   <div class="suffix-toggle-cell compact register-toggle"><label><span>允许申请</span><input data-k="allowRegister" type="checkbox" ${yn(s.allowRegister!==false)}></label><em>关闭后用户注册页不显示该后缀。</em></div>
@@ -4199,8 +4494,8 @@ function notificationTemplateFields(n={}) { const names={newUser:'新账号注�
 function collectNotificationPayload(f) { const events={newUser:f.get('newUser')==='on',newDomain:f.get('newDomain')==='on',domainExpiring:f.get('domainExpiring')==='on',domainExpiredDelete:f.get('domainExpiredDelete')==='on',abnormalRegister:f.get('abnormalRegister')==='on'}; const templates={}, userTargets={}, adminTargets={}; Object.keys(events).forEach(k=>{ templates[k]=f.get('template_'+k)||''; userTargets[k]=f.get('userTarget_'+k)||''; adminTargets[k]=f.get('adminTarget_'+k)||''; }); return { events, templates, userTargets, adminTargets, rateLimitPerHour:f.get('rateLimitPerHour'), expiryTemplate:f.get('expiryTemplate') }; }
 function bindCronBuilder(){ document.querySelectorAll('[data-cron]').forEach(btn=>btn.addEventListener('click',()=>{ const input=document.querySelector('#cron-expression'); if(input) input.value=btn.dataset.cron; })); }
 function taskLogSummary(logs){ return Array.isArray(logs)&&logs.length ? logs.slice(-5).map(x=>`${x.time||''} ${x.status||''} ${x.message||''}`).join('；') : '暂无任务运行记录。'; }
-function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v86</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
-async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v86')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v86')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
+function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v88</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
+async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v88')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v88')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
 function bindSettingsTools() {
   const exportFn = async () => {
     try {
@@ -4297,11 +4592,23 @@ function buildRegistrationSettingsPayload(form) {
     autoActivate: formBoolean(form, 'autoActivate'),
     requireRegistrationKey: formBoolean(form, 'requireRegistrationKey'),
     blockTempEmail: formBoolean(form, 'blockTempEmail'),
-    turnstileRegisterEnabled: formBoolean(form, 'turnstileRegisterEnabled'),
+    humanVerificationMode: formString(form, 'humanVerificationMode'),
+    captchaBackgroundEnabled: formBoolean(form, 'captchaBackgroundEnabled'),
+    captchaBackgroundMode: formString(form, 'captchaBackgroundMode'),
+    captchaBackgroundImage: formString(form, 'captchaBackgroundImage'),
+    captchaNoiseLinesEnabled: formBoolean(form, 'captchaNoiseLinesEnabled'),
+    captchaNoiseLinesMin: formNumber(form, 'captchaNoiseLinesMin', 2),
+    captchaNoiseLinesMax: formNumber(form, 'captchaNoiseLinesMax', 5),
+    captchaNoiseLineColorMode: formString(form, 'captchaNoiseLineColorMode'),
+    captchaNoiseLineFixedColor: formString(form, 'captchaNoiseLineFixedColor'),
+    captchaCharset: formString(form, 'captchaCharset'),
+    captchaLength: formNumber(form, 'captchaLength', 4),
     emailVerificationEnabled: formBoolean(form, 'emailVerificationEnabled'),
     emailFrom: formString(form, 'emailFrom'),
     emailFromName: formString(form, 'emailFromName'),
     emailCodeExpiryMinutes: formNumber(form, 'emailCodeExpiryMinutes', 10),
+    emailCodeLength: formNumber(form, 'emailCodeLength', 6),
+    emailCodeCharset: formString(form, 'emailCodeCharset'),
     emailAllowedEnvironments: formString(form, 'emailAllowedEnvironments'),
     emailRegistrationSceneEnabled: formBoolean(form, 'emailRegistrationSceneEnabled'),
     emailTestSceneEnabled: formBoolean(form, 'emailTestSceneEnabled'),
@@ -4323,6 +4630,7 @@ function buildRegistrationSettingsPayload(form) {
   };
   if (!formString(form, 'turnstileSecret')) delete payload.turnstileSecret;
   if (!formString(form, 'emailApiKey')) delete payload.emailApiKey;
+  if (!formString(form, 'captchaBackgroundImage')) delete payload.captchaBackgroundImage;
   return payload;
 }
 function buildDomainSettingsPayload(form) {
@@ -4387,9 +4695,13 @@ function validateSettingsPayload(group, data) {
   }
   if (group === 'registration') {
     if (n(data.maxAccountsPerIp) < 0 || n(data.ipRegisterCooldownMinutes) < 0 || n(data.dailyDomainApplyLimit) < 0 || n(data.failedRegisterBanThreshold) < 0 || n(data.failedRegisterBanMinutes) < 0) throw new Error('注册限制参数不能小于 0');
+    if (!['image','turnstile','turnstile_fallback'].includes(String(data.humanVerificationMode || ''))) throw new Error('请选择有效的人机验证方式');
+    if (String(data.humanVerificationMode) === 'turnstile' && !String(data.turnstileSiteKey || '').trim() && !state.config?.turnstile?.siteKey) throw new Error('仅使用 Turnstile 时必须配置 Site Key');
+    if (n(data.captchaLength,4) < 3 || n(data.captchaLength,4) > 8) throw new Error('图形验证码字符数量必须在 3 到 8 之间');
+    if (Array.from(String(data.captchaCharset || '').replace(/\s/g,'')).length < 2) throw new Error('图形验证码可用字符至少需要 2 个不同字符');
+    if (n(data.captchaNoiseLinesMin,2) < 0 || n(data.captchaNoiseLinesMax,5) > 20 || n(data.captchaNoiseLinesMin,2) > n(data.captchaNoiseLinesMax,5)) throw new Error('随机线条范围必须为 0-20，且最少条数不能大于最多条数');
     const domains = String(data.emailDomainBlacklist || '').split(/[\n,]+/).map(x=>x.trim().replace(/^@/, '')).filter(Boolean);
     if (domains.some(d => /\s/.test(d) || !/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(d))) throw new Error('邮箱后缀黑名单中存在格式不正确的域名');
-    if (data.turnstileRegisterEnabled && !String(data.turnstileSiteKey || '').trim() && !state.config?.turnstile?.siteKey) throw new Error('启用注册人机验证前必须配置 Turnstile Site Key');
     if (data.emailVerificationEnabled && !String(data.emailFrom || '').trim()) throw new Error('启用邮箱验证前必须填写发件邮箱');
     if (String(data.emailFrom || '').trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(data.emailFrom).trim())) throw new Error('发件邮箱格式不正确');
     const fixedEmails = String(data.emailFixedRecipients || '').split(/[\n,;]+/).map(x=>x.trim()).filter(Boolean);
@@ -4402,6 +4714,8 @@ function validateSettingsPayload(group, data) {
     if (!String(data.emailTestSubjectTemplate || '').trim()) throw new Error('测试邮件主题不能为空');
     if (!String(data.emailTestTextTemplate || '').trim() && !String(data.emailTestHtmlTemplate || '').trim()) throw new Error('测试邮件纯文本或 HTML 内容至少填写一项');
     if (n(data.emailCodeExpiryMinutes, 10) < 2 || n(data.emailCodeExpiryMinutes, 10) > 60) throw new Error('邮箱验证码有效期必须在 2 到 60 分钟之间');
+    if (n(data.emailCodeLength, 6) < 4 || n(data.emailCodeLength, 6) > 12) throw new Error('邮件验证码位数必须在 4 到 12 之间');
+    if (Array.from(String(data.emailCodeCharset || '').replace(/\s/g,'')).length < 2) throw new Error('邮件验证码可用字符至少需要 2 个不同字符');
     if (n(data.failedRegisterBanThreshold) > 0 && n(data.failedRegisterBanMinutes) <= 0) throw new Error('设置失败封禁阈值后，封禁时长必须大于 0');
   }
   if (group === 'domain') {
@@ -4472,16 +4786,16 @@ function bindSettingForm(selector, group, mapper) {
   });
 }
 
-async function mountTurnstile(selector, action) {
+async function mountTurnstile(selector, action, options = {}) {
   const config = state.config.turnstile || {};
   const el = document.querySelector(selector);
-  if (!el) return;
-  if (!config.siteKey) {
-    el.innerHTML = '<div class="notice small">Turnstile Site Key 未配置，无法显示人机验证。</div>';
-    return;
-  }
+  if (!el) throw new Error('人机验证容器不存在');
+  if (!config.siteKey) throw new Error('Turnstile Site Key 未配置');
+  const root = options.root || el.closest('[data-human-verification]');
+  const status = root?.querySelector('.human-verification-status');
+  if (status) status.textContent = '正在加载 Turnstile…';
   el.innerHTML = '<div class="turnstile-loading">正在加载人机验证…</div>';
-  const render = async (force = false) => {
+  const render = async force => {
     if (force) state.widgetId = null;
     await (force ? loadTurnstileScript(true) : ensureTurnstileApi());
     if (!window.turnstile) throw new Error('Turnstile 对象未就绪');
@@ -4489,24 +4803,43 @@ async function mountTurnstile(selector, action) {
     if (state.widgetId !== null) { try { window.turnstile.remove(state.widgetId); } catch {} }
     state.turnstileTokenValue = '';
     state.turnstileWidgetAction = action || 'login';
+    state.turnstileSelector = selector;
+    if (options.scene) {
+      const record = humanSceneState(options.scene);
+      record.method = 'turnstile';
+      record.root = root;
+      record.challengeId = '';
+    }
     state.widgetId = window.turnstile.render(el, {
       sitekey: config.siteKey,
       action: action || 'login',
       language: lang() === 'en' ? 'en' : 'zh-cn',
       retry: 'auto',
       'refresh-expired': 'auto',
-      callback: token => { state.turnstileTokenValue = token || ''; },
-      'expired-callback': () => { state.turnstileTokenValue = ''; resetTurnstile(); },
-      'timeout-callback': () => { state.turnstileTokenValue = ''; },
-      'error-callback': () => { state.turnstileTokenValue = ''; }
+      callback: token => { state.turnstileTokenValue = token || ''; if (status) status.textContent = 'Turnstile 验证已完成'; },
+      'expired-callback': () => { state.turnstileTokenValue = ''; if (status) status.textContent = '验证已过期，请重新验证'; },
+      'timeout-callback': () => {
+        state.turnstileTokenValue = '';
+        if (options.allowFallback && root && options.scene) switchHumanToImage(root, options.scene, 'Turnstile 接口加载超时').catch(error => { if (status) status.textContent = error.message; });
+        else if (status) status.textContent = 'Turnstile 接口加载超时，请点击重试';
+      },
+      'error-callback': () => {
+        state.turnstileTokenValue = '';
+        if (options.allowFallback && root && options.scene) switchHumanToImage(root, options.scene, 'Turnstile 验证组件不可用').catch(error => { if (status) status.textContent = error.message; });
+        else if (status) status.textContent = 'Turnstile 验证组件不可用';
+      }
     });
+    return true;
   };
-  try { await render(false); }
-  catch (error) {
-    try { await render(true); }
-    catch (_) {
-      el.innerHTML = '<div class="notice small danger turnstile-retry-box">人机验证加载失败。请关闭广告拦截、切换网络，或点击重试。<br><button type="button" class="btn soft small" data-retry-turnstile>重新加载人机验证</button></div>';
-      el.querySelector('[data-retry-turnstile]')?.addEventListener('click', () => mountTurnstile(selector, action));
+  try { return await render(false); }
+  catch (firstError) {
+    // 回退模式不连续加载两次外部脚本，避免登录页等待十几秒后才出现图形验证。
+    if (options.allowFallback) throw firstError;
+    try { return await render(true); }
+    catch (secondError) {
+      el.innerHTML = '<div class="notice small danger turnstile-retry-box">Turnstile 加载失败。<br><button type="button" class="btn soft small" data-retry-turnstile>重新加载</button></div>';
+      el.querySelector('[data-retry-turnstile]')?.addEventListener('click', () => mountTurnstile(selector, action, options).catch(error => { if (status) status.textContent = error.message; }));
+      throw secondError || firstError;
     }
   }
 }
@@ -4516,14 +4849,14 @@ function turnstileToken() {
   if (window.turnstile && state.widgetId !== null) return window.turnstile.getResponse(state.widgetId) || '';
   return '';
 }
-async function stableTurnstileToken(kind = 'login') {
-  if (!hasTurnstileSiteKey()) return '';
+async function stableTurnstileToken() {
+  if (!hasTurnstileSiteKey()) throw new Error('Turnstile 未配置');
   let token = turnstileToken();
   if (token) return token;
   await new Promise(resolve => setTimeout(resolve, 180));
   token = turnstileToken();
   if (token) return token;
-  throw new Error('请先完成人机验证，若验证框已显示成功，请点击“重新加载人机验证”后再试');
+  throw new Error('请先完成人机验证；Turnstile 无法使用时可切换图形验证');
 }
 function resetTurnstile() {
   state.turnstileTokenValue = '';
