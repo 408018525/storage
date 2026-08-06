@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#5468ff">
   <title>二级域名注册</title>
-  <link rel="stylesheet" href="/styles.css?v=89">
+  <link rel="stylesheet" href="/styles.css?v=91">
 </head>
 <body>
   <div id="background-layer"></div>
@@ -16,29 +16,37 @@
   <script>
     (function(){
       window.__storageIndexGuardStarted = true;
+      var bootEnglish = localStorage.getItem('ui_lang') === 'en';
+      function bt(zh, en){ return bootEnglish ? en : zh; }
+      if (bootEnglish) {
+        document.documentElement.lang = 'en';
+        document.title = 'Subdomain Registration';
+        var loading = document.querySelector('.boot-loading');
+        if (loading) loading.textContent = 'Loading system…';
+      }
       function escapeHtml(v){ return String(v || '').replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
       function showBootHelp(title, message){
         var app = document.getElementById('app');
         if (!app) return;
         var text = app.textContent || '';
         if (!/正在加载系统|Loading/.test(text)) return;
-        app.innerHTML = '<div class="center-screen boot-error"><h2>'+escapeHtml(title)+'</h2><p>'+escapeHtml(message)+'</p><div class="boot-actions"><button class="btn primary" onclick="location.reload()">重新加载</button><button class="btn" onclick="localStorage.clear(); sessionStorage.clear(); location.reload()">清缓存重试</button><a class="btn" href="#/login" onclick="setTimeout(function(){location.reload()},30)">进入登录页</a></div><p class="muted">如果反复出现，请打开 F12 → Console，把红色错误截图发给管理员。</p></div>';
+        app.innerHTML = '<div class="center-screen boot-error"><h2>'+escapeHtml(title)+'</h2><p>'+escapeHtml(message)+'</p><div class="boot-actions"><button class="btn primary" onclick="location.reload()">'+bt('重新加载','Reload')+'</button><button class="btn" onclick="localStorage.clear(); sessionStorage.clear(); location.reload()">'+bt('清缓存重试','Clear Cache and Retry')+'</button><a class="btn" href="#/login" onclick="setTimeout(function(){location.reload()},30)">'+bt('进入登录页','Open Login')+'</a></div><p class="muted">'+bt('如果反复出现，请打开 F12 → Console，把红色错误截图发给管理员。','If this keeps happening, open F12 → Console and send the first red error to the administrator.')+'</p></div>';
       }
       window.addEventListener('error', function(e){
-        if (!window.__storageBootCompleted) showBootHelp('系统脚本加载失败', e && e.message ? e.message : '前端文件没有正确执行。');
+        if (!window.__storageBootCompleted) showBootHelp(bt('系统脚本加载失败','System Script Failed to Load'), e && e.message ? e.message : bt('前端文件没有正确执行。','The frontend script did not execute correctly.'));
       });
       window.addEventListener('unhandledrejection', function(e){
         var reason = e && e.reason;
-        if (!window.__storageBootCompleted) showBootHelp('系统接口加载超时', reason && reason.message ? reason.message : '配置接口或登录状态接口没有及时返回。');
+        if (!window.__storageBootCompleted) showBootHelp(bt('系统接口加载超时','System API Timed Out'), reason && reason.message ? reason.message : bt('配置接口或登录状态接口没有及时返回。','The configuration or login-status API did not respond in time.'));
       });
       setTimeout(function(){
-        if (!window.__storageScriptLoaded) showBootHelp('前端文件未加载', 'app.js 没有成功加载，通常是部署文件缺失或浏览器缓存旧版本。');
+        if (!window.__storageScriptLoaded) showBootHelp(bt('前端文件未加载','Frontend File Not Loaded'), bt('app.js 没有成功加载，通常是部署文件缺失或浏览器缓存旧版本。','app.js did not load. The deployment may be missing the file, or the browser may be using an old cache.'));
       }, 4500);
       setTimeout(function(){
-        if (!window.__storageBootCompleted) showBootHelp('系统启动超时', '页面没有完成初始化，已阻止继续卡在加载状态。');
+        if (!window.__storageBootCompleted) showBootHelp(bt('系统启动超时','System Startup Timed Out'), bt('页面没有完成初始化，已阻止继续卡在加载状态。','The page did not finish initializing, so the loading screen was stopped.'));
       }, 14000);
     })();
   </script>
-  <script defer src="/app.js?v=90"></script>
+  <script defer src="/app.js?v=91"></script>
 </body>
 </html>
