@@ -26,6 +26,9 @@ export interface Env {
   ASSETS: Fetcher;
   BOOTSTRAP_ADMIN_TOKEN?: string;
   CF_API_TOKEN?: string;
+  RESEND_API_KEY?: string;
+  EMAIL_FROM?: string;
+  EMAIL_FROM_NAME?: string;
   DNS_SUFFIX?: string;
   DNS_SUFFIX_LABEL?: string;
   DNS_ZONE_ID?: string;
@@ -92,6 +95,8 @@ interface ApplicationRow {
   deleted_at?: string | null;
   delete_requested_at?: string | null;
   delete_requested_by?: string | null;
+  controlled_at?: string | null;
+  controlled_by?: string | null;
 }
 
 interface DnsRecordRow {
@@ -186,6 +191,10 @@ interface AppSettings {
     turnstileSecret?: string;
     emailDomainBlacklist?: string;
     emailVerificationEnabled?: boolean;
+    emailApiKey?: string;
+    emailFrom?: string;
+    emailFromName?: string;
+    emailCodeExpiryMinutes?: number;
     dailyDomainApplyLimit?: number;
     failedRegisterBanThreshold?: number;
     failedRegisterBanMinutes?: number;
@@ -242,6 +251,7 @@ interface AppSettings {
       proxied: boolean;
       enabled: boolean;
       allowRegister?: boolean;
+      registerOrder?: number;
       cfApiToken?: string;
     }>;
   };
@@ -329,6 +339,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
 
   if (method === 'POST' && pathname === '/api/auth/login') return login(request, env);
   if (method === 'POST' && pathname === '/api/auth/register') return register(request, env);
+  if (method === 'POST' && pathname === '/api/auth/email-verification/send') return sendRegistrationEmailCode(request, env);
   if (method === 'POST' && pathname === '/api/auth/logout') return logout(request, env);
   if (method === 'GET' && pathname === '/api/auth/me') return authMe(request, env);
   if (method === 'POST' && pathname === '/api/auth/change-password') return changeOwnPassword(request, env);
@@ -389,6 +400,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   if (method === 'GET' && pathname === '/api/admin/settings/export') return adminExportSettings(request, env);
   if (method === 'POST' && pathname === '/api/admin/settings/import') return adminImportSettings(request, env);
   if (method === 'POST' && pathname === '/api/admin/dns/test') return adminTestCloudflareApi(request, env);
+  if (method === 'POST' && pathname === '/api/admin/email/test') return adminTestEmailDelivery(request, env);
 
   match = pathname.match(/^\/api\/admin\/registration-keys\/([^/]+)$/);
   if (match && method === 'DELETE') return adminDeleteRegistrationKey(request, env, decodeURIComponent(match[1]));
@@ -553,6 +565,17 @@ async function ensureSchema(env: Env): Promise<void> {
     `),
 
     env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS email_verification_codes (
+        email TEXT PRIMARY KEY COLLATE NOCASE,
+        code_hash TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        sent_at TEXT NOT NULL DEFAULT (datetime('now')),
+        ip TEXT
+      )
+    `),
+
+    env.DB.prepare(`
       CREATE TABLE IF NOT EXISTS registration_keys (
         id TEXT PRIMARY KEY,
         code TEXT NOT NULL UNIQUE,
@@ -634,6 +657,17 @@ async function ensureSchema(env: Env): Promise<void> {
     try { await env.DB.prepare(sql).run(); } catch {}
   }
 
+  // 兼容旧版 registration_keys 表：旧结构存在 name TEXT NOT NULL，但没有 code 字段。
+  try {
+    const columns = await registrationKeyColumnNames(env);
+    if (columns.has('name') && columns.has('code')) {
+      await env.DB.prepare(`UPDATE registration_keys SET code=name WHERE (code IS NULL OR code='') AND name IS NOT NULL`).run();
+      await env.DB.prepare(`UPDATE registration_keys SET name=code WHERE (name IS NULL OR name='') AND code IS NOT NULL`).run();
+    }
+  } catch (error) {
+    console.error('registration key schema compatibility failed', error);
+  }
+
   const settings = await loadSettings(env);
   await env.DB.prepare(`
     UPDATE users SET domain_quota=?
@@ -686,6 +720,7 @@ async function cleanupHardDeletedRows(env: Env): Promise<void> {
     `DELETE FROM users WHERE status='deleted'`,
     `DELETE FROM domain_applications WHERE deleted_at IS NOT NULL AND deleted_at!=''`,
     `DELETE FROM sessions WHERE user_id NOT IN (SELECT id FROM users)`,
+    `DELETE FROM email_verification_codes WHERE datetime(expires_at) < datetime('now')`,
   ];
   for (const sql of statements) {
     try { await env.DB.prepare(sql).run(); } catch (error) { console.error('cleanup hard deleted rows failed', sql, error); }
@@ -762,18 +797,21 @@ async function publicConfigHandler(env: Env): Promise<Response> {
   return ok({
     config: {
       site: settings.site,
-      registration: settings.registration,
+      registration: publicRegistrationSettings(settings.registration),
       domain: settings.domain,
       help: settings.help,
       suffixes: settings.dns.suffixes
-        .filter(x => x.enabled && x.allowRegister !== false)
-        .map(x => ({
-          label: x.label,
+        .map((item, index) => ({ item, index }))
+        .filter(({ item }) => item.enabled && item.allowRegister !== false)
+        .sort((a, b) => Number(a.item.registerOrder || a.index + 1) - Number(b.item.registerOrder || b.index + 1) || a.index - b.index)
+        .map(({ item: x }) => ({
+          label: x.label || '',
           suffix: x.suffix,
           allowedTypes: x.allowedTypes,
           defaultType: x.defaultType,
           ttl: x.ttl,
           proxied: x.proxied,
+          registerOrder: Number(x.registerOrder || 0),
         })),
       turnstile: turnstilePublicConfig(env, settings),
       needsBootstrap: Number(adminCount?.count || 0) === 0,
@@ -839,6 +877,9 @@ async function register(request: Request, env: Env): Promise<Response> {
   const email = normalizeOptionalEmailStrict(body.email);
   const phone = normalizeOptionalPhone(body.phone);
   if (!email && !phone) throw new HttpError(400, 'CONTACT_REQUIRED', '手机号和邮箱至少填写一个');
+  if (settings.registration.emailVerificationEnabled && !email) {
+    throw new HttpError(400, 'EMAIL_REQUIRED', '已开启注册邮箱验证，请填写邮箱');
+  }
   if (email && settings.registration.blockTempEmail && isTempEmailDomain(email)) throw new HttpError(400, 'TEMP_EMAIL_BLOCKED', '不允许使用临时邮箱注册');
   const emailDomain = email && email.includes('@') ? email.split('@').pop() || '' : '';
   const blockedEmailDomains = sanitizeStringList(settings.registration.emailDomainBlacklist || '');
@@ -871,6 +912,10 @@ async function register(request: Request, env: Env): Promise<Response> {
   `).bind(username, email, email, phone, phone).first<{ id: string }>();
   if (duplicate) throw new HttpError(409, 'USER_EXISTS', '账号、邮箱或手机号已被使用');
 
+  const emailVerificationKey = settings.registration.emailVerificationEnabled && email
+    ? await verifyRegistrationEmailCode(env, email, body.emailVerificationCode)
+    : '';
+
   const { hash, salt } = await hashPassword(password);
   const id = crypto.randomUUID();
   const status = settings.registration.defaultStatus === 'manual' ? 'disabled' : (settings.registration.autoActivate ? 'active' : 'disabled');
@@ -881,8 +926,9 @@ async function register(request: Request, env: Env): Promise<Response> {
   `).bind(id, username, email, phone, hash, salt, status, settings.domain.defaultQuota, JSON.stringify({ canApply: true })).run();
 
   if (registrationKey) await consumeRegistrationKey(env, registrationKey.id, id, username);
+  if (emailVerificationKey) await env.DB.prepare(`DELETE FROM email_verification_codes WHERE email=? COLLATE NOCASE`).bind(emailVerificationKey).run().catch(() => undefined);
 
-  await audit(env, request, id, 'auth.register', 'user', id, { status, registrationKeyId: registrationKey?.id || null });
+  await audit(env, request, id, 'auth.register', 'user', id, { status, registrationKeyId: registrationKey?.id || null, emailVerified: Boolean(emailVerificationKey) });
 
   // 注册接口只负责创建账户，不再自动创建登录会话。
   // 这样即使旧数据库 sessions 表结构不一致，也不会出现“用户已创建但注册提示失败”。
@@ -2548,6 +2594,11 @@ async function adminUsers(request: Request, env: Env): Promise<Response> {
 }
 
 
+async function registrationKeyColumnNames(env: Env): Promise<Set<string>> {
+  const rows = await env.DB.prepare(`PRAGMA table_info(registration_keys)`).all<{ name: string }>();
+  return new Set((rows.results || []).map(row => String(row.name || '').toLowerCase()).filter(Boolean));
+}
+
 async function validateRegistrationKey(env: Env, rawCode: unknown): Promise<{ id: string; role?: string | null }> {
   const code = cleanText(rawCode, 120);
   if (!code) throw new HttpError(400, 'REGISTRATION_KEY_REQUIRED', '请输入注册码');
@@ -2614,10 +2665,27 @@ async function adminCreateRegistrationKey(request: Request, env: Env): Promise<R
   const duplicate = await env.DB.prepare(`SELECT id FROM registration_keys WHERE code=? COLLATE NOCASE AND status!='deleted'`).bind(code).first<any>();
   if (duplicate) throw new HttpError(409, 'CODE_EXISTS', '注册码已存在');
   const id = crypto.randomUUID();
-  await env.DB.prepare(`
-    INSERT INTO registration_keys (id, code, role, max_uses, used_count, expires_at, status, created_by)
-    VALUES (?, ?, ?, ?, 0, ?, 'active', ?)
-  `).bind(id, code, role, maxUses, expiresAt || null, admin.id).run();
+  const columns = await registrationKeyColumnNames(env);
+  const insertColumns = ['id'];
+  const values: unknown[] = [id];
+  const placeholders = ['?'];
+  const add = (name: string, value: unknown, expression = '?') => {
+    if (!columns.has(name)) return;
+    insertColumns.push(name);
+    placeholders.push(expression);
+    if (expression === '?') values.push(value);
+  };
+  // 旧版表的 name 字段为 NOT NULL；新版表使用 code。两种结构都同时兼容。
+  add('name', code);
+  add('code', code);
+  add('role', role);
+  add('max_uses', maxUses);
+  add('used_count', 0);
+  add('expires_at', expiresAt || null);
+  add('status', 'active');
+  add('created_by', admin.id);
+  add('created_at', null, "datetime('now')");
+  await env.DB.prepare(`INSERT INTO registration_keys (${insertColumns.join(', ')}) VALUES (${placeholders.join(', ')})`).bind(...values).run();
   await audit(env, request, admin.id, 'admin.registration_key_create', 'registration_key', id, { code, role, maxUses, expiresAt });
   return ok({ key: { id, code, role, maxUses, usedCount: 0, expiresAt, status: 'active' } });
 }
@@ -2943,6 +3011,8 @@ function adminSettingsView(settings: AppSettings, env: Env): any {
   const safeSettings: any = JSON.parse(JSON.stringify(settings));
   safeSettings.registration.turnstileSecretConfigured = Boolean(settings.registration.turnstileSecret || env.TURNSTILE_SECRET);
   safeSettings.registration.turnstileSecret = '';
+  safeSettings.registration.emailApiKeyConfigured = Boolean(settings.registration.emailApiKey || env.RESEND_API_KEY);
+  safeSettings.registration.emailApiKey = '';
   safeSettings.dns.cfApiTokenConfigured = Boolean(settings.dns.cfApiToken || env.CF_API_TOKEN);
   safeSettings.dns.cfApiToken = '';
   safeSettings.dns.suffixes = (safeSettings.dns.suffixes || []).map((x: any) => ({
@@ -3009,6 +3079,12 @@ async function adminUpdateSettings(request: Request, env: Env, group: AdminSetti
         : (settings.registration.turnstileSecret || ''),
       emailDomainBlacklist: cleanText(body.emailDomainBlacklist, 10000),
       emailVerificationEnabled: asBoolean(body.emailVerificationEnabled, false),
+      emailApiKey: asBoolean((body as any).clearEmailApiKey, false)
+        ? ''
+        : (cleanText((body as any).emailApiKey, 2000) || settings.registration.emailApiKey || ''),
+      emailFrom: cleanText(body.emailFrom, 320),
+      emailFromName: cleanText(body.emailFromName, 120) || '域名注册中心',
+      emailCodeExpiryMinutes: clamp(Number(body.emailCodeExpiryMinutes || 10), 2, 60),
       dailyDomainApplyLimit: clamp(Number(body.dailyDomainApplyLimit || 0), 0, 10000),
       failedRegisterBanThreshold: clamp(Number(body.failedRegisterBanThreshold || 0), 0, 1000),
       failedRegisterBanMinutes: clamp(Number(body.failedRegisterBanMinutes || 0), 0, 10080),
@@ -3233,6 +3309,10 @@ function defaultSettings(env: Env): AppSettings {
       turnstileSecret: '',
       emailDomainBlacklist: '',
       emailVerificationEnabled: false,
+      emailApiKey: '',
+      emailFrom: env.EMAIL_FROM || '',
+      emailFromName: env.EMAIL_FROM_NAME || '域名注册中心',
+      emailCodeExpiryMinutes: 10,
       dailyDomainApplyLimit: 0,
       failedRegisterBanThreshold: 0,
       failedRegisterBanMinutes: 0,
@@ -3277,7 +3357,7 @@ function defaultSettings(env: Env): AppSettings {
       blockWildcardRecords: true,
       cnameTargetBlacklist: '',
       suffixes: [{
-        label: env.DNS_SUFFIX_LABEL || '免费二级域名',
+        label: env.DNS_SUFFIX_LABEL || '',
         suffix,
         suffixAscii: suffix,
         zoneId: env.DNS_ZONE_ID || '',
@@ -3289,6 +3369,7 @@ function defaultSettings(env: Env): AppSettings {
         proxied: isEnabled(env.DNS_PROXIED, false),
         enabled: true,
         allowRegister: true,
+        registerOrder: 1,
         cfApiToken: '',
       }],
     },
@@ -3378,7 +3459,7 @@ function sanitizeDnsSuffixes(value: unknown, fallback: AppSettings['dns']['suffi
   const findExisting = (suffix: string, zoneId: string) => (fallback || []).find(item =>
     (suffix && (item.suffixAscii === suffix || item.suffix === suffix)) || (zoneId && item.zoneId === zoneId)
   );
-  const items = raw.map((x: any) => {
+  const items = raw.map((x: any, index: number) => {
     try {
       const suffix = normalizeSuffix(String(x?.suffix || ''));
       const zoneId = cleanText(x?.zoneId, 120);
@@ -3390,7 +3471,7 @@ function sanitizeDnsSuffixes(value: unknown, fallback: AppSettings['dns']['suffi
       const defaultType = (allowedTypes.includes(defaultTypeRaw) ? defaultTypeRaw : (allowedTypes[0] || 'CNAME')) as DnsRecordType;
       const incomingToken = cleanText(x?.cfApiToken, 2000);
       return {
-        label: cleanText(x?.label, 80) || suffix,
+        label: cleanText(x?.label, 80),
         suffix,
         suffixAscii: suffix,
         zoneId,
@@ -3400,6 +3481,7 @@ function sanitizeDnsSuffixes(value: unknown, fallback: AppSettings['dns']['suffi
         proxied: asBoolean(x?.proxied, false),
         enabled: asBoolean(x?.enabled, true),
         allowRegister: asBoolean(x?.allowRegister, true),
+        registerOrder: clamp(Number(x?.registerOrder || index + 1), 1, 999999),
         cfApiToken: incomingToken || existing?.cfApiToken || '',
       };
     } catch { return null; }
@@ -3453,6 +3535,157 @@ function isTempEmailDomain(email: string): boolean {
   return tempDomains.includes(domain);
 }
 
+
+
+function publicRegistrationSettings(registration: AppSettings['registration']): Record<string, unknown> {
+  const safe: Record<string, unknown> = { ...registration };
+  delete safe.turnstileSecret;
+  delete safe.emailApiKey;
+  return safe;
+}
+
+function randomNumericCode(length = 6): string {
+  const bytes = new Uint8Array(Math.max(4, Math.min(12, length)));
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes).slice(0, length).map(value => String(value % 10)).join('');
+}
+
+function escapeEmailHtml(value: unknown): string {
+  return String(value ?? '').replace(/[&<>\"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '\"':'&quot;', "'":'&#39;' }[char] || char));
+}
+
+function resolveEmailDeliveryConfig(env: Env, settings: AppSettings) {
+  const apiKey = String(env.RESEND_API_KEY || settings.registration.emailApiKey || '').trim();
+  const fromEmail = String(env.EMAIL_FROM || settings.registration.emailFrom || '').trim();
+  const fromName = String(env.EMAIL_FROM_NAME || settings.registration.emailFromName || settings.site.title || '域名注册中心').trim();
+  if (!apiKey) throw new HttpError(503, 'EMAIL_API_KEY_MISSING', '邮件服务未配置：请设置 RESEND_API_KEY 或在管理员设置中填写 Resend API Key');
+  if (!fromEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fromEmail)) {
+    throw new HttpError(503, 'EMAIL_FROM_MISSING', '发件邮箱未配置或格式不正确');
+  }
+  return { apiKey, fromEmail, fromName };
+}
+
+async function sendEmailWithResend(env: Env, settings: AppSettings, to: string, subject: string, textBody: string, htmlBody: string): Promise<void> {
+  const config = resolveEmailDeliveryConfig(env, settings);
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: `${config.fromName} <${config.fromEmail}>`,
+      to: [to],
+      subject,
+      text: textBody,
+      html: htmlBody,
+    }),
+  });
+  const payload: any = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new HttpError(502, 'EMAIL_SEND_FAILED', payload?.message || payload?.error?.message || `邮件发送失败 HTTP ${response.status}`);
+  }
+}
+
+async function sendRegistrationEmailCode(request: Request, env: Env): Promise<Response> {
+  await rateLimit(env, request, 'registration-email', 8, 3600);
+  const settings = await loadSettings(env);
+  if (!settings.registration.enabled) throw new HttpError(403, 'REGISTER_CLOSED', settings.registration.disabledMessage || '当前暂未开放用户注册');
+  if (!settings.registration.emailVerificationEnabled) throw new HttpError(409, 'EMAIL_VERIFICATION_DISABLED', '管理员尚未开启注册邮箱验证');
+  const body = await readJson<Record<string, unknown>>(request);
+  const email = normalizeOptionalEmailStrict(body.email);
+  if (!email) throw new HttpError(400, 'EMAIL_REQUIRED', '请输入有效邮箱');
+  if (settings.registration.blockTempEmail && isTempEmailDomain(email)) throw new HttpError(400, 'TEMP_EMAIL_BLOCKED', '不允许使用临时邮箱注册');
+  const emailDomain = email.split('@').pop() || '';
+  const blockedEmailDomains = sanitizeStringList(settings.registration.emailDomainBlacklist || '');
+  if (blockedEmailDomains.some(domain => emailDomain.toLowerCase() === domain.toLowerCase().replace(/^@/, ''))) {
+    throw new HttpError(403, 'EMAIL_DOMAIN_BLOCKED', '该邮箱后缀已被禁止注册');
+  }
+  if (listMatches(email, settings.blacklist?.emails || [])) throw new HttpError(403, 'EMAIL_BLOCKED', '该邮箱已被禁止注册');
+  const duplicate = await env.DB.prepare(`SELECT id FROM users WHERE email=? COLLATE NOCASE LIMIT 1`).bind(email).first<{ id: string }>();
+  if (duplicate) throw new HttpError(409, 'EMAIL_EXISTS', '该邮箱已被使用');
+
+  const existing = await env.DB.prepare(`
+    SELECT sent_at FROM email_verification_codes WHERE email=? COLLATE NOCASE LIMIT 1
+  `).bind(email).first<{ sent_at?: string }>();
+  if (existing?.sent_at) {
+    const sentAt = new Date(existing.sent_at).getTime();
+    const remaining = 60 - Math.floor((Date.now() - sentAt) / 1000);
+    if (Number.isFinite(sentAt) && remaining > 0) throw new HttpError(429, 'EMAIL_CODE_COOLDOWN', `请 ${remaining} 秒后再发送`);
+  }
+
+  const code = randomNumericCode(6);
+  const expiryMinutes = clamp(Number(settings.registration.emailCodeExpiryMinutes || 10), 2, 60);
+  const expiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000).toISOString();
+  const sentAt = new Date().toISOString();
+  const codeHash = await sha256(`${email.toLowerCase()}|${code}`);
+  const siteTitle = settings.site.title || '域名注册中心';
+  const subject = `${siteTitle} 注册验证码`;
+  const textBody = `您的注册验证码是 ${code}，${expiryMinutes} 分钟内有效。若非本人操作，请忽略本邮件。`;
+  const htmlBody = `<div style="font-family:Arial,'Microsoft YaHei',sans-serif;max-width:560px;margin:auto;padding:24px;color:#0f172a"><h2>${escapeEmailHtml(siteTitle)}</h2><p>您正在注册账户，验证码为：</p><div style="font-size:32px;font-weight:800;letter-spacing:8px;padding:18px 22px;background:#f1f5f9;border-radius:12px;text-align:center">${escapeEmailHtml(code)}</div><p style="color:#64748b">验证码 ${expiryMinutes} 分钟内有效。若非本人操作，请忽略本邮件。</p></div>`;
+  await env.DB.prepare(`
+    INSERT INTO email_verification_codes (email, code_hash, expires_at, attempts, sent_at, ip)
+    VALUES (?, ?, ?, 0, ?, ?)
+    ON CONFLICT(email) DO UPDATE SET
+      code_hash=excluded.code_hash,
+      expires_at=excluded.expires_at,
+      attempts=0,
+      sent_at=excluded.sent_at,
+      ip=excluded.ip
+  `).bind(email, codeHash, expiresAt, sentAt, clientIp(request)).run();
+  try {
+    await sendEmailWithResend(env, settings, email, subject, textBody, htmlBody);
+  } catch (error) {
+    await env.DB.prepare(`DELETE FROM email_verification_codes WHERE email=? COLLATE NOCASE AND code_hash=?`).bind(email, codeHash).run().catch(() => undefined);
+    throw error;
+  }
+  await audit(env, request, null, 'auth.email_code_sent', 'email', await sha256(email.toLowerCase()), { expiresInMinutes: expiryMinutes });
+  return ok({ sent: true, expiresInSeconds: expiryMinutes * 60, cooldownSeconds: 60 });
+}
+
+async function verifyRegistrationEmailCode(env: Env, email: string, rawCode: unknown): Promise<string> {
+  const code = String(rawCode || '').trim();
+  if (!/^\d{6}$/.test(code)) throw new HttpError(400, 'EMAIL_CODE_REQUIRED', '请输入 6 位邮箱验证码');
+  const state = await env.DB.prepare(`
+    SELECT code_hash, expires_at, attempts FROM email_verification_codes WHERE email=? COLLATE NOCASE LIMIT 1
+  `).bind(email).first<{ code_hash?: string; expires_at?: string; attempts?: number }>();
+  if (!state) throw new HttpError(403, 'EMAIL_CODE_INVALID', '邮箱验证码不存在或已过期，请重新发送');
+  const expiresAt = new Date(String(state.expires_at || '')).getTime();
+  if (!Number.isFinite(expiresAt) || expiresAt < Date.now()) {
+    await env.DB.prepare(`DELETE FROM email_verification_codes WHERE email=? COLLATE NOCASE`).bind(email).run().catch(() => undefined);
+    throw new HttpError(403, 'EMAIL_CODE_EXPIRED', '邮箱验证码已过期，请重新发送');
+  }
+  const attempts = Number(state.attempts || 0);
+  if (attempts >= 6) {
+    await env.DB.prepare(`DELETE FROM email_verification_codes WHERE email=? COLLATE NOCASE`).bind(email).run().catch(() => undefined);
+    throw new HttpError(429, 'EMAIL_CODE_ATTEMPTS_EXCEEDED', '验证码错误次数过多，请重新发送');
+  }
+  const candidate = await sha256(`${email.toLowerCase()}|${code}`);
+  if (candidate !== state.code_hash) {
+    await env.DB.prepare(`UPDATE email_verification_codes SET attempts=COALESCE(attempts,0)+1 WHERE email=? COLLATE NOCASE`).bind(email).run();
+    throw new HttpError(403, 'EMAIL_CODE_INVALID', '邮箱验证码不正确');
+  }
+  return email;
+}
+
+async function adminTestEmailDelivery(request: Request, env: Env): Promise<Response> {
+  const admin = await requireAdmin(env, request);
+  const settings = await loadSettings(env);
+  const body = await readJson<Record<string, unknown>>(request);
+  const email = normalizeOptionalEmailStrict(body.email) || admin.email;
+  if (!email) throw new HttpError(400, 'EMAIL_REQUIRED', '请输入测试收件邮箱');
+  const title = settings.site.title || '域名注册中心';
+  await sendEmailWithResend(
+    env,
+    settings,
+    email,
+    `${title} 邮件服务测试`,
+    '邮件服务连接正常，这是一封管理员测试邮件。',
+    `<div style="font-family:Arial,'Microsoft YaHei',sans-serif;padding:24px"><h2>${escapeEmailHtml(title)}</h2><p>邮件服务连接正常，这是一封管理员测试邮件。</p></div>`,
+  );
+  await audit(env, request, admin.id, 'admin.email_test', 'setting', 'registration', { recipient: await sha256(email.toLowerCase()) });
+  return ok({ sent: true, message: `测试邮件已发送至 ${email}` });
+}
 
 function serializeUser(user: UserRow) {
   return {
@@ -3694,27 +3927,29 @@ function turnstilePublicConfig(env: Env, settings?: AppSettings) {
 async function adminSystemStatus(request: Request, env: Env): Promise<Response> {
   await requireAdmin(env, request);
   const settings = await loadSettings(env);
+  const auditRetentionDays = clamp(Number(settings.security?.auditRetentionDays || 7), 1, 3650);
   const counts = await env.DB.prepare(`
     SELECT
       (SELECT COUNT(*) FROM users WHERE status!='deleted') AS users,
       (SELECT COUNT(*) FROM domain_applications) AS domains,
       (SELECT COUNT(*) FROM dns_records) AS dnsRecords,
-      (SELECT COUNT(*) FROM audit_logs WHERE datetime(created_at) >= datetime('now','-4 days')) AS logs4d
-  `).first<any>();
+      (SELECT COUNT(*) FROM audit_logs WHERE datetime(created_at) >= datetime('now','-' || ? || ' days')) AS logsRetained
+  `).bind(auditRetentionDays).first<any>();
   return ok({
-    version: 'v81',
+    version: 'v86',
     settingsKey: SETTINGS_KEY,
     kv: { storage: 'Workers KV', estimatedKeys: '由 Cloudflare 控制台查看实际占用' },
     cfApi: { configured: Boolean(resolveDnsToken(env, settings)), status: resolveDnsToken(env, settings) ? '已配置' : '未配置' },
     cron: { enabled: Boolean(settings.automation?.enabled), expression: settings.automation?.cronExpression || '' },
-    counts,
-    update: { current: 'v81', latest: '请以当前部署包为准' },
+    counts: { ...counts, logs4d: Number(counts?.logsRetained || 0) },
+    auditRetentionDays,
+    update: { current: 'v86', latest: '请以当前部署包为准' },
   });
 }
 
 async function adminExportSettings(request: Request, env: Env): Promise<Response> {
   await requireAdmin(env, request);
-  return ok({ exportedAt: new Date().toISOString(), version: 'v81', settings: await loadSettings(env) });
+  return ok({ exportedAt: new Date().toISOString(), version: 'v86', settings: await loadSettings(env) });
 }
 
 async function adminImportSettings(request: Request, env: Env): Promise<Response> {
@@ -3742,24 +3977,57 @@ async function adminImportSettings(request: Request, env: Env): Promise<Response
 async function adminTestCloudflareApi(request: Request, env: Env): Promise<Response> {
   const admin = await requireAdmin(env, request);
   const settings = await loadSettings(env);
-  const body = await readJson<Record<string, unknown>>(request, 64 * 1024).catch(() => ({}));
+  const body = await readJson<Record<string, unknown>>(request, 256 * 1024).catch(() => ({}));
   const requestedZoneId = cleanText((body as any).zoneId, 120);
   const requestedSuffix = normalizeOptionalSuffix((body as any).suffix);
-  const suffix = settings.dns.suffixes.find(x => requestedZoneId && x.zoneId === requestedZoneId)
-    || settings.dns.suffixes.find(x => requestedSuffix && (x.suffix === requestedSuffix || x.suffixAscii === requestedSuffix))
-    || settings.dns.suffixes.find(x => x.enabled && x.zoneId)
-    || settings.dns.suffixes.find(x => x.zoneId);
-  if (!suffix?.zoneId) throw new HttpError(400, 'ZONE_ID_MISSING', '没有可测试的 Zone ID；请在多根域名编辑器中填写该根域名的 Zone ID');
   const bodyToken = cleanText((body as any).cfApiToken, 2000);
-  const token = bodyToken || resolveDnsToken(env, settings, suffix);
-  if (!token) throw new HttpError(400, 'CF_TOKEN_MISSING', '尚未配置 Cloudflare API Token：可放 Worker Secret、DNS 配置全局 Token，也可给该根域名单独填写 Token');
-  const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${encodeURIComponent(suffix.zoneId)}`, {
-    headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+  const testOne = async (suffix: AppSettings['dns']['suffixes'][number]) => {
+    const token = bodyToken || resolveDnsToken(env, settings, suffix);
+    if (!token) return { suffix: suffix.suffix, zoneId: suffix.zoneId, ok: false, message: '未配置 API Token' };
+    try {
+      const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${encodeURIComponent(suffix.zoneId)}`, {
+        headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      });
+      const data: any = await res.json().catch(() => ({}));
+      const ok = res.ok && data.success !== false;
+      return {
+        suffix: suffix.suffix,
+        zone: data.result?.name || suffix.suffix,
+        zoneId: suffix.zoneId,
+        ok,
+        message: ok ? '连接正常' : (data.errors?.[0]?.message || `HTTP ${res.status}`),
+      };
+    } catch (error) {
+      return { suffix: suffix.suffix, zoneId: suffix.zoneId, ok: false, message: error instanceof Error ? error.message : '网络请求失败' };
+    }
+  };
+
+  if (requestedZoneId || requestedSuffix) {
+    const suffix = settings.dns.suffixes.find(x => requestedZoneId && x.zoneId === requestedZoneId)
+      || settings.dns.suffixes.find(x => requestedSuffix && (x.suffix === requestedSuffix || x.suffixAscii === requestedSuffix));
+    if (!suffix?.zoneId) throw new HttpError(400, 'ZONE_ID_MISSING', '没有可测试的 Zone ID；请填写该根域名的 Zone ID');
+    const result = await testOne(suffix);
+    await audit(env, request, admin.id, 'admin.cf_api_test', 'setting', 'dns', result);
+    if (!result.ok) throw new HttpError(502, 'CF_API_TEST_FAILED', `Cloudflare API 测试失败：${result.message}`);
+    return ok({ status: 'ok', message: `Cloudflare API 连通正常：${result.zone || result.suffix}`, ...result });
+  }
+
+  const inputSuffixes = Array.isArray((body as any).suffixes)
+    ? sanitizeDnsSuffixes((body as any).suffixes, settings.dns.suffixes)
+    : settings.dns.suffixes;
+  const candidates = inputSuffixes.filter(item => item.enabled !== false && item.zoneId);
+  if (!candidates.length) throw new HttpError(400, 'ZONE_ID_MISSING', '没有可测试的根域名；请先填写并启用至少一个 Zone ID');
+  const results = await Promise.all(candidates.map(testOne));
+  const successCount = results.filter(item => item.ok).length;
+  await audit(env, request, admin.id, 'admin.cf_api_test_all', 'setting', 'dns', { successCount, total: results.length, results });
+  return ok({
+    status: successCount === results.length ? 'ok' : (successCount ? 'partial' : 'failed'),
+    successCount,
+    failedCount: results.length - successCount,
+    total: results.length,
+    message: `全部根域名测试完成：${successCount}/${results.length} 正常`,
+    results,
   });
-  const data: any = await res.json().catch(() => ({}));
-  await audit(env, request, admin.id, 'admin.cf_api_test', 'setting', 'dns', { ok: res.ok && data.success !== false, zoneId: suffix.zoneId, suffix: suffix.suffix });
-  if (!res.ok || data.success === false) throw new HttpError(502, 'CF_API_TEST_FAILED', data.errors?.[0]?.message || `Cloudflare API 测试失败 HTTP ${res.status}`);
-  return ok({ status: 'ok', message: `Cloudflare API 连通正常：${data.result?.name || suffix.suffix}`, zone: data.result?.name || suffix.suffix, zoneId: suffix.zoneId });
 }
 
 function stripClientHint(value: string | null): string {
