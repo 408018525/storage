@@ -2965,3 +2965,187 @@ html[data-theme="dark"] .admin-settings-v79 .settings-section-heading{
   .admin-settings-v79 .suffix-editor-row.v83 .suffix-actions{grid-column:auto;}
   .donut-wrap.email-style.compact-ring .donut-svg{width:220px!important;height:220px!important;}
 }
+/* v86：邮箱验证码、根域名拖动排序与批量连通测试 */
+.email-code-row,
+.email-test-row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.email-code-row input,
+.email-test-row input{
+  flex:1 1 240px;
+  min-width:0;
+}
+.email-code-row .btn,
+.email-test-row .btn{
+  flex:0 0 auto;
+  white-space:nowrap;
+}
+.email-test-box .email-test-row{margin-top:12px;}
+#email-test-result{display:inline-block;line-height:1.5;}
+
+.admin-settings-v79 .suffix-editor-row.v86{
+  position:relative;
+  display:grid!important;
+  grid-template-columns:repeat(12,minmax(0,1fr))!important;
+  gap:14px!important;
+  align-items:start!important;
+  width:100%!important;
+  max-width:100%!important;
+  padding:50px 18px 18px!important;
+  overflow:visible!important;
+  box-sizing:border-box!important;
+  border-radius:22px!important;
+  cursor:grab;
+  transition:opacity .18s ease, transform .18s ease, box-shadow .18s ease;
+}
+.admin-settings-v79 .suffix-editor-row.v86:active{cursor:grabbing;}
+.admin-settings-v79 .suffix-editor-row.v86.is-dragging{
+  opacity:.55;
+  transform:scale(.995);
+  box-shadow:0 18px 45px rgba(15,23,42,.16);
+}
+.admin-settings-v79 .suffix-editor-row.v86 input,
+.admin-settings-v79 .suffix-editor-row.v86 select,
+.admin-settings-v79 .suffix-editor-row.v86 button{cursor:auto;}
+.admin-settings-v79 .suffix-editor-row.v86 .suffix-drag-handle{
+  position:absolute;
+  top:12px;
+  left:16px;
+  right:16px;
+  height:28px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  color:#64748b;
+  font-size:13px;
+  font-weight:800;
+  letter-spacing:.02em;
+  cursor:grab;
+  user-select:none;
+}
+.admin-settings-v79 .suffix-editor-row.v86 .suffix-drag-handle:active{cursor:grabbing;}
+.admin-settings-v79 .suffix-editor-row.v86 .enabled-toggle,
+.admin-settings-v79 .suffix-editor-row.v86 .register-toggle,
+.admin-settings-v79 .suffix-editor-row.v86 .proxy-toggle,
+.admin-settings-v79 .suffix-editor-row.v86 .name-field,
+.admin-settings-v79 .suffix-editor-row.v86 .root-field,
+.admin-settings-v79 .suffix-editor-row.v86 .default-type-field,
+.admin-settings-v79 .suffix-editor-row.v86 .ttl-field,
+.admin-settings-v79 .suffix-editor-row.v86 .register-order-field{grid-column:span 2;}
+.admin-settings-v79 .suffix-editor-row.v86 .zone-field,
+.admin-settings-v79 .suffix-editor-row.v86 .types-field{grid-column:span 4;}
+.admin-settings-v79 .suffix-editor-row.v86 .suffix-token-field{grid-column:span 6;}
+.admin-settings-v79 .suffix-editor-row.v86 .suffix-actions{
+  grid-column:span 4;
+  align-self:end;
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  justify-content:flex-start;
+  padding-top:22px;
+}
+.admin-settings-v79 .suffix-editor-row.v86 label,
+.admin-settings-v79 .suffix-editor-row.v86 .suffix-toggle-cell{min-width:0!important;width:100%!important;}
+.admin-settings-v79 .suffix-editor-row.v86 input,
+.admin-settings-v79 .suffix-editor-row.v86 select{
+  width:100%!important;
+  min-width:0!important;
+  height:44px;
+  box-sizing:border-box;
+}
+.admin-settings-v79 .suffix-editor-row.v86 .zone-field input,
+.admin-settings-v79 .suffix-editor-row.v86 .suffix-token-field input{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  font-size:13px;
+}
+.admin-settings-v79 .suffix-editor-row.v86 .suffix-toggle-cell label{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  font-weight:800;
+  color:#64748b;
+  font-size:13px;
+}
+.admin-settings-v79 .suffix-editor-row.v86 .suffix-toggle-cell input[type="checkbox"]{
+  width:36px!important;
+  height:36px!important;
+  accent-color:var(--accent);
+}
+.admin-settings-v79 .suffix-editor-row.v86 .suffix-toggle-cell em,
+.admin-settings-v79 .suffix-editor-row.v86 .suffix-token-field em,
+.admin-settings-v79 .suffix-editor-row.v86 .name-field em,
+.admin-settings-v79 .suffix-editor-row.v86 .register-order-field em,
+.admin-settings-v79 .suffix-editor-row.v86 label span{
+  white-space:normal!important;
+  word-break:break-word!important;
+  line-height:1.4;
+}
+.admin-settings-v79 .suffix-editor-row.v86 .btn.small{height:42px;padding:0 14px;}
+#cf-test-result{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  margin-top:12px;
+  width:100%;
+}
+#cf-test-result .cf-test-item{
+  display:block;
+  padding:7px 10px;
+  border-radius:9px;
+  background:#f1f5f9;
+  color:#475569;
+  font-size:13px;
+}
+#cf-test-result .cf-test-item.ok{background:#ecfdf5;color:#047857;}
+#cf-test-result .cf-test-item.fail{background:#fef2f2;color:#b91c1c;}
+
+@media (max-width:1500px){
+  .admin-settings-v79 .suffix-editor-row.v86{grid-template-columns:repeat(6,minmax(0,1fr))!important;}
+  .admin-settings-v79 .suffix-editor-row.v86 .enabled-toggle,
+  .admin-settings-v79 .suffix-editor-row.v86 .register-toggle,
+  .admin-settings-v79 .suffix-editor-row.v86 .proxy-toggle,
+  .admin-settings-v79 .suffix-editor-row.v86 .name-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .root-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .default-type-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .ttl-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .register-order-field{grid-column:span 2;}
+  .admin-settings-v79 .suffix-editor-row.v86 .zone-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .types-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .suffix-token-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .suffix-actions{grid-column:span 3;}
+}
+@media (max-width:980px){
+  .admin-settings-v79 .suffix-editor-row.v86{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
+  .admin-settings-v79 .suffix-editor-row.v86 .enabled-toggle,
+  .admin-settings-v79 .suffix-editor-row.v86 .register-toggle,
+  .admin-settings-v79 .suffix-editor-row.v86 .proxy-toggle,
+  .admin-settings-v79 .suffix-editor-row.v86 .name-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .root-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .default-type-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .ttl-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .register-order-field{grid-column:span 1;}
+  .admin-settings-v79 .suffix-editor-row.v86 .zone-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .types-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .suffix-token-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .suffix-actions{grid-column:1 / -1;}
+}
+@media (max-width:640px){
+  .email-code-row,.email-test-row{align-items:stretch;}
+  .email-code-row .btn,.email-test-row .btn{width:100%;}
+  .admin-settings-v79 .suffix-editor-row.v86{grid-template-columns:1fr!important;padding:48px 14px 14px!important;}
+  .admin-settings-v79 .suffix-editor-row.v86 .enabled-toggle,
+  .admin-settings-v79 .suffix-editor-row.v86 .register-toggle,
+  .admin-settings-v79 .suffix-editor-row.v86 .proxy-toggle,
+  .admin-settings-v79 .suffix-editor-row.v86 .name-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .root-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .default-type-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .ttl-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .register-order-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .zone-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .types-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .suffix-token-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .suffix-actions{grid-column:auto;}
+}
