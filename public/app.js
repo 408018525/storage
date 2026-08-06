@@ -857,10 +857,10 @@ function humanVerificationHtml(scene, extraClass = '') {
     <div class="human-turnstile-slot"></div>
     <div class="human-image-slot" hidden>
       <div class="image-captcha-row">
-        <input class="image-captcha-answer" autocomplete="off" spellcheck="false" placeholder="请输入图形中的字符" aria-label="图形验证码">
+        <input class="image-captcha-answer" autocomplete="off" spellcheck="false" placeholder="请输入验证码" aria-label="图形验证码">
         <button class="image-captcha-picture" type="button" title="点击刷新图形验证码"><span>加载中…</span></button>
       </div>
-      <div class="image-captcha-actions"><span class="muted">看不清可点击图片刷新</span><button type="button" class="link-button" data-try-turnstile hidden>尝试 Turnstile</button></div>
+      <div class="image-captcha-actions"><span class="muted">看不清？点击图片刷新</span></div>
     </div>
   </div>`;
 }
@@ -882,7 +882,12 @@ async function loadImageCaptcha(root, scene) {
   root.querySelector('.human-image-slot').hidden = false;
   if (picture) { picture.disabled = true; picture.innerHTML = '<span>正在生成…</span>'; }
   if (input) input.value = '';
-  if (status) status.textContent = '当前使用图形验证';
+  if (status) {
+    const canSwitchBack = humanVerificationMode() !== 'image' && hasTurnstileSiteKey();
+    status.innerHTML = canSwitchBack
+      ? '<span>当前使用图形验证</span><button type="button" class="link-button human-switch-link" data-try-turnstile>点击切换回 Turnstile 验证</button>'
+      : '<span>当前使用图形验证</span>';
+  }
   try {
     const result = await api(state.config?.turnstile?.captchaEndpoint || '/api/auth/captcha/challenge', { method:'POST', body:{ scene } });
     record.challengeId = String(result.challengeId || '');
@@ -912,12 +917,28 @@ async function mountHumanVerification(selector, scene, action) {
   record.action = action || scene;
   const picture = root.querySelector('.image-captcha-picture');
   picture?.addEventListener('click', () => loadImageCaptcha(root, scene));
-  const tryTurnstile = root.querySelector('[data-try-turnstile]');
-  tryTurnstile?.addEventListener('click', async () => {
-    root.querySelector('.human-image-slot').hidden = true;
-    try { await mountTurnstile(`${selector} .human-turnstile-slot`, action, { scene, allowFallback:mode === 'turnstile_fallback', root }); }
-    catch (error) { await switchHumanToImage(root, scene, error.message); }
-  });
+  if (root.dataset.humanSwitchBound !== '1') {
+    root.dataset.humanSwitchBound = '1';
+    root.addEventListener('click', async event => {
+      const button = event.target.closest('[data-try-turnstile]');
+      if (!button || !root.contains(button)) return;
+      button.disabled = true;
+      const status = root.querySelector('.human-verification-status');
+      if (status) status.textContent = '正在切换回 Turnstile 验证…';
+      root.querySelector('.human-image-slot').hidden = true;
+      try {
+        await mountTurnstile(`${selector} .human-turnstile-slot`, action, { scene, allowFallback:mode === 'turnstile_fallback', root });
+        if (status && mode === 'turnstile_fallback') {
+          status.innerHTML = '当前使用 Turnstile 验证　<button type="button" class="link-button human-switch-link" data-use-image>点击切换到图形验证</button>';
+          status.querySelector('[data-use-image]')?.addEventListener('click', () => switchHumanToImage(root, scene, '已手动切换').catch(error => toast(error.message, 'error')));
+        }
+      } catch (error) {
+        await switchHumanToImage(root, scene, error.message);
+      } finally {
+        button.disabled = false;
+      }
+    });
+  }
   if (mode === 'image') return loadImageCaptcha(root, scene);
   if (!hasTurnstileSiteKey()) {
     if (mode === 'turnstile_fallback') return switchHumanToImage(root, scene, 'Turnstile Site Key 未配置');
