@@ -191,12 +191,25 @@ interface AppSettings {
     disabledMessage?: string;
     turnstileSiteKey?: string;
     turnstileSecret?: string;
+    humanVerificationMode?: 'image' | 'turnstile' | 'turnstile_fallback';
+    captchaBackgroundEnabled?: boolean;
+    captchaBackgroundMode?: 'random' | 'upload';
+    captchaBackgroundImage?: string;
+    captchaNoiseLinesEnabled?: boolean;
+    captchaNoiseLinesMin?: number;
+    captchaNoiseLinesMax?: number;
+    captchaNoiseLineColorMode?: 'random' | 'fixed';
+    captchaNoiseLineFixedColor?: string;
+    captchaCharset?: string;
+    captchaLength?: number;
     emailDomainBlacklist?: string;
     emailVerificationEnabled?: boolean;
     emailApiKey?: string;
     emailFrom?: string;
     emailFromName?: string;
     emailCodeExpiryMinutes?: number;
+    emailCodeLength?: number;
+    emailCodeCharset?: string;
     emailAllowedEnvironments?: string;
     emailRegistrationSceneEnabled?: boolean;
     emailTestSceneEnabled?: boolean;
@@ -354,6 +367,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   if (method === 'POST' && pathname === '/api/auth/login') return login(request, env);
   if (method === 'POST' && pathname === '/api/auth/register') return register(request, env);
   if (method === 'POST' && pathname === '/api/auth/email-verification/send') return sendRegistrationEmailCode(request, env);
+  if (method === 'POST' && pathname === '/api/auth/captcha/challenge') return createImageCaptchaChallenge(request, env);
   if (method === 'POST' && pathname === '/api/auth/logout') return logout(request, env);
   if (method === 'GET' && pathname === '/api/auth/me') return authMe(request, env);
   if (method === 'POST' && pathname === '/api/auth/change-password') return changeOwnPassword(request, env);
@@ -391,6 +405,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   if (method === 'GET' && pathname === '/api/messages') return listOwnMessages(request, env);
   if (method === 'POST' && pathname === '/api/messages/contact-admin') return contactAdminMessage(request, env);
   if (method === 'POST' && pathname === '/api/messages/read-batch') return markOwnMessagesReadBatch(request, env);
+  if (method === 'POST' && pathname === '/api/messages/delete-batch') return deleteOwnMessagesBatch(request, env);
   match = pathname.match(/^\/api\/messages\/([^/]+)\/reply$/);
   if (match && method === 'POST') return replyOwnMessage(request, env, decodeURIComponent(match[1]));
   match = pathname.match(/^\/api\/messages\/([^/]+)\/withdraw$/);
@@ -566,6 +581,16 @@ async function ensureSchema(env: Env): Promise<void> {
       )
     `),
     env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS user_message_deletions (
+        message_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        deleted_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY(message_id, user_id),
+        FOREIGN KEY(message_id) REFERENCES system_messages(id),
+        FOREIGN KEY(user_id) REFERENCES users(id)
+      )
+    `),
+    env.DB.prepare(`
       CREATE TABLE IF NOT EXISTS audit_logs (
         id TEXT PRIMARY KEY,
         actor_user_id TEXT,
@@ -621,6 +646,7 @@ async function ensureSchema(env: Env): Promise<void> {
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_messages_status ON system_messages(status, sent_at)'),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_messages_target_user ON system_messages(target_type, target_user_id, status)'),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_messages_target_role ON system_messages(target_type, target_role, status)'),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_user_message_deletions_user ON user_message_deletions(user_id, deleted_at)'),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at)'),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_audit_logs_actor ON audit_logs(actor_user_id, created_at)'),
   ]);
@@ -786,7 +812,9 @@ async function hardDeleteUser(env: Env, userId: string): Promise<void> {
 
   await env.DB.batch([
     env.DB.prepare(`DELETE FROM message_reads WHERE user_id=?`).bind(userId),
+    env.DB.prepare(`DELETE FROM user_message_deletions WHERE user_id=?`).bind(userId),
     env.DB.prepare(`DELETE FROM message_reads WHERE message_id IN (SELECT id FROM system_messages WHERE sender_user_id=? OR target_user_id=?)`).bind(userId, userId),
+    env.DB.prepare(`DELETE FROM user_message_deletions WHERE message_id IN (SELECT id FROM system_messages WHERE sender_user_id=? OR target_user_id=?)`).bind(userId, userId),
     env.DB.prepare(`DELETE FROM system_messages WHERE sender_user_id=? OR target_user_id=?`).bind(userId, userId),
     env.DB.prepare(`DELETE FROM dns_records WHERE user_id=? OR application_id IN (SELECT id FROM domain_applications WHERE user_id=?)`).bind(userId, userId),
     env.DB.prepare(`DELETE FROM domain_applications WHERE user_id=?`).bind(userId),
@@ -882,10 +910,7 @@ async function register(request: Request, env: Env): Promise<Response> {
   if (Number(adminCount?.count || 0) < 1) throw new HttpError(503, 'SETUP_REQUIRED', '系统尚未完成管理员初始化');
   // 用户注册默认开放；前端注册入口不再因为历史 KV 设置关闭而失效。
 
-  const requireRegisterTurnstile = isEnabled(env.TURNSTILE_ENABLE_REGISTER, false) || Boolean(settings.registration.turnstileRegisterEnabled);
-  if (requireRegisterTurnstile) {
-    await verifyTurnstile(env, request, body.turnstileToken, env.TURNSTILE_ACTION_REGISTER || 'register');
-  }
+  await verifyHumanChallenge(env, request, body, 'register', env.TURNSTILE_ACTION_REGISTER || 'register');
 
   const username = normalizeUsername(body.username);
   const email = normalizeOptionalEmailStrict(body.email);
@@ -983,9 +1008,7 @@ async function login(request: Request, env: Env): Promise<Response> {
     throw new HttpError(429, 'LOGIN_TEMP_LOCKED', `登录失败次数过多，请 ${waitMinutes} 分钟后再试`);
   }
 
-  if (isEnabled(env.TURNSTILE_ENABLE_LOGIN, false)) {
-    await verifyTurnstile(env, request, body.turnstileToken, env.TURNSTILE_ACTION_LOGIN || 'login');
-  }
+  await verifyHumanChallenge(env, request, body, 'login', env.TURNSTILE_ACTION_LOGIN || 'login');
 
   const user = await env.DB.prepare(`
     SELECT * FROM users WHERE (username=? COLLATE NOCASE OR email=? COLLATE NOCASE OR phone=? COLLATE NOCASE) LIMIT 1
@@ -1282,9 +1305,7 @@ async function createApplication(request: Request, env: Env): Promise<Response> 
     }
   }
 
-  if (isEnabled(env.TURNSTILE_ENABLE_APPLY, false)) {
-    await verifyTurnstile(env, request, body.turnstileToken, env.TURNSTILE_ACTION_APPLY || 'domain_apply');
-  }
+  await verifyHumanChallenge(env, request, body, 'apply', env.TURNSTILE_ACTION_APPLY || 'domain_apply');
 
   if (user.status !== 'active') throw new HttpError(403, 'ACCOUNT_DISABLED', '账户已被禁用，无法注册域名，请通过帮助中心联系管理人员');
 
@@ -2085,17 +2106,21 @@ async function listOwnMessages(request: Request, env: Env): Promise<Response> {
     LEFT JOIN users sender ON sender.id=m.sender_user_id
     LEFT JOIN users target ON target.id=m.target_user_id
     LEFT JOIN message_reads r ON r.message_id=m.id AND r.user_id=?
+    LEFT JOIN user_message_deletions hidden ON hidden.message_id=m.id AND hidden.user_id=?
     WHERE m.status='sent'
       AND (m.deleted_at IS NULL OR m.deleted_at='')
+      AND hidden.message_id IS NULL
       AND (
-        m.target_type='all'
+        m.sender_user_id=?
         OR (m.target_type='user' AND m.target_user_id=?)
-        OR (m.target_type='role' AND m.target_role=?)
-        OR m.sender_user_id=?
+        OR (
+          (m.target_type='all' OR (m.target_type='role' AND m.target_role=?))
+          AND datetime(COALESCE(m.sent_at, m.created_at)) >= datetime(?)
+        )
       )
     ORDER BY COALESCE(m.sent_at, m.created_at) DESC
     LIMIT 1000
-  `).bind(user.id, user.id, user.role, user.id).all<MessageRow>();
+  `).bind(user.id, user.id, user.id, user.id, user.role, user.created_at).all<MessageRow>();
   const messages = (rows.results || []).map(row => {
     const msg = serializeMessage(row) as ReturnType<typeof serializeMessage> & Record<string, unknown>;
     const sentByMe = row.sender_user_id === user.id;
@@ -2133,12 +2158,14 @@ async function replyOwnMessage(request: Request, env: Env, id: string): Promise<
     LEFT JOIN message_reads r ON r.message_id=m.id AND r.user_id=?
     WHERE m.id=? AND m.status='sent' AND (m.deleted_at IS NULL OR m.deleted_at='')
       AND (
-        m.target_type='all'
+        m.sender_user_id=?
         OR (m.target_type='user' AND m.target_user_id=?)
-        OR (m.target_type='role' AND m.target_role=?)
-        OR m.sender_user_id=?
+        OR (
+          (m.target_type='all' OR (m.target_type='role' AND m.target_role=?))
+          AND datetime(COALESCE(m.sent_at, m.created_at)) >= datetime(?)
+        )
       )
-  `).bind(user.id, id, user.id, user.role, user.id).first<MessageRow>();
+  `).bind(user.id, id, user.id, user.id, user.role, user.created_at).first<MessageRow>();
   if (!original) throw new HttpError(404, 'MESSAGE_NOT_FOUND', '消息不存在或无权回复');
 
   let targetType = 'user';
@@ -2229,9 +2256,19 @@ async function markOwnMessageRead(request: Request, env: Env, id: string): Promi
   const message = await env.DB.prepare(`
     SELECT id FROM system_messages
     WHERE id=? AND status='sent' AND (deleted_at IS NULL OR deleted_at='')
-      AND (target_type='all' OR (target_type='user' AND target_user_id=?) OR (target_type='role' AND target_role=?))
-  `).bind(id, user.id, user.role).first<{ id: string }>();
+      AND (
+        (target_type='user' AND target_user_id=?)
+        OR (
+          (target_type='all' OR (target_type='role' AND target_role=?))
+          AND datetime(COALESCE(sent_at, created_at)) >= datetime(?)
+        )
+      )
+  `).bind(id, user.id, user.role, user.created_at).first<{ id: string }>();
   if (!message) throw new HttpError(404, 'MESSAGE_NOT_FOUND', '消息不存在或无权查看');
+  await env.DB.prepare(`
+    INSERT OR REPLACE INTO message_reads (message_id, user_id, read_at)
+    VALUES (?, ?, datetime('now'))
+  `).bind(id, user.id).run();
   return ok({ read: true });
 }
 
@@ -2246,8 +2283,14 @@ async function markOwnMessagesReadBatch(request: Request, env: Env): Promise<Res
   const rows = await env.DB.prepare(`
     SELECT id FROM system_messages
     WHERE id IN (${placeholders}) AND status='sent' AND (deleted_at IS NULL OR deleted_at='')
-      AND (target_type='all' OR (target_type='user' AND target_user_id=?) OR (target_type='role' AND target_role=?))
-  `).bind(...ids, user.id, user.role).all<{ id: string }>();
+      AND (
+        (target_type='user' AND target_user_id=?)
+        OR (
+          (target_type='all' OR (target_type='role' AND target_role=?))
+          AND datetime(COALESCE(sent_at, created_at)) >= datetime(?)
+        )
+      )
+  `).bind(...ids, user.id, user.role, user.created_at).all<{ id: string }>();
   const allowed = (rows.results || []).map(x => x.id);
   if (!allowed.length) throw new HttpError(404, 'MESSAGE_NOT_FOUND', '消息不存在或无权查看');
 
@@ -2256,6 +2299,37 @@ async function markOwnMessagesReadBatch(request: Request, env: Env): Promise<Res
     VALUES (?, ?, datetime('now'))
   `).bind(id, user.id)));
   return ok({ read: true, count: allowed.length });
+}
+
+async function deleteOwnMessagesBatch(request: Request, env: Env): Promise<Response> {
+  const user = await requireUser(env, request);
+  const body = await readJson<Record<string, unknown>>(request, 64 * 1024);
+  const rawIds = Array.isArray(body.ids) ? body.ids : [];
+  const ids = Array.from(new Set(rawIds.map(value => cleanText(value, 80)).filter(Boolean))).slice(0, 500);
+  if (!ids.length) throw new HttpError(400, 'NO_MESSAGE_IDS', '请选择要删除的消息');
+  const placeholders = ids.map(() => '?').join(',');
+  const rows = await env.DB.prepare(`
+    SELECT id FROM system_messages
+    WHERE id IN (${placeholders})
+      AND status='sent'
+      AND (deleted_at IS NULL OR deleted_at='')
+      AND (
+        sender_user_id=?
+        OR (target_type='user' AND target_user_id=?)
+        OR (
+          (target_type='all' OR (target_type='role' AND target_role=?))
+          AND datetime(COALESCE(sent_at, created_at)) >= datetime(?)
+        )
+      )
+  `).bind(...ids, user.id, user.id, user.role, user.created_at).all<{ id: string }>();
+  const allowed = (rows.results || []).map(row => row.id);
+  if (!allowed.length) throw new HttpError(404, 'MESSAGE_NOT_FOUND', '消息不存在或无权删除');
+  await env.DB.batch(allowed.map(id => env.DB.prepare(`
+    INSERT OR REPLACE INTO user_message_deletions (message_id, user_id, deleted_at)
+    VALUES (?, ?, datetime('now'))
+  `).bind(id, user.id)));
+  await audit(env, request, user.id, 'message.delete_self', 'message', null, { count: allowed.length });
+  return ok({ deleted: true, count: allowed.length });
 }
 
 async function adminListMessages(request: Request, env: Env, url: URL): Promise<Response> {
@@ -2373,6 +2447,7 @@ async function adminDeleteMessage(request: Request, env: Env, id: string): Promi
   await requireAdmin(env, request);
   await env.DB.batch([
     env.DB.prepare(`DELETE FROM message_reads WHERE message_id=?`).bind(id),
+    env.DB.prepare(`DELETE FROM user_message_deletions WHERE message_id=?`).bind(id),
     env.DB.prepare(`DELETE FROM system_messages WHERE id=?`).bind(id),
     env.DB.prepare(`DELETE FROM audit_logs WHERE target_type='message' AND target_id=?`).bind(id),
   ]);
@@ -2608,9 +2683,20 @@ async function adminUsers(request: Request, env: Env): Promise<Response> {
 }
 
 
+interface RegistrationKeyColumnInfo {
+  name: string;
+  notnull?: number;
+  dflt_value?: string | null;
+  pk?: number;
+}
+
+async function registrationKeyColumnInfo(env: Env): Promise<RegistrationKeyColumnInfo[]> {
+  const rows = await env.DB.prepare(`PRAGMA table_info(registration_keys)`).all<RegistrationKeyColumnInfo>();
+  return (rows.results || []).map(row => ({ ...row, name: String(row.name || '').toLowerCase() })).filter(row => row.name);
+}
+
 async function registrationKeyColumnNames(env: Env): Promise<Set<string>> {
-  const rows = await env.DB.prepare(`PRAGMA table_info(registration_keys)`).all<{ name: string }>();
-  return new Set((rows.results || []).map(row => String(row.name || '').toLowerCase()).filter(Boolean));
+  return new Set((await registrationKeyColumnInfo(env)).map(row => row.name));
 }
 
 async function validateRegistrationKey(env: Env, rawCode: unknown): Promise<{ id: string; role?: string | null }> {
@@ -2679,7 +2765,9 @@ async function adminCreateRegistrationKey(request: Request, env: Env): Promise<R
   const duplicate = await env.DB.prepare(`SELECT id FROM registration_keys WHERE code=? COLLATE NOCASE AND status!='deleted'`).bind(code).first<any>();
   if (duplicate) throw new HttpError(409, 'CODE_EXISTS', '注册码已存在');
   const id = crypto.randomUUID();
-  const columns = await registrationKeyColumnNames(env);
+  const columnInfo = await registrationKeyColumnInfo(env);
+  const columns = new Set(columnInfo.map(column => column.name));
+  const keyHash = await sha256(code);
   const insertColumns = ['id'];
   const values: unknown[] = [id];
   const placeholders = ['?'];
@@ -2692,6 +2780,8 @@ async function adminCreateRegistrationKey(request: Request, env: Env): Promise<R
   // 旧版表的 name 字段为 NOT NULL；新版表使用 code。两种结构都同时兼容。
   add('name', code);
   add('code', code);
+  add('key_hash', keyHash);
+  add('hash', keyHash);
   add('role', role);
   add('max_uses', maxUses);
   add('used_count', 0);
@@ -2699,6 +2789,18 @@ async function adminCreateRegistrationKey(request: Request, env: Env): Promise<R
   add('status', 'active');
   add('created_by', admin.id);
   add('created_at', null, "datetime('now')");
+  const alreadyAdded = new Set(insertColumns.map(name => name.toLowerCase()));
+  for (const column of columnInfo) {
+    if (alreadyAdded.has(column.name) || column.pk || !column.notnull || column.dflt_value != null) continue;
+    if (column.name.includes('hash')) add(column.name, keyHash);
+    else if (column.name.includes('name') || column.name.includes('code') || column.name.includes('key')) add(column.name, code);
+    else if (column.name.includes('count') || column.name.includes('uses') || column.name.includes('enabled')) add(column.name, 0);
+    else if (column.name.includes('status')) add(column.name, 'active');
+    else if (column.name.includes('role')) add(column.name, role);
+    else if (column.name.includes('created') || column.name.includes('updated')) add(column.name, null, "datetime('now')");
+    else add(column.name, '');
+    alreadyAdded.add(column.name);
+  }
   await env.DB.prepare(`INSERT INTO registration_keys (${insertColumns.join(', ')}) VALUES (${placeholders.join(', ')})`).bind(...values).run();
   await audit(env, request, admin.id, 'admin.registration_key_create', 'registration_key', id, { code, role, maxUses, expiresAt });
   return ok({ key: { id, code, role, maxUses, usedCount: 0, expiresAt, status: 'active' } });
@@ -2913,7 +3015,7 @@ async function adminCreateUser(request: Request, env: Env): Promise<Response> {
   const body = await readJson<Record<string, unknown>>(request);
   const settings = await loadSettings(env);
 
-  await verifyTurnstile(env, request, body.turnstileToken, env.TURNSTILE_ACTION_REGISTER || 'register');
+  await verifyHumanChallenge(env, request, body, 'admin_create', env.TURNSTILE_ACTION_REGISTER || 'register');
 
   const username = normalizeUsername(body.username);
   const email = normalizeOptionalEmailStrict(body.email);
@@ -3085,13 +3187,26 @@ async function adminUpdateSettings(request: Request, env: Env, group: AdminSetti
       blockTempEmail: asBoolean(body.blockTempEmail, false),
       maxAccountsPerIp: clamp(Number(body.maxAccountsPerIp || 0), 0, 10000),
       ipRegisterCooldownMinutes: clamp(Number(body.ipRegisterCooldownMinutes || 0), 0, 10080),
-      turnstileRegisterEnabled: asBoolean(body.turnstileRegisterEnabled, false),
+      turnstileRegisterEnabled: String(body.humanVerificationMode || settings.registration.humanVerificationMode || 'turnstile_fallback') !== 'image',
       defaultStatus: String(body.defaultStatus || 'auto') === 'manual' ? 'manual' : 'auto',
       disabledMessage: cleanText(body.disabledMessage, 500) || '当前暂未开放用户注册',
       turnstileSiteKey: cleanText(body.turnstileSiteKey, 300),
       turnstileSecret: Object.prototype.hasOwnProperty.call(body, 'turnstileSecret')
         ? cleanText(body.turnstileSecret, 500)
         : (settings.registration.turnstileSecret || ''),
+      humanVerificationMode: ['image','turnstile','turnstile_fallback'].includes(String(body.humanVerificationMode || 'turnstile_fallback')) ? String(body.humanVerificationMode || 'turnstile_fallback') as any : 'turnstile_fallback',
+      captchaBackgroundEnabled: asBoolean(body.captchaBackgroundEnabled, true),
+      captchaBackgroundMode: String(body.captchaBackgroundMode || 'random') === 'upload' ? 'upload' : 'random',
+      captchaBackgroundImage: Object.prototype.hasOwnProperty.call(body, 'captchaBackgroundImage')
+        ? sanitizeCaptchaBackgroundImage(body.captchaBackgroundImage)
+        : (settings.registration.captchaBackgroundImage || ''),
+      captchaNoiseLinesEnabled: asBoolean(body.captchaNoiseLinesEnabled, true),
+      captchaNoiseLinesMin: clamp(Number(body.captchaNoiseLinesMin ?? 2), 0, 20),
+      captchaNoiseLinesMax: clamp(Number(body.captchaNoiseLinesMax ?? 5), 0, 20),
+      captchaNoiseLineColorMode: String(body.captchaNoiseLineColorMode || 'random') === 'fixed' ? 'fixed' : 'random',
+      captchaNoiseLineFixedColor: normalizeHexColor(body.captchaNoiseLineFixedColor, '#64748b'),
+      captchaCharset: sanitizeCaptchaCharset(body.captchaCharset),
+      captchaLength: clamp(Number(body.captchaLength || 4), 3, 8),
       emailDomainBlacklist: cleanText(body.emailDomainBlacklist, 10000),
       emailVerificationEnabled: asBoolean(body.emailVerificationEnabled, false),
       emailApiKey: asBoolean((body as any).clearEmailApiKey, false)
@@ -3100,6 +3215,8 @@ async function adminUpdateSettings(request: Request, env: Env, group: AdminSetti
       emailFrom: cleanText(body.emailFrom, 320),
       emailFromName: cleanText(body.emailFromName, 120) || '域名注册中心',
       emailCodeExpiryMinutes: clamp(Number(body.emailCodeExpiryMinutes || 10), 2, 60),
+      emailCodeLength: clamp(Number(body.emailCodeLength || 6), 4, 12),
+      emailCodeCharset: sanitizeEmailCodeCharset(body.emailCodeCharset),
       emailAllowedEnvironments: cleanText(body.emailAllowedEnvironments, 500) || '*',
       emailRegistrationSceneEnabled: asBoolean(body.emailRegistrationSceneEnabled, true),
       emailTestSceneEnabled: asBoolean(body.emailTestSceneEnabled, true),
@@ -3118,6 +3235,11 @@ async function adminUpdateSettings(request: Request, env: Env, group: AdminSetti
       blockVpnProxy: asBoolean(body.blockVpnProxy, false),
       requireRegistrationKey: asBoolean(body.requireRegistrationKey, false),
     };
+    if ((settings.registration.captchaNoiseLinesMin || 0) > (settings.registration.captchaNoiseLinesMax || 0)) {
+      const value = settings.registration.captchaNoiseLinesMin || 0;
+      settings.registration.captchaNoiseLinesMin = settings.registration.captchaNoiseLinesMax || 0;
+      settings.registration.captchaNoiseLinesMax = value;
+    }
   }
 
   if (group === 'domain') {
@@ -3334,12 +3456,25 @@ function defaultSettings(env: Env): AppSettings {
       disabledMessage: '当前暂未开放用户注册',
       turnstileSiteKey: '',
       turnstileSecret: '',
+      humanVerificationMode: 'turnstile_fallback',
+      captchaBackgroundEnabled: true,
+      captchaBackgroundMode: 'random',
+      captchaBackgroundImage: '',
+      captchaNoiseLinesEnabled: true,
+      captchaNoiseLinesMin: 2,
+      captchaNoiseLinesMax: 5,
+      captchaNoiseLineColorMode: 'random',
+      captchaNoiseLineFixedColor: '#64748b',
+      captchaCharset: 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789',
+      captchaLength: 4,
       emailDomainBlacklist: '',
       emailVerificationEnabled: false,
       emailApiKey: '',
       emailFrom: env.EMAIL_FROM || '',
       emailFromName: env.EMAIL_FROM_NAME || '域名注册中心',
       emailCodeExpiryMinutes: 10,
+      emailCodeLength: 6,
+      emailCodeCharset: 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789',
       emailAllowedEnvironments: '*',
       emailRegistrationSceneEnabled: true,
       emailTestSceneEnabled: true,
@@ -3579,6 +3714,7 @@ function isTempEmailDomain(email: string): boolean {
 function publicRegistrationSettings(registration: AppSettings['registration']): Record<string, unknown> {
   const safe: Record<string, unknown> = { ...registration };
   delete safe.turnstileSecret;
+  delete safe.captchaBackgroundImage;
   delete safe.emailApiKey;
   delete safe.emailAllowedEnvironments;
   delete safe.emailRegistrationSceneEnabled;
@@ -3595,10 +3731,141 @@ function publicRegistrationSettings(registration: AppSettings['registration']): 
   return safe;
 }
 
-function randomNumericCode(length = 6): string {
-  const bytes = new Uint8Array(Math.max(4, Math.min(12, length)));
+function uniqueCharacters(value: unknown, fallback: string, maxLength = 160): string {
+  const source = Array.from(String(value || '').replace(/\s/g, ''));
+  const unique = Array.from(new Set(source)).join('').slice(0, maxLength);
+  return unique.length >= 2 ? unique : fallback;
+}
+
+function sanitizeCaptchaCharset(value: unknown): string {
+  return uniqueCharacters(value, 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 120);
+}
+
+function sanitizeEmailCodeCharset(value: unknown): string {
+  return uniqueCharacters(value, 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 160);
+}
+
+function sanitizeCaptchaBackgroundImage(value: unknown): string {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (!/^data:image\/(?:png|jpeg|jpg|webp|gif);base64,[a-z0-9+/=]+$/i.test(raw)) return '';
+  return raw.length <= 700000 ? raw : '';
+}
+
+function randomCodeFromCharset(charset: string, length: number, min = 3, max = 12): string {
+  const chars = Array.from(uniqueCharacters(charset, 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'));
+  const size = clamp(Number(length || min), min, max);
+  const bytes = new Uint32Array(size);
   crypto.getRandomValues(bytes);
-  return Array.from(bytes).slice(0, length).map(value => String(value % 10)).join('');
+  return Array.from(bytes).map(value => chars[value % chars.length]).join('');
+}
+
+function randomBetween(min: number, max: number): number {
+  const low = Math.min(min, max);
+  const high = Math.max(min, max);
+  const bytes = new Uint32Array(1);
+  crypto.getRandomValues(bytes);
+  return low + (bytes[0] % Math.max(1, high - low + 1));
+}
+
+function captchaColor(): string {
+  const hue = randomBetween(0, 359);
+  const saturation = randomBetween(48, 82);
+  const lightness = randomBetween(28, 55);
+  return `hsl(${hue} ${saturation}% ${lightness}%)`;
+}
+
+function escapeSvg(value: unknown): string {
+  return String(value ?? '').replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[char] || char));
+}
+
+function buildCaptchaSvg(settings: AppSettings, code: string): string {
+  const registration = settings.registration;
+  const width = 260;
+  const height = 92;
+  const backgroundEnabled = registration.captchaBackgroundEnabled !== false;
+  const uploadedBackground = backgroundEnabled && registration.captchaBackgroundMode === 'upload' ? sanitizeCaptchaBackgroundImage(registration.captchaBackgroundImage) : '';
+  const background = uploadedBackground
+    ? `<image href="${escapeSvg(uploadedBackground)}" x="0" y="0" width="${width}" height="${height}" preserveAspectRatio="xMidYMid slice" opacity="0.72"/>`
+    : backgroundEnabled
+      ? Array.from({ length: 14 }).map(() => `<circle cx="${randomBetween(0,width)}" cy="${randomBetween(0,height)}" r="${randomBetween(3,18)}" fill="${captchaColor()}" opacity="0.${randomBetween(8,22)}"/>`).join('')
+      : `<rect width="${width}" height="${height}" fill="#f8fafc"/>`;
+  const minLines = clamp(Number(registration.captchaNoiseLinesMin ?? 2), 0, 20);
+  const maxLines = clamp(Number(registration.captchaNoiseLinesMax ?? 5), 0, 20);
+  const lineCount = registration.captchaNoiseLinesEnabled === false ? 0 : randomBetween(minLines, maxLines);
+  const fixedLineColor = normalizeHexColor(registration.captchaNoiseLineFixedColor, '#64748b');
+  const lines = Array.from({ length: lineCount }).map(() => {
+    const color = registration.captchaNoiseLineColorMode === 'fixed' ? fixedLineColor : captchaColor();
+    return `<path d="M ${randomBetween(-20,40)} ${randomBetween(10,height-10)} C ${randomBetween(50,110)} ${randomBetween(-20,height+20)}, ${randomBetween(120,210)} ${randomBetween(-20,height+20)}, ${randomBetween(width-30,width+20)} ${randomBetween(8,height-8)}" fill="none" stroke="${color}" stroke-width="${randomBetween(2,5)}" opacity="0.${randomBetween(55,90)}" stroke-linecap="round"/>`;
+  }).join('');
+  const chars = Array.from(code);
+  const step = width / Math.max(1, chars.length);
+  const glyphs = chars.map((character, index) => {
+    const x = Math.round(step * index + step * 0.48 + randomBetween(-5,5));
+    const y = randomBetween(58,75);
+    const rotate = randomBetween(-24,24);
+    const size = randomBetween(43,59);
+    return `<text x="${x}" y="${y}" text-anchor="middle" font-family="Arial Black,Arial,sans-serif" font-size="${size}" font-weight="900" fill="${captchaColor()}" transform="rotate(${rotate} ${x} ${y})">${escapeSvg(character)}</text>`;
+  }).join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="图形验证码"><rect width="${width}" height="${height}" rx="12" fill="#f8fafc"/>${background}${glyphs}${lines}<rect x="1" y="1" width="${width-2}" height="${height-2}" rx="11" fill="none" stroke="#cbd5e1"/></svg>`;
+}
+
+function captchaScene(value: unknown): 'login' | 'register' | 'apply' | 'admin_create' {
+  const scene = String(value || 'login');
+  return ['login','register','apply','admin_create'].includes(scene) ? scene as any : 'login';
+}
+
+async function createImageCaptchaChallenge(request: Request, env: Env): Promise<Response> {
+  await rateLimit(env, request, 'captcha-challenge', 80, 600);
+  const body = await readJson<Record<string, unknown>>(request).catch(() => ({} as Record<string, unknown>));
+  const settings = await loadSettings(env);
+  const scene = captchaScene(body.scene);
+  const charset = sanitizeCaptchaCharset(settings.registration.captchaCharset);
+  const length = clamp(Number(settings.registration.captchaLength || 4), 3, 8);
+  const code = randomCodeFromCharset(charset, length, 3, 8);
+  const id = crypto.randomUUID();
+  const expiresAt = Date.now() + 5 * 60 * 1000;
+  const answerHash = await sha256(`${id}|${scene}|${clientIp(request)}|${code.toUpperCase()}`);
+  await env.APP_KV.put(`captcha:${id}`, JSON.stringify({ answerHash, scene, expiresAt }), { expirationTtl: 360 });
+  return ok({ challengeId: id, imageSvg: buildCaptchaSvg(settings, code), expiresInSeconds: 300, length });
+}
+
+async function verifyImageCaptcha(env: Env, request: Request, rawId: unknown, rawAnswer: unknown, scene: string): Promise<void> {
+  const id = cleanText(rawId, 100);
+  const answer = String(rawAnswer || '').trim();
+  if (!id || !answer) throw new HttpError(400, 'CAPTCHA_REQUIRED', '请输入图形验证码');
+  const key = `captcha:${id}`;
+  const raw = await env.APP_KV.get(key);
+  await env.APP_KV.delete(key).catch(() => undefined);
+  if (!raw) throw new HttpError(403, 'CAPTCHA_EXPIRED', '图形验证码已过期，请刷新后重试');
+  let record: { answerHash?: string; scene?: string; expiresAt?: number } = {};
+  try { record = JSON.parse(raw); } catch {}
+  if (record.scene !== scene || Number(record.expiresAt || 0) < Date.now()) throw new HttpError(403, 'CAPTCHA_EXPIRED', '图形验证码已过期，请刷新后重试');
+  const candidate = await sha256(`${id}|${scene}|${clientIp(request)}|${answer.toUpperCase()}`);
+  if (candidate !== record.answerHash) throw new HttpError(403, 'CAPTCHA_INVALID', '图形验证码不正确，请重新输入');
+}
+
+function humanVerificationMode(settings: AppSettings): 'image' | 'turnstile' | 'turnstile_fallback' {
+  const mode = String(settings.registration.humanVerificationMode || 'turnstile_fallback');
+  return ['image','turnstile','turnstile_fallback'].includes(mode) ? mode as any : 'turnstile_fallback';
+}
+
+async function verifyHumanChallenge(env: Env, request: Request, body: Record<string, unknown>, scene: string, expectedAction: string): Promise<void> {
+  const settings = await loadSettings(env);
+  const mode = humanVerificationMode(settings);
+  if (mode === 'image') {
+    await verifyImageCaptcha(env, request, body.captchaChallengeId, body.captchaAnswer, scene);
+    return;
+  }
+  if (mode === 'turnstile') {
+    await verifyTurnstile(env, request, body.turnstileToken, expectedAction);
+    return;
+  }
+  if (String(body.captchaChallengeId || '').trim() || String(body.captchaAnswer || '').trim()) {
+    await verifyImageCaptcha(env, request, body.captchaChallengeId, body.captchaAnswer, scene);
+    return;
+  }
+  await verifyTurnstile(env, request, body.turnstileToken, expectedAction);
 }
 
 function escapeEmailHtml(value: unknown): string {
@@ -3723,7 +3990,9 @@ async function sendRegistrationEmailCode(request: Request, env: Env): Promise<Re
     if (Number.isFinite(sentAt) && remaining > 0) throw new HttpError(429, 'EMAIL_CODE_COOLDOWN', `请 ${remaining} 秒后再发送`);
   }
 
-  const code = randomNumericCode(6);
+  const codeLength = clamp(Number(settings.registration.emailCodeLength || 6), 4, 12);
+  const codeCharset = sanitizeEmailCodeCharset(settings.registration.emailCodeCharset);
+  const code = randomCodeFromCharset(codeCharset, codeLength, 4, 12);
   const expiryMinutes = clamp(Number(settings.registration.emailCodeExpiryMinutes || 10), 2, 60);
   const expiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000).toISOString();
   const sentAt = new Date().toISOString();
@@ -3765,8 +4034,13 @@ async function sendRegistrationEmailCode(request: Request, env: Env): Promise<Re
 }
 
 async function verifyRegistrationEmailCode(env: Env, email: string, rawCode: unknown): Promise<string> {
+  const settings = await loadSettings(env);
   const code = String(rawCode || '').trim();
-  if (!/^\d{6}$/.test(code)) throw new HttpError(400, 'EMAIL_CODE_REQUIRED', '请输入 6 位邮箱验证码');
+  const codeLength = clamp(Number(settings.registration.emailCodeLength || 6), 4, 12);
+  const charset = new Set(Array.from(sanitizeEmailCodeCharset(settings.registration.emailCodeCharset)));
+  if (Array.from(code).length !== codeLength || Array.from(code).some(character => !charset.has(character))) {
+    throw new HttpError(400, 'EMAIL_CODE_REQUIRED', `请输入 ${codeLength} 位邮箱验证码`);
+  }
   const state = await env.DB.prepare(`
     SELECT code_hash, expires_at, attempts FROM email_verification_codes WHERE email=? COLLATE NOCASE LIMIT 1
   `).bind(email).first<{ code_hash?: string; expires_at?: string; attempts?: number }>();
@@ -3815,7 +4089,7 @@ async function adminTestEmailDelivery(request: Request, env: Env): Promise<Respo
   const email = recipients[0];
   const context = {
     siteName: settings.site.title || '域名注册中心',
-    code: '123456',
+    code: randomCodeFromCharset(sanitizeEmailCodeCharset(settings.registration.emailCodeCharset), clamp(Number(settings.registration.emailCodeLength || 6), 4, 12), 4, 12),
     expiryMinutes: clamp(Number(settings.registration.emailCodeExpiryMinutes || 10), 2, 60),
     email,
     adminEmail: admin.email || '',
@@ -4032,7 +4306,7 @@ async function deleteDnsRecordBestEffort(token: string, zoneId: string, recordId
 async function verifyTurnstile(env: Env, request: Request, token: unknown, expectedAction: string): Promise<void> {
   const settings = await loadSettings(env);
   const secret = String(env.TURNSTILE_SECRET || settings.registration.turnstileSecret || '').trim();
-  if (!secret) throw new HttpError(503, 'TURNSTILE_SECRET_MISSING', 'Turnstile Secret 未配置');
+  if (!secret) throw new HttpError(503, 'TURNSTILE_UNAVAILABLE', 'Turnstile Secret 未配置，请改用图形验证');
   const value = String(token || '').trim();
   if (!value) throw new HttpError(400, 'TURNSTILE_REQUIRED', '请完成人机验证');
 
@@ -4041,12 +4315,18 @@ async function verifyTurnstile(env: Env, request: Request, token: unknown, expec
   form.append('response', value);
   form.append('remoteip', clientIp(request));
 
-  const response = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
-    method: 'POST',
-    body: form,
-  });
+  let response: Response;
+  try {
+    response = await Promise.race([
+      fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', body: form }),
+      new Promise<Response>((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
+    ]);
+  } catch {
+    throw new HttpError(503, 'TURNSTILE_UNAVAILABLE', 'Turnstile 服务连接超时，请切换图形验证');
+  }
   const result: any = await response.json().catch(() => null);
-  if (!result?.success) throw new HttpError(403, 'TURNSTILE_FAILED', '人机验证失败');
+  if (!response.ok) throw new HttpError(503, 'TURNSTILE_UNAVAILABLE', `Turnstile 验证接口异常 HTTP ${response.status}，请切换图形验证`);
+  if (!result?.success) throw new HttpError(403, 'TURNSTILE_FAILED', '人机验证失败，请刷新验证后重试');
 
   if (expectedAction && result.action && result.action !== expectedAction) {
     throw new HttpError(403, 'TURNSTILE_ACTION_MISMATCH', '人机验证 Action 不匹配');
@@ -4057,11 +4337,14 @@ async function verifyTurnstile(env: Env, request: Request, token: unknown, expec
 }
 
 function turnstilePublicConfig(env: Env, settings?: AppSettings) {
+  const mode = settings ? humanVerificationMode(settings) : 'turnstile_fallback';
   return {
     siteKey: env.TURNSTILE_SITE_KEY || settings?.registration?.turnstileSiteKey || '',
-    enabledApply: isEnabled(env.TURNSTILE_ENABLE_APPLY, false),
-    enabledLogin: isEnabled(env.TURNSTILE_ENABLE_LOGIN, false),
-    enabledRegister: isEnabled(env.TURNSTILE_ENABLE_REGISTER, false),
+    enabledApply: mode !== 'image',
+    enabledLogin: mode !== 'image',
+    enabledRegister: mode !== 'image',
+    mode,
+    captchaEndpoint: '/api/auth/captcha/challenge',
     actionApply: env.TURNSTILE_ACTION_APPLY || 'domain_apply',
     actionLogin: env.TURNSTILE_ACTION_LOGIN || 'login',
     actionRegister: env.TURNSTILE_ACTION_REGISTER || 'register',
@@ -4082,20 +4365,20 @@ async function adminSystemStatus(request: Request, env: Env): Promise<Response> 
       (SELECT COUNT(*) FROM audit_logs WHERE datetime(created_at) >= datetime('now','-' || ? || ' days')) AS logsRetained
   `).bind(auditRetentionDays).first<any>();
   return ok({
-    version: 'v86',
+    version: 'v88',
     settingsKey: SETTINGS_KEY,
     kv: { storage: 'Workers KV', estimatedKeys: '由 Cloudflare 控制台查看实际占用' },
     cfApi: { configured: Boolean(resolveDnsToken(env, settings)), status: resolveDnsToken(env, settings) ? '已配置' : '未配置' },
     cron: { enabled: Boolean(settings.automation?.enabled), expression: settings.automation?.cronExpression || '' },
     counts: { ...counts, logs4d: Number(counts?.logsRetained || 0) },
     auditRetentionDays,
-    update: { current: 'v86', latest: '请以当前部署包为准' },
+    update: { current: 'v88', latest: '请以当前部署包为准' },
   });
 }
 
 async function adminExportSettings(request: Request, env: Env): Promise<Response> {
   await requireAdmin(env, request);
-  return ok({ exportedAt: new Date().toISOString(), version: 'v86', settings: await loadSettings(env) });
+  return ok({ exportedAt: new Date().toISOString(), version: 'v88', settings: await loadSettings(env) });
 }
 
 async function adminImportSettings(request: Request, env: Env): Promise<Response> {
@@ -4155,7 +4438,7 @@ async function adminTestCloudflareApi(request: Request, env: Env): Promise<Respo
     const result = await testOne(suffix);
     await audit(env, request, admin.id, 'admin.cf_api_test', 'setting', 'dns', result);
     if (!result.ok) throw new HttpError(502, 'CF_API_TEST_FAILED', `Cloudflare API 测试失败：${result.message}`);
-    return ok({ status: 'ok', message: `Cloudflare API 连通正常：${result.zone || result.suffix}`, ...result });
+    return ok({ ...result, status: 'ok', message: `Cloudflare API 连通正常：${result.zone || result.suffix}` });
   }
 
   const inputSuffixes = Array.isArray((body as any).suffixes)
@@ -4615,10 +4898,24 @@ function cookieString(name: string, value: string, options: any): string {
 }
 
 function assertSameOrigin(request: Request): void {
+  if (['GET','HEAD','OPTIONS'].includes(request.method.toUpperCase())) return;
   const origin = request.headers.get('origin');
   if (!origin) return;
-  const url = new URL(request.url);
-  if (origin !== url.origin) throw new HttpError(403, 'BAD_ORIGIN', '请求来源不允许');
+  let originUrl: URL;
+  try { originUrl = new URL(origin); } catch { throw new HttpError(403, 'BAD_ORIGIN', '请求来源格式不正确'); }
+  const requestUrl = new URL(request.url);
+  const forwardedHost = String(request.headers.get('x-forwarded-host') || request.headers.get('host') || '').split(',')[0].trim();
+  const forwardedProto = String(request.headers.get('x-forwarded-proto') || requestUrl.protocol.replace(':','')).split(',')[0].trim().toLowerCase();
+  const fetchSite = String(request.headers.get('sec-fetch-site') || '').toLowerCase();
+  const requestIsSecure = requestUrl.protocol === 'https:' || forwardedProto === 'https';
+  if (requestIsSecure && originUrl.protocol !== 'https:') throw new HttpError(403, 'BAD_ORIGIN', '请求必须使用 HTTPS');
+  // Sec-Fetch-Site 由浏览器控制；same-origin 可避免自定义域/反向代理偶发改写 Host 导致误判。
+  if (fetchSite === 'same-origin') return;
+  const normalizeHost = (value: string) => value.trim().toLowerCase().replace(/:\d+$/, '');
+  const allowedHosts = new Set([requestUrl.host, requestUrl.hostname, forwardedHost].map(normalizeHost).filter(Boolean));
+  if (!allowedHosts.has(normalizeHost(originUrl.host)) && !allowedHosts.has(normalizeHost(originUrl.hostname))) {
+    throw new HttpError(403, 'BAD_ORIGIN', '请求来源不允许，请刷新页面后重试');
+  }
 }
 
 async function readJson<T>(request: Request, maxBytes = 64 * 1024): Promise<T> {
