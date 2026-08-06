@@ -1,5 +1,7 @@
 /// <reference types="@cloudflare/workers-types" />
 
+import { EmailMessage } from "cloudflare:email";
+
 interface D1Result<T = unknown> { results?: T[]; meta?: { changes?: number } }
 interface D1PreparedStatement {
   bind(...values: unknown[]): D1PreparedStatement;
@@ -31,6 +33,8 @@ export interface Env {
   EMAIL_FROM_NAME?: string;
   APP_ENVIRONMENT?: string;
   ENVIRONMENT?: string;
+  CF_ADMIN_EMAIL?: string;
+  SEB?: { send(message: EmailMessage): Promise<unknown> };
   DNS_SUFFIX?: string;
   DNS_SUFFIX_LABEL?: string;
   DNS_ZONE_ID?: string;
@@ -336,7 +340,7 @@ class HttpError extends Error {
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     try {
       assertSameOrigin(request);
       const url = new URL(request.url);
@@ -351,6 +355,9 @@ export default {
       }
       console.error(error);
       const message = error instanceof Error && error.message ? error.message : '服务器内部错误';
+      ctx.waitUntil(notifySystemExceptionByCloudflare(env, request, error).catch(notifyError => {
+        console.error('system exception email failed', notifyError);
+      }));
       return json({ ok: false, code: 'INTERNAL_ERROR', message }, 500);
     }
   },
@@ -1390,6 +1397,26 @@ async function createApplication(request: Request, env: Env): Promise<Response> 
   ).run();
 
   await audit(env, request, user.id, 'application.create', 'domain_application', id, { fqdnAscii });
+  if (appStatus === 'pending') {
+    await sendAdminCloudflareEmailSafe(env, 'domain_review', {
+      subject: `【域名待审核】${fqdnUnicode}`,
+      text: [
+        '有新的二级域名申请等待管理员审核。',
+        '',
+        `申请用户：${user.username}`,
+        `用户 ID：${user.id}`,
+        `申请域名：${fqdnUnicode}`,
+        `ASCII 域名：${fqdnAscii}`,
+        `提交时间：${new Date().toISOString()}`,
+        `客户端 IP：${clientIp(request) || '未知'}`,
+        isRiskDomain ? '风险提示：前缀命中了系统风险关键词，请重点检查。' : '风险提示：未命中内置高风险关键词。',
+        '',
+        `审核入口：${new URL(request.url).origin}/#/admin/applications`,
+      ].join('\n'),
+      fingerprint: `domain-review|${id}`,
+      cooldownSeconds: 60,
+    }, settings);
+  }
   const app = await env.DB.prepare(`SELECT * FROM domain_applications WHERE id=?`).bind(id).first<ApplicationRow>();
   return ok({ application: serializeApplication(app!, settings) });
 }
@@ -1447,6 +1474,22 @@ async function updateOwnDns(request: Request, env: Env, id: string): Promise<Res
       }
     } catch (error) {
       errorMessage = error instanceof Error ? error.message.slice(0, 1000) : 'DNS 保存失败';
+      await sendAdminCloudflareEmailSafe(env, 'dns_anomaly', {
+        subject: `【DNS 异常】保存 ${app.fqdn_ascii}`,
+        text: [
+          '用户保存域名 DNS 时发生异常。',
+          '',
+          `用户：${user.username}（${user.id}）`,
+          `域名：${app.fqdn_unicode}`,
+          `记录：${recordType} ${app.fqdn_ascii} → ${recordContent}`,
+          `Zone ID：${suffix.zoneId || '未配置'}`,
+          `错误：${errorMessage}`,
+          `时间：${new Date().toISOString()}`,
+          `客户端 IP：${clientIp(request) || '未知'}`,
+        ].join('\n'),
+        fingerprint: `dns-save|${app.id}|${errorMessage}`,
+        cooldownSeconds: 900,
+      }, settings);
       throw new HttpError(502, 'DNS_SAVE_FAILED', errorMessage);
     }
   }
@@ -1524,6 +1567,22 @@ async function createOwnDnsRecord(request: Request, env: Env, applicationId: str
     cfRecordId = record.id || '';
   } catch (error) {
     errorMessage = error instanceof Error ? error.message.slice(0, 1000) : 'DNS 创建失败';
+    await sendAdminCloudflareEmailSafe(env, 'dns_anomaly', {
+      subject: `【DNS 异常】创建 ${name}`,
+      text: [
+        '用户创建 DNS 记录时发生异常。',
+        '',
+        `用户：${user.username}（${user.id}）`,
+        `所属域名：${app.fqdn_unicode}`,
+        `记录：${type} ${name} → ${content}`,
+        `Zone ID：${suffix.zoneId || '未配置'}`,
+        `错误：${errorMessage}`,
+        `时间：${new Date().toISOString()}`,
+        `客户端 IP：${clientIp(request) || '未知'}`,
+      ].join('\n'),
+      fingerprint: `dns-create|${applicationId}|${name}|${type}|${errorMessage}`,
+      cooldownSeconds: 900,
+    }, settings);
     throw new HttpError(502, 'DNS_CREATE_FAILED', errorMessage);
   }
 
@@ -1592,6 +1651,22 @@ async function updateOwnDnsRecordManaged(request: Request, env: Env, recordId: s
     } catch (error) {
       errorMessage = error instanceof Error ? error.message.slice(0, 1000) : 'DNS 更新失败';
       await env.DB.prepare(`UPDATE dns_records SET error_message=?,status='error',updated_at=datetime('now') WHERE id=?`).bind(errorMessage, recordId).run();
+      await sendAdminCloudflareEmailSafe(env, 'dns_anomaly', {
+        subject: `【DNS 异常】更新 ${name}`,
+        text: [
+          '用户更新 DNS 记录时发生异常。',
+          '',
+          `用户：${user.username}（${user.id}）`,
+          `记录 ID：${recordId}`,
+          `记录：${type} ${name} → ${content}`,
+          `Zone ID：${suffix.zoneId || '未配置'}`,
+          `错误：${errorMessage}`,
+          `时间：${new Date().toISOString()}`,
+          `客户端 IP：${clientIp(request) || '未知'}`,
+        ].join('\n'),
+        fingerprint: `dns-update|${recordId}|${errorMessage}`,
+        cooldownSeconds: 900,
+      }, settings);
       throw new HttpError(502, 'DNS_UPDATE_FAILED', errorMessage);
     }
   }
@@ -1632,6 +1707,24 @@ async function deleteOwnDnsRecordManaged(request: Request, env: Env, recordId: s
   await hardDeleteDnsRecordRow(env, recordId);
   await syncApplicationDnsSummary(env, row.application_id);
   await audit(env, request, user.id, 'dns_record.delete', 'dns_record', recordId, { warning });
+  if (warning) {
+    await sendAdminCloudflareEmailSafe(env, 'dns_anomaly', {
+      subject: `【DNS 清理警告】记录 ${recordId}`,
+      text: [
+        '用户删除 DNS 记录时，Cloudflare 远端清理出现警告。',
+        '',
+        `用户：${user.username}（${user.id}）`,
+        `记录 ID：${recordId}`,
+        `本地记录：已删除`,
+        `远端警告：${warning}`,
+        `时间：${new Date().toISOString()}`,
+        '',
+        '请到 Cloudflare DNS 控制台确认是否仍有残留记录。',
+      ].join('\n'),
+      fingerprint: `dns-delete-warning|${recordId}|${warning}`,
+      cooldownSeconds: 900,
+    }, settings);
+  }
   return ok({ deleted: true, purged: true, warning });
 }
 
@@ -1671,6 +1764,21 @@ async function syncPendingDnsRecordsForApp(env: Env, app: ApplicationRow, suffix
     } catch (error) {
       const message = error instanceof Error ? error.message.slice(0, 1000) : 'DNS 创建失败';
       await env.DB.prepare(`UPDATE dns_records SET status='error',error_message=?,updated_at=datetime('now') WHERE id=?`).bind(message, record.id).run();
+      await sendAdminCloudflareEmailSafe(env, 'dns_anomaly', {
+        subject: `【DNS 同步异常】${record.name || app.fqdn_ascii}`,
+        text: [
+          '管理员批准域名后，待写入 DNS 记录同步失败。',
+          '',
+          `域名：${app.fqdn_unicode}`,
+          `记录 ID：${record.id}`,
+          `记录：${record.type} ${record.name} → ${record.content}`,
+          `Zone ID：${suffix.zoneId || '未配置'}`,
+          `错误：${message}`,
+          `时间：${new Date().toISOString()}`,
+        ].join('\n'),
+        fingerprint: `dns-sync|${record.id}|${message}`,
+        cooldownSeconds: 900,
+      }, settings);
     }
   }
   return created;
@@ -1708,7 +1816,25 @@ async function deleteAllDnsRecordsForApp(env: Env, app: ApplicationRow, suffix: 
   } else if (namesToClean.size) {
     warnings.push('未配置 Cloudflare Token 或 Zone ID，已仅清理本地记录');
   }
-  return { warnings: Array.from(new Set(warnings)).slice(0, 10) };
+  const uniqueWarnings = Array.from(new Set(warnings)).slice(0, 10);
+  if (uniqueWarnings.length) {
+    await sendAdminCloudflareEmailSafe(env, 'dns_anomaly', {
+      subject: `【DNS 清理警告】${app.fqdn_ascii}`,
+      text: [
+        '系统清理域名关联 DNS 时出现警告。',
+        '',
+        `域名：${app.fqdn_unicode}`,
+        `Zone ID：${suffix.zoneId || '未配置'}`,
+        `警告：${uniqueWarnings.join('；')}`,
+        `时间：${new Date().toISOString()}`,
+        '',
+        '本地记录可能已经清理，请到 Cloudflare DNS 控制台核对远端是否有残留。',
+      ].join('\n'),
+      fingerprint: `dns-cleanup|${app.id}|${uniqueWarnings.join('|')}`,
+      cooldownSeconds: 900,
+    }, settings);
+  }
+  return { warnings: uniqueWarnings };
 }
 
 function serializeDnsRecord(row: DnsRecordRow): Record<string, unknown> {
@@ -1790,6 +1916,24 @@ async function requestDeleteOwnApplication(request: Request, env: Env, id: strin
   `).bind(user.id, id, user.id).run();
 
   await audit(env, request, user.id, 'application.delete_request', 'domain_application', id);
+  await sendAdminCloudflareEmailSafe(env, 'domain_review', {
+    subject: `【域名删除待审核】${app.fqdn_unicode}`,
+    text: [
+      '用户提交了已生效域名的删除申请。',
+      '',
+      `申请用户：${user.username}`,
+      `用户 ID：${user.id}`,
+      `域名：${app.fqdn_unicode}`,
+      `ASCII 域名：${app.fqdn_ascii}`,
+      `提交时间：${new Date().toISOString()}`,
+      `客户端 IP：${clientIp(request) || '未知'}`,
+      '',
+      '请先确认该域名的 DNS 记录和业务使用情况，再批准或拒绝删除。',
+      `审核入口：${new URL(request.url).origin}/#/admin/applications`,
+    ].join('\n'),
+    fingerprint: `domain-delete-review|${id}|${Date.now()}`,
+    cooldownSeconds: 60,
+  }, settings);
   const updated = await env.DB.prepare(`SELECT * FROM domain_applications WHERE id=?`).bind(id).first<ApplicationRow>();
   return ok({ application: serializeApplication(updated!, await loadSettings(env)) });
 }
@@ -2073,6 +2217,27 @@ async function contactAdminMessage(request: Request, env: Env): Promise<Response
     VALUES (?, ?, 'role', NULL, 'admin', ?, ?, 'feedback', 'sent', datetime('now'))
   `).bind(id, user.id, title, text).run();
   await audit(env, request, user.id, 'message.contact_admin', 'message', id, { title });
+  await sendAdminCloudflareEmailSafe(env, 'help_submission', {
+    subject: `【用户帮助】${title}`,
+    text: [
+      '用户通过系统帮助入口提交了信息。',
+      '',
+      `用户名：${user.username}`,
+      `用户 ID：${user.id}`,
+      `邮箱：${user.email || '未填写'}`,
+      `手机号：${user.phone || '未填写'}`,
+      `提交时间：${new Date().toISOString()}`,
+      `客户端 IP：${clientIp(request) || '未知'}`,
+      '',
+      `主题：${title}`,
+      '',
+      text,
+      '',
+      `后台查看：${new URL(request.url).origin}/#/messages`,
+    ].join('\n'),
+    fingerprint: `help|${id}`,
+    cooldownSeconds: 60,
+  });
   const row = await env.DB.prepare(`SELECT m.*, sender.username AS sender_username FROM system_messages m LEFT JOIN users sender ON sender.id=m.sender_user_id WHERE m.id=?`).bind(id).first<MessageRow>();
   return ok({ sent: true, movedToMessageCenter: true, message: serializeMessage(row!) });
 }
@@ -3130,6 +3295,9 @@ function adminSettingsView(settings: AppSettings, env: Env): any {
   safeSettings.registration.emailApiKeyConfigured = Boolean(settings.registration.emailApiKey || env.RESEND_API_KEY);
   safeSettings.registration.emailApiKey = '';
   safeSettings.registration.emailRuntimeEnvironment = resolveEmailRuntimeEnvironment(env);
+  safeSettings.registration.cloudflareAdminEmailConfigured = Boolean(env.SEB);
+  safeSettings.registration.cloudflareAdminEmail = resolveCloudflareAdminEmail(env, settings);
+  safeSettings.registration.cloudflareAdminEmailFrom = resolveCloudflareAdminSender(env, settings).fromEmail;
   safeSettings.dns.cfApiTokenConfigured = Boolean(settings.dns.cfApiToken || env.CF_API_TOKEN);
   safeSettings.dns.cfApiToken = '';
   safeSettings.dns.suffixes = (safeSettings.dns.suffixes || []).map((x: any) => ({
@@ -3555,6 +3723,10 @@ function defaultSettings(env: Env): AppSettings {
         domainExpiring: true,
         domainExpiredDelete: true,
         abnormalRegister: true,
+        systemErrorEmail: true,
+        helpSubmissionEmail: true,
+        domainReviewEmail: true,
+        dnsAnomalyEmail: true,
       },
       expiryTemplate: '您的域名即将到期，请及时续期。',
       templates: {
@@ -3678,6 +3850,10 @@ function sanitizeNotificationEvents(value: unknown): Record<string, boolean> {
     domainExpiring: asBoolean(raw.domainExpiring, true),
     domainExpiredDelete: asBoolean(raw.domainExpiredDelete, true),
     abnormalRegister: asBoolean(raw.abnormalRegister, true),
+    systemErrorEmail: asBoolean(raw.systemErrorEmail, true),
+    helpSubmissionEmail: asBoolean(raw.helpSubmissionEmail, true),
+    domainReviewEmail: asBoolean(raw.domainReviewEmail, true),
+    dnsAnomalyEmail: asBoolean(raw.dnsAnomalyEmail, true),
   };
 }
 
@@ -3902,6 +4078,170 @@ function plainTextToEmailHtml(text: string): string {
   return `<div style="font-family:Arial,'Microsoft YaHei',sans-serif;max-width:560px;margin:auto;padding:24px;color:#0f172a;white-space:normal">${escapeEmailHtml(text).replace(/\n/g, '<br>')}</div>`;
 }
 
+
+type AdminCloudflareEmailScene = 'admin_test' | 'system_error' | 'help_submission' | 'domain_review' | 'dns_anomaly';
+
+function resolveCloudflareAdminEmail(env: Env, _settings: AppSettings): string {
+  const configured = String(env.CF_ADMIN_EMAIL || '').trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(configured) ? configured : 'admin@flore.top';
+}
+
+function resolveCloudflareAdminSender(env: Env, settings: AppSettings): { fromEmail: string; fromName: string } {
+  const adminEmail = resolveCloudflareAdminEmail(env, settings);
+  const configured = String(env.EMAIL_FROM || settings.registration.emailFrom || '').trim();
+  const fromEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(configured) ? configured : adminEmail;
+  const fromName = cleanText(env.EMAIL_FROM_NAME || settings.registration.emailFromName || settings.site.title || 'FLORE域名注册中心', 120) || 'FLORE域名注册中心';
+  return { fromEmail, fromName };
+}
+
+function adminCloudflareEmailSceneEnabled(settings: AppSettings, scene: AdminCloudflareEmailScene): boolean {
+  if (scene === 'admin_test') return settings.registration.emailTestSceneEnabled !== false;
+  const events = settings.notification?.events || {};
+  if (scene === 'system_error') return events.systemErrorEmail !== false;
+  if (scene === 'help_submission') return events.helpSubmissionEmail !== false;
+  if (scene === 'domain_review') return events.domainReviewEmail !== false;
+  if (scene === 'dns_anomaly') return events.dnsAnomalyEmail !== false;
+  return true;
+}
+
+function encodeEmailHeaderUtf8(value: string): string {
+  const bytes = new TextEncoder().encode(String(value || ''));
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return `=?UTF-8?B?${btoa(binary)}?=`;
+}
+
+function base64EmailBody(value: string): string {
+  const bytes = new TextEncoder().encode(String(value || ''));
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/(.{76})/g, '$1\r\n');
+}
+
+function buildCloudflareRawEmail(input: {
+  fromEmail: string;
+  fromName: string;
+  toEmail: string;
+  subject: string;
+  text: string;
+  html?: string;
+}): string {
+  const boundary = `storage_${crypto.randomUUID().replace(/-/g, '')}`;
+  const subject = cleanText(input.subject, 300).replace(/[\r\n]+/g, ' ').trim() || '系统通知';
+  const text = String(input.text || '').trim() || '系统通知';
+  const html = String(input.html || '').trim() || plainTextToEmailHtml(text);
+  return [
+    `From: ${encodeEmailHeaderUtf8(input.fromName)} <${input.fromEmail}>`,
+    `To: ${input.toEmail}`,
+    `Subject: ${encodeEmailHeaderUtf8(subject)}`,
+    `Date: ${new Date().toUTCString()}`,
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    '',
+    `--${boundary}`,
+    'Content-Type: text/plain; charset=UTF-8',
+    'Content-Transfer-Encoding: base64',
+    '',
+    base64EmailBody(text),
+    `--${boundary}`,
+    'Content-Type: text/html; charset=UTF-8',
+    'Content-Transfer-Encoding: base64',
+    '',
+    base64EmailBody(html),
+    `--${boundary}--`,
+    '',
+  ].join('\r\n');
+}
+
+async function claimAdminEmailCooldown(
+  env: Env,
+  scene: AdminCloudflareEmailScene,
+  fingerprint: string,
+  cooldownSeconds: number,
+): Promise<boolean> {
+  if (cooldownSeconds <= 0) return true;
+  const hash = (await sha256(`${scene}|${fingerprint}`)).slice(0, 32);
+  const key = `admin_email_v90:${scene}:${hash}`;
+  const existing = await env.APP_KV.get(key).catch(() => null);
+  if (existing) return false;
+  await env.APP_KV.put(key, '1', { expirationTtl: clamp(cooldownSeconds, 60, 86400) }).catch(() => undefined);
+  return true;
+}
+
+async function sendAdminCloudflareEmail(
+  env: Env,
+  settings: AppSettings,
+  scene: AdminCloudflareEmailScene,
+  message: { subject: string; text: string; html?: string; fingerprint?: string; cooldownSeconds?: number },
+): Promise<{ sent: boolean; recipient: string; skipped?: string }> {
+  const recipient = resolveCloudflareAdminEmail(env, settings);
+  if (!adminCloudflareEmailSceneEnabled(settings, scene)) return { sent: false, recipient, skipped: 'scene_disabled' };
+  if (!env.SEB) throw new HttpError(503, 'CF_EMAIL_BINDING_MISSING', 'Cloudflare 邮件绑定未配置，请确认 wrangler.jsonc 中存在名为 SEB 的 send_email 绑定');
+  const fingerprint = message.fingerprint || `${message.subject}|${message.text.slice(0, 500)}`;
+  const allowed = await claimAdminEmailCooldown(env, scene, fingerprint, Number(message.cooldownSeconds || 0));
+  if (!allowed) return { sent: false, recipient, skipped: 'cooldown' };
+  const sender = resolveCloudflareAdminSender(env, settings);
+  const raw = buildCloudflareRawEmail({
+    fromEmail: sender.fromEmail,
+    fromName: sender.fromName,
+    toEmail: recipient,
+    subject: message.subject,
+    text: message.text,
+    html: message.html,
+  });
+  try {
+    await env.SEB.send(new EmailMessage(sender.fromEmail, recipient, raw));
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error || '未知错误');
+    throw new HttpError(502, 'CF_ADMIN_EMAIL_FAILED', `Cloudflare 管理员邮件发送失败：${detail.slice(0, 500)}`);
+  }
+  return { sent: true, recipient };
+}
+
+async function sendAdminCloudflareEmailSafe(
+  env: Env,
+  scene: AdminCloudflareEmailScene,
+  message: { subject: string; text: string; html?: string; fingerprint?: string; cooldownSeconds?: number },
+  settingsInput?: AppSettings,
+): Promise<void> {
+  try {
+    const settings = settingsInput || await loadSettings(env);
+    await sendAdminCloudflareEmail(env, settings, scene, message);
+  } catch (error) {
+    console.error(`cloudflare admin email ${scene} failed`, error);
+  }
+}
+
+async function notifySystemExceptionByCloudflare(env: Env, request: Request, error: unknown): Promise<void> {
+  let settings: AppSettings;
+  try { settings = await loadSettings(env); }
+  catch { settings = defaultSettings(env); }
+  if (!adminCloudflareEmailSceneEnabled(settings, 'system_error')) return;
+  const url = new URL(request.url);
+  const message = error instanceof Error ? error.message : String(error || '未知异常');
+  const stack = error instanceof Error ? String(error.stack || '').slice(0, 4000) : '';
+  const rayId = request.headers.get('cf-ray') || '';
+  const text = [
+    '系统捕获到未处理异常。',
+    '',
+    `时间：${new Date().toISOString()}`,
+    `请求：${request.method} ${url.pathname}${url.search}`,
+    `访问域名：${url.hostname}`,
+    `客户端 IP：${clientIp(request) || '未知'}`,
+    rayId ? `Cloudflare Ray ID：${rayId}` : '',
+    `错误：${message}`,
+    stack ? `堆栈：\n${stack}` : '',
+    '',
+    '处理建议：先查看 Workers 日志中同一时间的第一条错误，再检查 D1、KV、绑定和最近部署文件。',
+  ].filter(Boolean).join('\n');
+  await sendAdminCloudflareEmail(env, settings, 'system_error', {
+    subject: `【系统异常】${request.method} ${url.pathname}`,
+    text,
+    fingerprint: `${request.method}|${url.pathname}|${message}`,
+    cooldownSeconds: 900,
+  });
+}
+
 function resolveEmailDeliveryConfig(env: Env, settings: AppSettings) {
   const apiKey = String(env.RESEND_API_KEY || settings.registration.emailApiKey || '').trim();
   const fromEmail = String(env.EMAIL_FROM || settings.registration.emailFrom || '').trim();
@@ -4067,44 +4407,49 @@ async function adminTestEmailDelivery(request: Request, env: Env): Promise<Respo
   const admin = await requireAdmin(env, request);
   const settings = await loadSettings(env);
   if (settings.registration.emailTestSceneEnabled === false) {
-    throw new HttpError(409, 'EMAIL_TEST_SCENE_DISABLED', '测试邮件场景已被管理员关闭');
+    throw new HttpError(409, 'EMAIL_TEST_SCENE_DISABLED', '管理员测试邮件场景已被关闭');
   }
   const environment = assertEmailEnvironmentAllowed(env, settings);
   const body = await readJson<Record<string, unknown>>(request);
-  const mode = settings.registration.emailTestRecipientMode || 'manual';
-  const manualRecipient = normalizeOptionalEmailStrict(body.email);
-  const fixedRecipients = sanitizeEmailRecipientList(settings.registration.emailFixedRecipients || '');
-  let recipients: string[] = [];
-  if (mode === 'admin') recipients = sanitizeEmailRecipientList(admin.email || '');
-  else if (mode === 'fixed') recipients = fixedRecipients;
-  else recipients = sanitizeEmailRecipientList(manualRecipient || '');
-  if (!recipients.length) {
-    const hint = mode === 'admin' ? '当前管理员账号没有邮箱' : mode === 'fixed' ? '请先配置固定收件邮箱' : '请输入测试收件邮箱';
-    throw new HttpError(400, 'EMAIL_REQUIRED', hint);
-  }
   const requestedScene = String(body.scene || 'test') === 'registration' ? 'registration' : 'test';
   if (requestedScene === 'registration' && settings.registration.emailRegistrationSceneEnabled === false) {
     throw new HttpError(409, 'EMAIL_REGISTRATION_SCENE_DISABLED', '注册验证码邮件场景已被管理员关闭');
   }
-  const email = recipients[0];
+  const recipient = resolveCloudflareAdminEmail(env, settings);
   const context = {
     siteName: settings.site.title || '域名注册中心',
-    code: randomCodeFromCharset(sanitizeEmailCodeCharset(settings.registration.emailCodeCharset), clamp(Number(settings.registration.emailCodeLength || 6), 4, 12), 4, 12),
+    code: randomCodeFromCharset(
+      sanitizeEmailCodeCharset(settings.registration.emailCodeCharset),
+      clamp(Number(settings.registration.emailCodeLength || 6), 4, 12),
+      4,
+      12,
+    ),
     expiryMinutes: clamp(Number(settings.registration.emailCodeExpiryMinutes || 10), 2, 60),
-    email,
-    adminEmail: admin.email || '',
+    email: recipient,
+    adminEmail: admin.email || recipient,
     environment,
     time: new Date().toISOString(),
   };
   const rendered = buildEmailTemplateMessage(settings, requestedScene, context);
-  await sendEmailWithResend(env, settings, { to: recipients, ...rendered });
-  await audit(env, request, admin.id, 'admin.email_test', 'setting', 'registration', {
-    recipientCount: recipients.length,
-    recipientHash: await sha256(recipients.join(',').toLowerCase()),
+  const result = await sendAdminCloudflareEmail(env, settings, 'admin_test', {
+    ...rendered,
+    fingerprint: `manual-test|${admin.id}|${Date.now()}`,
+    cooldownSeconds: 0,
+  });
+  await audit(env, request, admin.id, 'admin.email_test', 'setting', 'cloudflare_email', {
+    recipientHash: await sha256(recipient.toLowerCase()),
     scene: requestedScene,
     environment,
+    provider: 'cloudflare_email_binding',
   });
-  return ok({ sent: true, recipients, environment, scene: requestedScene, message: `测试邮件已发送至 ${recipients.join('、')}` });
+  return ok({
+    sent: result.sent,
+    recipients: [recipient],
+    environment,
+    scene: requestedScene,
+    provider: 'cloudflare',
+    message: `Cloudflare 测试邮件已发送至 ${recipient}`,
+  });
 }
 
 function serializeUser(user: UserRow) {
@@ -4365,20 +4710,20 @@ async function adminSystemStatus(request: Request, env: Env): Promise<Response> 
       (SELECT COUNT(*) FROM audit_logs WHERE datetime(created_at) >= datetime('now','-' || ? || ' days')) AS logsRetained
   `).bind(auditRetentionDays).first<any>();
   return ok({
-    version: 'v88',
+    version: 'v90',
     settingsKey: SETTINGS_KEY,
     kv: { storage: 'Workers KV', estimatedKeys: '由 Cloudflare 控制台查看实际占用' },
     cfApi: { configured: Boolean(resolveDnsToken(env, settings)), status: resolveDnsToken(env, settings) ? '已配置' : '未配置' },
     cron: { enabled: Boolean(settings.automation?.enabled), expression: settings.automation?.cronExpression || '' },
     counts: { ...counts, logs4d: Number(counts?.logsRetained || 0) },
     auditRetentionDays,
-    update: { current: 'v88', latest: '请以当前部署包为准' },
+    update: { current: 'v90', latest: '请以当前部署包为准' },
   });
 }
 
 async function adminExportSettings(request: Request, env: Env): Promise<Response> {
   await requireAdmin(env, request);
-  return ok({ exportedAt: new Date().toISOString(), version: 'v88', settings: await loadSettings(env) });
+  return ok({ exportedAt: new Date().toISOString(), version: 'v90', settings: await loadSettings(env) });
 }
 
 async function adminImportSettings(request: Request, env: Env): Promise<Response> {
