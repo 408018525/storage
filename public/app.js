@@ -628,14 +628,58 @@ function applyI18n(root = app) {
   root.querySelectorAll?.('input[placeholder], textarea[placeholder]').forEach(el => {
     el.placeholder = translateTextValue(el.placeholder);
   });
-  root.querySelectorAll?.('[title], [aria-label]').forEach(el => {
+  root.querySelectorAll?.('[title], [aria-label], [alt], optgroup[label]').forEach(el => {
     if (el.title) el.title = translateTextValue(el.title);
     const aria = el.getAttribute('aria-label');
     if (aria) el.setAttribute('aria-label', translateTextValue(aria));
+    const alt = el.getAttribute('alt');
+    if (alt) el.setAttribute('alt', translateTextValue(alt));
+    const label = el.getAttribute('label');
+    if (label) el.setAttribute('label', translateTextValue(label));
+  });
+  root.querySelectorAll?.('input[type=button][value], input[type=submit][value], input[type=reset][value]').forEach(el => {
+    el.value = translateTextValue(el.value);
   });
   root.querySelectorAll?.('option').forEach(el => {
     el.textContent = translateTextValue(el.textContent);
   });
+  if (root === document.body || root === app) reportMissingI18n(root);
+}
+function reportMissingI18n(root = document.body) {
+  if (lang() !== 'en' || !root) return;
+  const missing = new Set();
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const parent = node.parentElement;
+      if (!parent || ['SCRIPT','STYLE','CODE','TEXTAREA'].includes(parent.tagName) || !/[\u4e00-\u9fff]/.test(node.nodeValue || '')) return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    }
+  });
+  while (walker.nextNode()) {
+    const value = String(walker.currentNode.nodeValue || '').trim();
+    if (value) missing.add(value);
+  }
+  const values = [...missing].sort();
+  const signature = values.join('\n');
+  window.__storageMissingI18n = values;
+  if (window.__storageMissingI18nSignature !== signature) {
+    window.__storageMissingI18nSignature = signature;
+    if (missing.size) console.warn('[i18n] Untranslated visible strings:', values);
+  }
+}
+let i18nMutationObserver = null;
+function ensureI18nObserver() {
+  if (i18nMutationObserver || !document.body) return;
+  i18nMutationObserver = new MutationObserver(mutations => {
+    if (lang() !== 'en') return;
+    const roots = new Set();
+    mutations.forEach(mutation => mutation.addedNodes.forEach(node => {
+      if (node.nodeType === Node.ELEMENT_NODE) roots.add(node);
+      else if (node.nodeType === Node.TEXT_NODE && node.parentElement) roots.add(node.parentElement);
+    }));
+    roots.forEach(root => applyI18n(root));
+  });
+  i18nMutationObserver.observe(document.body, { childList:true, subtree:true });
 }
 function bindLanguageControls() {
   document.querySelectorAll('[data-lang-toggle]').forEach(btn => {
@@ -644,6 +688,7 @@ function bindLanguageControls() {
 }
 function afterRender() {
   bindLanguageControls();
+  ensureI18nObserver();
   applyI18n();
 }
 async function renderRoute() {
@@ -853,14 +898,13 @@ async function api(path, options = {}) {
 
 function humanVerificationHtml(scene, extraClass = '') {
   return `<div class="human-verification ${attr(extraClass)}" data-human-verification="${attr(scene)}">
-    <div class="human-verification-status muted">正在准备人机验证…</div>
+    <div class="human-verification-status" hidden aria-live="polite"></div>
     <div class="human-turnstile-slot"></div>
     <div class="human-image-slot" hidden>
       <div class="image-captcha-row">
         <input class="image-captcha-answer" autocomplete="off" spellcheck="false" placeholder="请输入验证码" aria-label="图形验证码">
         <button class="image-captcha-picture" type="button" title="点击刷新图形验证码"><span>加载中…</span></button>
       </div>
-      <div class="image-captcha-actions"><span class="muted">看不清？点击图片刷新</span></div>
     </div>
   </div>`;
 }
@@ -874,37 +918,30 @@ async function loadImageCaptcha(root, scene) {
   const record = humanSceneState(scene);
   const picture = root.querySelector('.image-captcha-picture');
   const input = root.querySelector('.image-captcha-answer');
-  const status = root.querySelector('.human-verification-status');
   record.method = 'image';
   record.root = root;
   record.challengeId = '';
-  root.querySelector('.human-turnstile-slot').innerHTML = '';
-  root.querySelector('.human-image-slot').hidden = false;
+  const turnstileSlot = root.querySelector('.human-turnstile-slot');
+  const imageSlot = root.querySelector('.human-image-slot');
+  if (turnstileSlot) turnstileSlot.innerHTML = '';
+  if (imageSlot) imageSlot.hidden = false;
+  root.classList.add('is-image-captcha');
+  root.classList.remove('is-turnstile');
   if (picture) { picture.disabled = true; picture.innerHTML = '<span>正在生成…</span>'; }
   if (input) input.value = '';
-  if (status) {
-    const canSwitchBack = humanVerificationMode() !== 'image' && hasTurnstileSiteKey();
-    status.innerHTML = canSwitchBack
-      ? '<span>当前使用图形验证</span><button type="button" class="link-button human-switch-link" data-try-turnstile>点击切换回 Turnstile 验证</button>'
-      : '<span>当前使用图形验证</span>';
-  }
   try {
     const result = await api(state.config?.turnstile?.captchaEndpoint || '/api/auth/captcha/challenge', { method:'POST', body:{ scene } });
     record.challengeId = String(result.challengeId || '');
     if (picture) picture.innerHTML = result.imageSvg || '<span>验证码生成失败</span>';
   } catch (error) {
     if (picture) picture.innerHTML = '<span>生成失败，点击重试</span>';
-    if (status) status.textContent = error.message;
+    toast(error.message || '图形验证码生成失败', 'error');
   } finally {
     if (picture) picture.disabled = false;
   }
 }
 
-async function switchHumanToImage(root, scene, reason = '') {
-  if (reason) {
-    const status = root.querySelector('.human-verification-status');
-    if (status) status.textContent = `${reason}，已切换图形验证`;
-  }
+async function switchHumanToImage(root, scene) {
   await loadImageCaptcha(root, scene);
 }
 
@@ -915,49 +952,26 @@ async function mountHumanVerification(selector, scene, action) {
   const record = humanSceneState(scene);
   record.root = root;
   record.action = action || scene;
-  const picture = root.querySelector('.image-captcha-picture');
-  picture?.addEventListener('click', () => loadImageCaptcha(root, scene));
-  if (root.dataset.humanSwitchBound !== '1') {
-    root.dataset.humanSwitchBound = '1';
-    root.addEventListener('click', async event => {
-      const button = event.target.closest('[data-try-turnstile]');
-      if (!button || !root.contains(button)) return;
-      button.disabled = true;
-      const status = root.querySelector('.human-verification-status');
-      if (status) status.textContent = '正在切换回 Turnstile 验证…';
-      root.querySelector('.human-image-slot').hidden = true;
-      try {
-        await mountTurnstile(`${selector} .human-turnstile-slot`, action, { scene, allowFallback:mode === 'turnstile_fallback', root });
-        if (status && mode === 'turnstile_fallback') {
-          status.innerHTML = '当前使用 Turnstile 验证　<button type="button" class="link-button human-switch-link" data-use-image>点击切换到图形验证</button>';
-          status.querySelector('[data-use-image]')?.addEventListener('click', () => switchHumanToImage(root, scene, '已手动切换').catch(error => toast(error.message, 'error')));
-        }
-      } catch (error) {
-        await switchHumanToImage(root, scene, error.message);
-      } finally {
-        button.disabled = false;
-      }
-    });
-  }
+  root.querySelector('.image-captcha-picture')?.addEventListener('click', () => loadImageCaptcha(root, scene));
+
+  // Only show the image captcha when the administrator selected it, or when
+  // Turnstile is unavailable in fallback mode. There is no manual switch in the form.
   if (mode === 'image') return loadImageCaptcha(root, scene);
   if (!hasTurnstileSiteKey()) {
-    if (mode === 'turnstile_fallback') return switchHumanToImage(root, scene, 'Turnstile Site Key 未配置');
-    root.querySelector('.human-verification-status').textContent = 'Turnstile Site Key 未配置，当前设置为仅使用 Turnstile';
+    if (mode === 'turnstile_fallback') return switchHumanToImage(root, scene);
+    const slot = root.querySelector('.human-turnstile-slot');
+    if (slot) slot.innerHTML = '<div class="notice small danger turnstile-retry-box">Turnstile Site Key 未配置</div>';
     return;
   }
   try {
+    const imageSlot = root.querySelector('.human-image-slot');
+    if (imageSlot) imageSlot.hidden = true;
+    root.classList.add('is-turnstile');
+    root.classList.remove('is-image-captcha');
     await mountTurnstile(`${selector} .human-turnstile-slot`, action, { scene, allowFallback:mode === 'turnstile_fallback', root });
-    if (mode === 'turnstile_fallback') {
-      const status = root.querySelector('.human-verification-status');
-      if (status) status.innerHTML = '优先使用 Turnstile　<button type="button" class="link-button" data-use-image>Turnstile 无法使用？切换图形验证</button>';
-      status?.querySelector('[data-use-image]')?.addEventListener('click', () => switchHumanToImage(root, scene, '已手动切换').catch(error => toast(error.message, 'error')));
-    }
   } catch (error) {
-    if (mode === 'turnstile_fallback') await switchHumanToImage(root, scene, error.message);
-    else {
-      const status = root.querySelector('.human-verification-status');
-      if (status) status.textContent = error.message;
-    }
+    if (mode === 'turnstile_fallback') await switchHumanToImage(root, scene);
+    else toast(error.message || 'Turnstile 加载失败', 'error');
   }
 }
 
@@ -982,7 +996,7 @@ async function recoverHumanVerification(scene, error) {
   const code = String(error?.code || '');
   const turnstileFailure = code.startsWith('TURNSTILE_') || /Turnstile|人机验证接口|验证组件/i.test(String(error?.message || ''));
   if (humanVerificationMode() === 'turnstile_fallback' && record.root && record.method !== 'image' && turnstileFailure) {
-    await switchHumanToImage(record.root, scene, 'Turnstile 无法使用');
+    await switchHumanToImage(record.root, scene);
     return true;
   }
   await resetHumanVerification(scene);
@@ -4462,7 +4476,7 @@ function bindAdminSettingsTabs() {
   activate(sessionStorage.getItem('adminSettingsActiveTab') || 'site');
 }
 function toLocalDateTimeValue(value) { if (!value) return ''; const d=new Date(value); if(Number.isNaN(d.getTime())) return String(value).slice(0,16); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16); }
-function renderSuffixEditorRows(suffixes=[]) { return (suffixes.length?suffixes:[{label:'',suffix:'flore.top',zoneId:'',allowedTypes:['A','AAAA','CNAME','TXT','MX'],defaultType:'CNAME',ttl:1,proxied:false,enabled:true,allowRegister:true,registerOrder:1}]).map((s,i)=>`<div class="suffix-editor-row v88" data-suffix-row draggable="true">
+function renderSuffixEditorRows(suffixes=[]) { return (suffixes.length?suffixes:[{label:'',suffix:'flore.top',zoneId:'',allowedTypes:['A','AAAA','CNAME','TXT','MX'],defaultType:'CNAME',ttl:1,proxied:false,enabled:true,allowRegister:true,registerOrder:1}]).map((s,i)=>`<div class="suffix-editor-row v91" data-suffix-row draggable="true">
   <div class="suffix-drag-handle" data-drag-handle title="拖动整个域名框调换顺序">⋮⋮ <span>拖动排序</span></div>
   <div class="suffix-toggle-cell compact enabled-toggle"><label><span>启用解析</span><input data-k="enabled" type="checkbox" ${yn(s.enabled!==false)}></label><em>关闭后该根域名不能写入 DNS。</em></div>
   <div class="suffix-toggle-cell compact register-toggle"><label><span>允许申请</span><input data-k="allowRegister" type="checkbox" ${yn(s.allowRegister!==false)}></label><em>关闭后用户注册页不显示该后缀。</em></div>
@@ -4841,8 +4855,6 @@ async function mountTurnstile(selector, action, options = {}) {
   if (!el) throw new Error('人机验证容器不存在');
   if (!config.siteKey) throw new Error('Turnstile Site Key 未配置');
   const root = options.root || el.closest('[data-human-verification]');
-  const status = root?.querySelector('.human-verification-status');
-  if (status) status.textContent = '正在加载 Turnstile…';
   el.innerHTML = '<div class="turnstile-loading">正在加载人机验证…</div>';
   const render = async force => {
     if (force) state.widgetId = null;
@@ -4865,33 +4877,33 @@ async function mountTurnstile(selector, action, options = {}) {
       language: lang() === 'en' ? 'en' : 'zh-cn',
       retry: 'auto',
       'refresh-expired': 'auto',
-      callback: token => { state.turnstileTokenValue = token || ''; if (status) status.textContent = 'Turnstile 验证已完成'; },
-      'expired-callback': () => { state.turnstileTokenValue = ''; if (status) status.textContent = '验证已过期，请重新验证'; },
+      callback: token => { state.turnstileTokenValue = token || ''; },
+      'expired-callback': () => { state.turnstileTokenValue = ''; },
       'timeout-callback': () => {
         state.turnstileTokenValue = '';
-        if (options.allowFallback && root && options.scene) switchHumanToImage(root, options.scene, 'Turnstile 接口加载超时').catch(error => { if (status) status.textContent = error.message; });
-        else if (status) status.textContent = 'Turnstile 接口加载超时，请点击重试';
+        if (options.allowFallback && root && options.scene) switchHumanToImage(root, options.scene).catch(error => toast(error.message, 'error'));
+        else toast('Turnstile 接口加载超时，请重新验证', 'error');
       },
       'error-callback': () => {
         state.turnstileTokenValue = '';
-        if (options.allowFallback && root && options.scene) switchHumanToImage(root, options.scene, 'Turnstile 验证组件不可用').catch(error => { if (status) status.textContent = error.message; });
-        else if (status) status.textContent = 'Turnstile 验证组件不可用';
+        if (options.allowFallback && root && options.scene) switchHumanToImage(root, options.scene).catch(error => toast(error.message, 'error'));
+        else toast('Turnstile 验证组件不可用', 'error');
       }
     });
     return true;
   };
   try { return await render(false); }
   catch (firstError) {
-    // 回退模式不连续加载两次外部脚本，避免登录页等待十几秒后才出现图形验证。
     if (options.allowFallback) throw firstError;
     try { return await render(true); }
     catch (secondError) {
       el.innerHTML = '<div class="notice small danger turnstile-retry-box">Turnstile 加载失败。<br><button type="button" class="btn soft small" data-retry-turnstile>重新加载</button></div>';
-      el.querySelector('[data-retry-turnstile]')?.addEventListener('click', () => mountTurnstile(selector, action, options).catch(error => { if (status) status.textContent = error.message; }));
+      el.querySelector('[data-retry-turnstile]')?.addEventListener('click', () => mountTurnstile(selector, action, options).catch(error => toast(error.message, 'error')));
       throw secondError || firstError;
     }
   }
 }
+
 function turnstileToken() {
   const cached = String(state.turnstileTokenValue || '').trim();
   if (cached) return cached;
@@ -4905,7 +4917,7 @@ async function stableTurnstileToken() {
   await new Promise(resolve => setTimeout(resolve, 180));
   token = turnstileToken();
   if (token) return token;
-  throw new Error('请先完成人机验证；Turnstile 无法使用时可切换图形验证');
+  throw new Error('请先完成人机验证；Turnstile 无法使用时系统会自动切换图形验证');
 }
 function resetTurnstile() {
   state.turnstileTokenValue = '';
@@ -4980,3 +4992,36 @@ Object.assign(I18N_EN, {
   '拖动排序':'Drag to Reorder','拖动整个域名框调换顺序':'Drag the whole domain card to reorder','注册显示顺序':'Registration Display Order','数字越小，在注册选择框中越靠前。':'Lower numbers appear earlier in registration.','留空则注册时只显示根域名':'Leave blank to show only the root domain','留空不会显示“免费二级域名”等名称。':'Leave blank to hide the display name.','邮件发送服务':'Email Delivery Service','使用 Resend API 发送真实注册验证码邮件。':'Use the Resend API to send real registration verification emails.','发件邮箱':'Sender Email','发件名称':'Sender Name','验证码有效期/分钟':'Verification Code Validity / Minutes','允许发送的运行环境':'Allowed Sending Environments','启用注册验证码场景':'Enable Registration Code Scene','启用管理员测试场景':'Enable Admin Test Scene','注册验证码收件对象':'Registration Code Recipients','测试邮件收件对象':'Test Email Recipients','仅注册用户邮箱':'Registering User Only','注册用户 + 固定邮箱密送':'Registering User + Fixed BCC','测试时手动填写':'Enter Manually When Testing','当前管理员邮箱':'Current Admin Email','固定收件邮箱':'Fixed Recipient Emails','注册验证码邮件内容':'Registration Code Email Content','注册邮件主题':'Registration Email Subject','注册邮件纯文本内容':'Registration Plain-text Body','注册邮件 HTML 内容':'Registration HTML Body','测试邮件内容':'Test Email Content','测试邮件主题':'Test Email Subject','测试邮件纯文本内容':'Test Plain-text Body','测试邮件 HTML 内容':'Test HTML Body','测试邮件模板':'Test Email Template','发送测试邮件':'Send Test Email','邮箱验证码':'Email Verification Code','发送验证码':'Send Code','验证码会发送到上方邮箱，请先完成邮箱填写。':'The code will be sent to the email above.','测试所有可用根域名':'Test All Available Root Domains','正在同时测试所有根域名…':'Testing all root domains…'
 });
 if (typeof applyI18n === 'function') setTimeout(() => { try { applyI18n(document.body); } catch (_) {} }, 80);
+
+// v91: complete current-interface English translations and live missing-string diagnostics.
+Object.assign(I18N_EN, {"正在准备人机验证…":"Preparing verification…","正在加载 Turnstile…":"Loading Turnstile…","正在加载人机验证…":"Loading verification…","Turnstile 验证已完成":"Turnstile verification completed","验证已过期，请重新验证":"Verification expired. Please verify again.","Turnstile 接口加载超时，请重新验证":"Turnstile timed out. Please verify again.","Turnstile 验证组件不可用":"Turnstile verification is unavailable","Turnstile 加载失败。":"Turnstile failed to load.","重新加载":"Reload","Turnstile Site Key 未配置":"Turnstile Site Key is not configured","请输入图形验证码":"Enter the image verification code","图形验证码":"Image verification code","点击刷新图形验证码":"Click to refresh the image code","加载中…":"Loading…","正在生成…":"Generating…","验证码生成失败":"Failed to generate code","生成失败，点击重试":"Generation failed. Click to retry","图形验证码生成失败":"Failed to generate image verification code","图形验证设置":"Image Verification Settings","Turnstile 无法加载时可自动回退到本地生成的一次性图形验证码。":"When Turnstile cannot load, the system can fall back to a locally generated one-time image code.","人机验证方式":"Verification Method","仅使用图形验证":"Image Verification Only","仅使用 Turnstile 验证":"Turnstile Only","优先 Turnstile 验证，失败后使用图形验证（默认）":"Prefer Turnstile; use image verification if it fails (default)","作用于登录、注册、域名申请和管理员添加用户。":"Applies to login, registration, domain applications, and admin-created users.","开启图形验证码背景":"Enable Image-code Background","关闭后使用纯色浅色背景。":"Uses a plain light background when disabled.","背景生成方式":"Background Mode","随机生成背景":"Generate Random Background","使用上传背景":"Use Uploaded Background","上传图仅保存在 Workers KV 设置中。":"The uploaded image is stored only in Workers KV settings.","上传验证码背景":"Upload Verification Background","建议横向图片，最大 500KB；重新上传才会覆盖原背景。":"Use a landscape image up to 500 KB. Upload another image to replace it.","已配置上传背景；如需替换请重新选择图片。":"An uploaded background is configured. Select another image to replace it.","当前使用随机背景。":"A random background is currently used.","开启随机干扰线条":"Enable Random Noise Lines","线条绘制在字符前方。":"Noise lines are drawn over the characters.","随机线条最少条数":"Minimum Noise Lines","随机线条最多条数":"Maximum Noise Lines","线条颜色方式":"Line Color Mode","随机颜色":"Random Colors","固定颜色":"Fixed Color","固定线条颜色":"Fixed Line Color","仅选择固定颜色时生效。":"Applies only when Fixed Color is selected.","图形验证码可用字符":"Image-code Character Set","随机字符只会从这里生成；系统会自动去重和移除空格。":"Random characters are generated only from this set. Duplicates and spaces are removed automatically.","图形验证码字符数量":"Image-code Length","允许 3-8 位。":"Allowed length: 3–8 characters.","多根域名管理":"Multiple Root Domains","每个根域名使用独立 Zone ID、类型和代理策略。":"Each root domain uses its own Zone ID, record types, and proxy policy.","多根域名可视化编辑器":"Visual Root-domain Editor","新增根域名只需在这里添加，不需要给每个域名单独配置环境变量。保存后用户注册页会自动读取启用的后缀。":"Add root domains here without creating separate environment variables. Enabled suffixes appear automatically on the registration page.","＋ 新增根域名":"+ Add Root Domain","必填：根域名、Zone ID。显示名称可留空；允许类型用逗号分隔，例如 A,AAAA,CNAME,TXT,MX。每个根域名会独立使用自己的 Zone ID 写入 Cloudflare DNS。":"Required: root domain and Zone ID. Display name is optional. Separate allowed types with commas, such as A,AAAA,CNAME,TXT,MX. Each root domain writes DNS through its own Zone ID.","拖动排序":"Drag to Reorder","拖动整个域名框调换顺序":"Drag the whole domain card to change its order","启用解析":"Enable DNS","关闭后该根域名不能写入 DNS。":"When disabled, DNS cannot be written for this root domain.","允许申请":"Allow Applications","关闭后用户注册页不显示该后缀。":"When disabled, this suffix is hidden from the registration page.","显示名称":"Display Name","留空则注册时只显示根域名":"Leave blank to show only the root domain","留空不会显示“免费二级域名”等名称。":"Leave blank to hide labels such as “Free Subdomain”.","根域名":"Root Domain","允许类型":"Allowed Types","默认类型":"Default Type","默认代理":"Default Proxy","仅 A/AAAA/CNAME 可代理。":"Only A / AAAA / CNAME can be proxied.","该根域名 API Token（可选）":"API Token for This Root Domain (optional)","不同 CF 账号/Zone 时填写；留空保留原值":"Use this for another Cloudflare account or zone; leave blank to keep the current value","优先使用这里的 Token，其次使用全局 Token / Worker Secret。":"This token is used first, followed by the global token or Worker Secret.","注册显示顺序":"Registration Display Order","数字越小，在注册选择框中越靠前。":"Lower numbers appear earlier in the registration selector.","测试":"Test","删除":"Delete","根域名 JSON 输出":"Root-domain JSON Output","该内容由上方可视化编辑器自动生成，仅用于查看和复制备份。":"Generated automatically from the visual editor for viewing and backup only.","配置来源说明":"Configuration Source","测试所有可用根域名":"Test All Available Root Domains","邮件发送分工":"Email Delivery Routing","注册验证码发送给任意用户邮箱，继续使用 Resend；只发给管理员的通知使用 Cloudflare 免费邮件绑定。":"Registration codes sent to arbitrary user addresses continue to use Resend. Admin-only notices use the free Cloudflare email binding.","当前发送方式":"Current Delivery Methods","Cloudflare 绑定状态：":"Cloudflare Binding Status:","固定管理员收件邮箱：":"Fixed Admin Recipient:","注册验证码邮件内容":"Registration-code Email Content","可以自定义主题、纯文本和 HTML 内容。":"Customize the subject, plain-text body, and HTML body.","模板变量说明":"Template Variable Guide","网站标题":"Site Title","本次生成的验证码":"The generated verification code","验证码有效分钟数":"Code validity in minutes","当前收件邮箱":"Current recipient email","当前管理员邮箱，注册用户邮件通常为空":"Current admin email; normally empty for registration emails","Worker 当前运行环境，例如 production":"Current Worker environment, such as production","邮件生成时间（ISO 时间）":"Email generation time (ISO format)","注册邮件主题":"Registration Email Subject","注册邮件纯文本内容":"Registration Plain-text Body","用于不支持 HTML 的邮箱客户端。":"Used by email clients that do not support HTML.","注册邮件 HTML 内容":"Registration HTML Body","可留空，系统会把纯文本自动转换成 HTML。":"Optional. The system converts plain text to HTML automatically.","Cloudflare 管理员测试邮件内容":"Cloudflare Admin Test Email Content","测试邮件固定发送到已验证的管理员邮箱；可预览测试模板或注册验证码模板。":"Test emails are sent to the verified admin address. You can test either the test template or the registration-code template.","测试邮件主题":"Test Email Subject","测试邮件纯文本内容":"Test Plain-text Body","测试邮件 HTML 内容":"Test HTML Body","发送 Cloudflare 测试邮件":"Send Cloudflare Test Email","不使用 Resend 配额。":"Does not use Resend quota.","测试邮件模板":"Test Email Template","注册验证码模板（生成示例验证码）":"Registration-code Template (generate a sample code)","发送到管理员邮箱":"Send to Admin Email","邮箱规则与关闭提示":"Email Rules and Registration-closed Notice","管理邮箱后缀限制和注册关闭时的前台说明。":"Manage email-domain restrictions and the public message shown when registration is closed.","邮箱后缀拦截黑名单":"Blocked Email Domains","一行一个邮箱后缀，不要带 @ 也可以。":"Enter one email domain per line; the @ symbol is optional.","关闭注册时前台提示文案":"Public Message When Registration Is Closed","注册关闭时显示给用户。":"Shown to users when registration is closed.","管理员帮助中心":"Admin Help Center","独立处理方法":"Troubleshooting Guides","搜索问题或错误关键词":"Search Issues or Error Keywords","输入报错原文或现象，例如：403、SEB、key_hash、Turnstile、十几秒刷新":"Enter an exact error or symptom, such as 403, SEB, key_hash, Turnstile, or frequent refresh","分类":"Category","全部分类":"All Categories","复制报错记录模板":"Copy Error-report Template","展开本类":"Expand Category","条分步骤处理方法":"step-by-step guides","显示":"Showing","条":"items","先做这一步：":"First action:","你会看到：":"What you may see:","为什么会这样：":"Why this happens:","按顺序处理：":"Steps to fix:","怎么确认已经修好：":"How to verify the fix:","仍未解决时要收集：":"Collect if unresolved:","以后如何避免：":"How to prevent it:","报错记录模板已复制":"Error-report template copied","分析页":"Analytics","趋势图已按宝塔面板风格优化：支持 12 小时 / 1 天 / 3 天 / 7 天 / 30 天 / 90 天 / 自定义切换，并提供更清晰的悬停提示与概览视图。":"Trend charts support 12 hours, 1 day, 3 days, 7 days, 30 days, 90 days, and custom ranges, with clearer hover details and overview displays.","二级域名总数":"Total Subdomains","活跃二级域名":"Active Subdomains","注册用户总数":"Registered Users","DNS记录总数":"Total DNS Records","申请总量":"Total Applications","二级域名申请 & 审批趋势":"Subdomain Applications & Approval Trend","新增申请":"New Applications","审核通过":"Approved","驳回/注销":"Rejected / Cancelled","DNS 变更趋势":"DNS Change Trend","新增DNS":"DNS Added","删除DNS":"DNS Removed","二级域名状态分布":"Subdomain Status Distribution","DNS 记录类型占比":"DNS Record Type Distribution","Cloudflare API 运行监控":"Cloudflare API Monitoring","请选择自定义开始和结束时间":"Select a custom start and end time","消息中心":"Message Center","全选":"Select All","取消全选":"Clear Selection","删除所选":"Delete Selected","确认删除所选消息？":"Delete the selected messages?","确认删除这条消息？":"Delete this message?","消息已删除":"Message deleted","请选择要删除的消息":"Select messages to delete","品牌与外观":"Brand and Appearance","配置站点名称、Logo、主题和主色。":"Configure the site name, logo, theme, and colors.","页脚与合规信息":"Footer and Compliance Information","统一维护页脚、版权和备案信息。":"Manage footer, copyright, and registration information in one place.","公告、维护与高级代码":"Notices, Maintenance, and Advanced Code","控制维护模式、公告时段和可信第三方脚本。":"Control maintenance mode, notice periods, and trusted third-party scripts.","注册入口与账户状态":"Registration Access and Account Status","控制用户是否可以注册、是否需要注册码以及新账号初始状态。":"Control public registration, registration-key requirements, and the initial status of new accounts.","Turnstile 人机验证":"Turnstile Verification","配置 Turnstile 公钥和密钥；是否使用由下方“人机验证方式”统一控制，作用于登录、注册、域名申请和管理员添加用户。":"Configure the Turnstile site key and secret. The verification method below controls login, registration, domain applications, and admin-created users.","新注册账号默认状态":"Default Status for New Accounts","自动启用":"Activate Automatically","需要人工审核":"Require Manual Review","用于注册后的账号状态。":"Sets the account status after registration.","注册频率与风险控制":"Registration Frequency and Risk Controls","限制单 IP、失败次数、代理网络和每日域名申请量。":"Limit registrations per IP, failed attempts, proxy networks, and daily domain applications.","邮箱验证码位数":"Email-code Length","邮箱验证码可用字符":"Email-code Character Set"});
+
+
+// v91: translate all current admin-help category navigation labels. Article bodies
+// remain administrator-authored content, while every system control and category is bilingual.
+Object.assign(I18N_EN, {
+  '快速应急与故障定位':'Emergency Triage & Fault Isolation',
+  '部署、版本与缓存':'Deployment, Versions & Cache',
+  'D1 数据库与表结构':'D1 Database & Schema',
+  '登录、会话与 HTTP 403':'Login, Sessions & HTTP 403',
+  'Turnstile 与图形验证':'Turnstile & Image Verification',
+  '邮件发送：Cloudflare 免费邮件与 Resend':'Email: Cloudflare Free Mail & Resend',
+  '注册码与用户管理':'Registration Keys & User Management',
+  '域名申请、审核与生命周期':'Domain Applications, Review & Lifecycle',
+  'Cloudflare DNS 与多根域名':'Cloudflare DNS & Multiple Root Domains',
+  '消息中心与帮助中心':'Message Center & Help Center',
+  'Workers KV、设置与导入导出':'Workers KV, Settings, Import & Export',
+  '定时任务、日志与维护':'Scheduled Tasks, Logs & Maintenance',
+  '安全、性能、备份与恢复':'Security, Performance, Backup & Recovery',
+  '界面、浏览器与移动端':'Interface, Browsers & Mobile',
+  '日志、Ray ID 与远程诊断':'Logs, Ray ID & Remote Diagnostics',
+  'HTTP 状态码与接口错误':'HTTP Status Codes & API Errors',
+  '拖动整个域名框调换顺序':'Drag the entire root-domain card to reorder it',
+  '确认删除该根域名配置？已存在的用户域名不会自动删除，但该后缀将无法继续管理 DNS。':'Delete this root-domain configuration? Existing user domains will not be deleted automatically, but DNS for this suffix can no longer be managed.',
+  '请先填写根域名和 Zone ID':'Enter the root domain and Zone ID first',
+  'Cloudflare API 连通正常':'Cloudflare API connection is working',
+  '正常':'Working',
+  '失败':'Failed',
+  '已配置':'Configured',
+  '本次填写，将保存到 KV':'Entered now; it will be saved to KV'
+});
