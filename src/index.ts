@@ -29,6 +29,8 @@ export interface Env {
   RESEND_API_KEY?: string;
   EMAIL_FROM?: string;
   EMAIL_FROM_NAME?: string;
+  APP_ENVIRONMENT?: string;
+  ENVIRONMENT?: string;
   DNS_SUFFIX?: string;
   DNS_SUFFIX_LABEL?: string;
   DNS_ZONE_ID?: string;
@@ -195,6 +197,18 @@ interface AppSettings {
     emailFrom?: string;
     emailFromName?: string;
     emailCodeExpiryMinutes?: number;
+    emailAllowedEnvironments?: string;
+    emailRegistrationSceneEnabled?: boolean;
+    emailTestSceneEnabled?: boolean;
+    emailFixedRecipients?: string;
+    emailRegistrationRecipientMode?: 'user' | 'user_bcc_fixed';
+    emailTestRecipientMode?: 'manual' | 'admin' | 'fixed';
+    emailRegistrationSubjectTemplate?: string;
+    emailRegistrationTextTemplate?: string;
+    emailRegistrationHtmlTemplate?: string;
+    emailTestSubjectTemplate?: string;
+    emailTestTextTemplate?: string;
+    emailTestHtmlTemplate?: string;
     dailyDomainApplyLimit?: number;
     failedRegisterBanThreshold?: number;
     failedRegisterBanMinutes?: number;
@@ -3013,6 +3027,7 @@ function adminSettingsView(settings: AppSettings, env: Env): any {
   safeSettings.registration.turnstileSecret = '';
   safeSettings.registration.emailApiKeyConfigured = Boolean(settings.registration.emailApiKey || env.RESEND_API_KEY);
   safeSettings.registration.emailApiKey = '';
+  safeSettings.registration.emailRuntimeEnvironment = resolveEmailRuntimeEnvironment(env);
   safeSettings.dns.cfApiTokenConfigured = Boolean(settings.dns.cfApiToken || env.CF_API_TOKEN);
   safeSettings.dns.cfApiToken = '';
   safeSettings.dns.suffixes = (safeSettings.dns.suffixes || []).map((x: any) => ({
@@ -3085,6 +3100,18 @@ async function adminUpdateSettings(request: Request, env: Env, group: AdminSetti
       emailFrom: cleanText(body.emailFrom, 320),
       emailFromName: cleanText(body.emailFromName, 120) || '域名注册中心',
       emailCodeExpiryMinutes: clamp(Number(body.emailCodeExpiryMinutes || 10), 2, 60),
+      emailAllowedEnvironments: cleanText(body.emailAllowedEnvironments, 500) || '*',
+      emailRegistrationSceneEnabled: asBoolean(body.emailRegistrationSceneEnabled, true),
+      emailTestSceneEnabled: asBoolean(body.emailTestSceneEnabled, true),
+      emailFixedRecipients: sanitizeEmailRecipientList(body.emailFixedRecipients).join('\n'),
+      emailRegistrationRecipientMode: String(body.emailRegistrationRecipientMode || 'user') === 'user_bcc_fixed' ? 'user_bcc_fixed' : 'user',
+      emailTestRecipientMode: ['manual','admin','fixed'].includes(String(body.emailTestRecipientMode || 'manual')) ? String(body.emailTestRecipientMode || 'manual') as any : 'manual',
+      emailRegistrationSubjectTemplate: cleanText(body.emailRegistrationSubjectTemplate, 300) || '【{{siteName}}】注册验证码',
+      emailRegistrationTextTemplate: cleanText(body.emailRegistrationTextTemplate, 12000) || '您的注册验证码是 {{code}}，{{expiryMinutes}} 分钟内有效。若非本人操作，请忽略本邮件。',
+      emailRegistrationHtmlTemplate: cleanHtmlText(body.emailRegistrationHtmlTemplate, 30000),
+      emailTestSubjectTemplate: cleanText(body.emailTestSubjectTemplate, 300) || '【{{siteName}}】邮件服务测试',
+      emailTestTextTemplate: cleanText(body.emailTestTextTemplate, 12000) || '邮件服务连接正常，这是一封管理员测试邮件。',
+      emailTestHtmlTemplate: cleanHtmlText(body.emailTestHtmlTemplate, 30000),
       dailyDomainApplyLimit: clamp(Number(body.dailyDomainApplyLimit || 0), 0, 10000),
       failedRegisterBanThreshold: clamp(Number(body.failedRegisterBanThreshold || 0), 0, 1000),
       failedRegisterBanMinutes: clamp(Number(body.failedRegisterBanMinutes || 0), 0, 10080),
@@ -3313,6 +3340,18 @@ function defaultSettings(env: Env): AppSettings {
       emailFrom: env.EMAIL_FROM || '',
       emailFromName: env.EMAIL_FROM_NAME || '域名注册中心',
       emailCodeExpiryMinutes: 10,
+      emailAllowedEnvironments: '*',
+      emailRegistrationSceneEnabled: true,
+      emailTestSceneEnabled: true,
+      emailFixedRecipients: '',
+      emailRegistrationRecipientMode: 'user',
+      emailTestRecipientMode: 'manual',
+      emailRegistrationSubjectTemplate: '【{{siteName}}】注册验证码',
+      emailRegistrationTextTemplate: '您好！\n\n您正在注册 {{siteName}} 账户。\n本次验证码：{{code}}\n验证码将在 {{expiryMinutes}} 分钟后失效。\n\n收件邮箱：{{email}}\n发送环境：{{environment}}\n若非本人操作，请忽略本邮件。',
+      emailRegistrationHtmlTemplate: '<div style="font-family:Arial,Microsoft YaHei,sans-serif;max-width:560px;margin:auto;padding:24px;color:#0f172a"><h2>{{siteName}}</h2><p>您正在注册账户，本次验证码为：</p><div style="font-size:32px;font-weight:800;letter-spacing:8px;padding:18px 22px;background:#f1f5f9;border-radius:12px;text-align:center">{{code}}</div><p style="color:#64748b">验证码将在 {{expiryMinutes}} 分钟后失效。</p><p style="color:#94a3b8;font-size:13px">收件邮箱：{{email}}<br>发送环境：{{environment}}<br>若非本人操作，请忽略本邮件。</p></div>',
+      emailTestSubjectTemplate: '【{{siteName}}】邮件服务测试',
+      emailTestTextTemplate: '邮件服务连接正常。\n\n发送环境：{{environment}}\n测试时间：{{time}}\n收件邮箱：{{email}}',
+      emailTestHtmlTemplate: '<div style="font-family:Arial,Microsoft YaHei,sans-serif;max-width:560px;margin:auto;padding:24px;color:#0f172a"><h2>{{siteName}}</h2><p>邮件服务连接正常，这是一封管理员测试邮件。</p><p style="color:#64748b">发送环境：{{environment}}<br>测试时间：{{time}}<br>收件邮箱：{{email}}</p></div>',
       dailyDomainApplyLimit: 0,
       failedRegisterBanThreshold: 0,
       failedRegisterBanMinutes: 0,
@@ -3541,6 +3580,18 @@ function publicRegistrationSettings(registration: AppSettings['registration']): 
   const safe: Record<string, unknown> = { ...registration };
   delete safe.turnstileSecret;
   delete safe.emailApiKey;
+  delete safe.emailAllowedEnvironments;
+  delete safe.emailRegistrationSceneEnabled;
+  delete safe.emailTestSceneEnabled;
+  delete safe.emailFixedRecipients;
+  delete safe.emailRegistrationRecipientMode;
+  delete safe.emailTestRecipientMode;
+  delete safe.emailRegistrationSubjectTemplate;
+  delete safe.emailRegistrationTextTemplate;
+  delete safe.emailRegistrationHtmlTemplate;
+  delete safe.emailTestSubjectTemplate;
+  delete safe.emailTestTextTemplate;
+  delete safe.emailTestHtmlTemplate;
   return safe;
 }
 
@@ -3554,6 +3605,36 @@ function escapeEmailHtml(value: unknown): string {
   return String(value ?? '').replace(/[&<>\"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '\"':'&quot;', "'":'&#39;' }[char] || char));
 }
 
+function resolveEmailRuntimeEnvironment(env: Env): string {
+  return cleanText(env.APP_ENVIRONMENT || env.ENVIRONMENT || 'production', 80).toLowerCase() || 'production';
+}
+
+function sanitizeEmailRecipientList(value: unknown): string[] {
+  const items = Array.isArray(value) ? value : String(value || '').split(/[\n,;]+/);
+  return Array.from(new Set(items.map(item => String(item || '').trim().toLowerCase()).filter(item => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item)))).slice(0, 50);
+}
+
+function assertEmailEnvironmentAllowed(env: Env, settings: AppSettings): string {
+  const runtime = resolveEmailRuntimeEnvironment(env);
+  const allowed = String(settings.registration.emailAllowedEnvironments || '*')
+    .split(/[\n,;]+/)
+    .map(item => item.trim().toLowerCase())
+    .filter(Boolean);
+  if (!allowed.length || allowed.includes('*') || allowed.includes('all') || allowed.includes(runtime)) return runtime;
+  throw new HttpError(409, 'EMAIL_ENVIRONMENT_BLOCKED', `当前运行环境 ${runtime} 未被允许发送邮件`);
+}
+
+function renderEmailTemplate(template: unknown, context: Record<string, unknown>, html = false): string {
+  return String(template || '').replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => {
+    const value = String(context[key] ?? '');
+    return html ? escapeEmailHtml(value) : value;
+  });
+}
+
+function plainTextToEmailHtml(text: string): string {
+  return `<div style="font-family:Arial,'Microsoft YaHei',sans-serif;max-width:560px;margin:auto;padding:24px;color:#0f172a;white-space:normal">${escapeEmailHtml(text).replace(/\n/g, '<br>')}</div>`;
+}
+
 function resolveEmailDeliveryConfig(env: Env, settings: AppSettings) {
   const apiKey = String(env.RESEND_API_KEY || settings.registration.emailApiKey || '').trim();
   const fromEmail = String(env.EMAIL_FROM || settings.registration.emailFrom || '').trim();
@@ -3565,8 +3646,19 @@ function resolveEmailDeliveryConfig(env: Env, settings: AppSettings) {
   return { apiKey, fromEmail, fromName };
 }
 
-async function sendEmailWithResend(env: Env, settings: AppSettings, to: string, subject: string, textBody: string, htmlBody: string): Promise<void> {
+interface ResendEmailMessage {
+  to: string[];
+  bcc?: string[];
+  subject: string;
+  text: string;
+  html: string;
+}
+
+async function sendEmailWithResend(env: Env, settings: AppSettings, message: ResendEmailMessage): Promise<void> {
   const config = resolveEmailDeliveryConfig(env, settings);
+  const to = sanitizeEmailRecipientList(message.to);
+  const bcc = sanitizeEmailRecipientList(message.bcc || []).filter(item => !to.includes(item));
+  if (!to.length) throw new HttpError(400, 'EMAIL_RECIPIENT_REQUIRED', '没有可用的邮件收件对象');
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
@@ -3575,16 +3667,33 @@ async function sendEmailWithResend(env: Env, settings: AppSettings, to: string, 
     },
     body: JSON.stringify({
       from: `${config.fromName} <${config.fromEmail}>`,
-      to: [to],
-      subject,
-      text: textBody,
-      html: htmlBody,
+      to,
+      ...(bcc.length ? { bcc } : {}),
+      subject: cleanText(message.subject, 300).replace(/[\r\n]+/g, ' ') || '系统邮件',
+      text: String(message.text || ''),
+      html: String(message.html || '') || plainTextToEmailHtml(String(message.text || '')),
     }),
   });
   const payload: any = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new HttpError(502, 'EMAIL_SEND_FAILED', payload?.message || payload?.error?.message || `邮件发送失败 HTTP ${response.status}`);
   }
+}
+
+function buildEmailTemplateMessage(
+  settings: AppSettings,
+  scene: 'registration' | 'test',
+  context: Record<string, unknown>,
+): Pick<ResendEmailMessage, 'subject' | 'text' | 'html'> {
+  const registration = settings.registration;
+  const isRegistration = scene === 'registration';
+  const subjectTemplate = isRegistration ? registration.emailRegistrationSubjectTemplate : registration.emailTestSubjectTemplate;
+  const textTemplate = isRegistration ? registration.emailRegistrationTextTemplate : registration.emailTestTextTemplate;
+  const htmlTemplate = isRegistration ? registration.emailRegistrationHtmlTemplate : registration.emailTestHtmlTemplate;
+  const subject = renderEmailTemplate(subjectTemplate, context, false).replace(/[\r\n]+/g, ' ').trim();
+  const text = renderEmailTemplate(textTemplate, context, false).trim();
+  const html = renderEmailTemplate(htmlTemplate, context, true).trim() || plainTextToEmailHtml(text);
+  return { subject, text, html };
 }
 
 async function sendRegistrationEmailCode(request: Request, env: Env): Promise<Response> {
@@ -3619,10 +3728,22 @@ async function sendRegistrationEmailCode(request: Request, env: Env): Promise<Re
   const expiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000).toISOString();
   const sentAt = new Date().toISOString();
   const codeHash = await sha256(`${email.toLowerCase()}|${code}`);
+  if (settings.registration.emailRegistrationSceneEnabled === false) {
+    throw new HttpError(409, 'EMAIL_REGISTRATION_SCENE_DISABLED', '注册验证码邮件场景已被管理员关闭');
+  }
+  const environment = assertEmailEnvironmentAllowed(env, settings);
   const siteTitle = settings.site.title || '域名注册中心';
-  const subject = `${siteTitle} 注册验证码`;
-  const textBody = `您的注册验证码是 ${code}，${expiryMinutes} 分钟内有效。若非本人操作，请忽略本邮件。`;
-  const htmlBody = `<div style="font-family:Arial,'Microsoft YaHei',sans-serif;max-width:560px;margin:auto;padding:24px;color:#0f172a"><h2>${escapeEmailHtml(siteTitle)}</h2><p>您正在注册账户，验证码为：</p><div style="font-size:32px;font-weight:800;letter-spacing:8px;padding:18px 22px;background:#f1f5f9;border-radius:12px;text-align:center">${escapeEmailHtml(code)}</div><p style="color:#64748b">验证码 ${expiryMinutes} 分钟内有效。若非本人操作，请忽略本邮件。</p></div>`;
+  const templateContext = {
+    siteName: siteTitle,
+    code,
+    expiryMinutes,
+    email,
+    environment,
+    time: new Date().toISOString(),
+  };
+  const rendered = buildEmailTemplateMessage(settings, 'registration', templateContext);
+  const fixedRecipients = sanitizeEmailRecipientList(settings.registration.emailFixedRecipients || '');
+  const bcc = settings.registration.emailRegistrationRecipientMode === 'user_bcc_fixed' ? fixedRecipients : [];
   await env.DB.prepare(`
     INSERT INTO email_verification_codes (email, code_hash, expires_at, attempts, sent_at, ip)
     VALUES (?, ?, ?, 0, ?, ?)
@@ -3634,7 +3755,7 @@ async function sendRegistrationEmailCode(request: Request, env: Env): Promise<Re
       ip=excluded.ip
   `).bind(email, codeHash, expiresAt, sentAt, clientIp(request)).run();
   try {
-    await sendEmailWithResend(env, settings, email, subject, textBody, htmlBody);
+    await sendEmailWithResend(env, settings, { to: [email], bcc, ...rendered });
   } catch (error) {
     await env.DB.prepare(`DELETE FROM email_verification_codes WHERE email=? COLLATE NOCASE AND code_hash=?`).bind(email, codeHash).run().catch(() => undefined);
     throw error;
@@ -3671,20 +3792,45 @@ async function verifyRegistrationEmailCode(env: Env, email: string, rawCode: unk
 async function adminTestEmailDelivery(request: Request, env: Env): Promise<Response> {
   const admin = await requireAdmin(env, request);
   const settings = await loadSettings(env);
+  if (settings.registration.emailTestSceneEnabled === false) {
+    throw new HttpError(409, 'EMAIL_TEST_SCENE_DISABLED', '测试邮件场景已被管理员关闭');
+  }
+  const environment = assertEmailEnvironmentAllowed(env, settings);
   const body = await readJson<Record<string, unknown>>(request);
-  const email = normalizeOptionalEmailStrict(body.email) || admin.email;
-  if (!email) throw new HttpError(400, 'EMAIL_REQUIRED', '请输入测试收件邮箱');
-  const title = settings.site.title || '域名注册中心';
-  await sendEmailWithResend(
-    env,
-    settings,
+  const mode = settings.registration.emailTestRecipientMode || 'manual';
+  const manualRecipient = normalizeOptionalEmailStrict(body.email);
+  const fixedRecipients = sanitizeEmailRecipientList(settings.registration.emailFixedRecipients || '');
+  let recipients: string[] = [];
+  if (mode === 'admin') recipients = sanitizeEmailRecipientList(admin.email || '');
+  else if (mode === 'fixed') recipients = fixedRecipients;
+  else recipients = sanitizeEmailRecipientList(manualRecipient || '');
+  if (!recipients.length) {
+    const hint = mode === 'admin' ? '当前管理员账号没有邮箱' : mode === 'fixed' ? '请先配置固定收件邮箱' : '请输入测试收件邮箱';
+    throw new HttpError(400, 'EMAIL_REQUIRED', hint);
+  }
+  const requestedScene = String(body.scene || 'test') === 'registration' ? 'registration' : 'test';
+  if (requestedScene === 'registration' && settings.registration.emailRegistrationSceneEnabled === false) {
+    throw new HttpError(409, 'EMAIL_REGISTRATION_SCENE_DISABLED', '注册验证码邮件场景已被管理员关闭');
+  }
+  const email = recipients[0];
+  const context = {
+    siteName: settings.site.title || '域名注册中心',
+    code: '123456',
+    expiryMinutes: clamp(Number(settings.registration.emailCodeExpiryMinutes || 10), 2, 60),
     email,
-    `${title} 邮件服务测试`,
-    '邮件服务连接正常，这是一封管理员测试邮件。',
-    `<div style="font-family:Arial,'Microsoft YaHei',sans-serif;padding:24px"><h2>${escapeEmailHtml(title)}</h2><p>邮件服务连接正常，这是一封管理员测试邮件。</p></div>`,
-  );
-  await audit(env, request, admin.id, 'admin.email_test', 'setting', 'registration', { recipient: await sha256(email.toLowerCase()) });
-  return ok({ sent: true, message: `测试邮件已发送至 ${email}` });
+    adminEmail: admin.email || '',
+    environment,
+    time: new Date().toISOString(),
+  };
+  const rendered = buildEmailTemplateMessage(settings, requestedScene, context);
+  await sendEmailWithResend(env, settings, { to: recipients, ...rendered });
+  await audit(env, request, admin.id, 'admin.email_test', 'setting', 'registration', {
+    recipientCount: recipients.length,
+    recipientHash: await sha256(recipients.join(',').toLowerCase()),
+    scene: requestedScene,
+    environment,
+  });
+  return ok({ sent: true, recipients, environment, scene: requestedScene, message: `测试邮件已发送至 ${recipients.join('、')}` });
 }
 
 function serializeUser(user: UserRow) {
