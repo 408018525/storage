@@ -3150,20 +3150,25 @@ html[data-theme="dark"] .admin-settings-v79 .settings-section-heading{
   .admin-settings-v79 .suffix-editor-row.v86 .suffix-actions{grid-column:auto;}
 }
 
-/* v88: Turnstile fallback / image captcha */
-.human-verification{display:grid;gap:10px;padding:12px;border:1px solid #dbe4f0;border-radius:14px;background:#fbfdff;min-height:72px}
-.human-verification-status{font-size:13px;line-height:1.5}
+/* v89: compact Turnstile fallback / image captcha */
+.human-verification{display:grid;gap:8px;padding:10px 12px;border:1px solid #d8e0ee;border-radius:14px;background:#fff;min-height:0}
+.human-verification-status{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-height:20px;font-size:12px;line-height:1.45;color:#64748b}
 .human-turnstile-slot:empty{display:none}
-.human-image-slot{display:grid;gap:8px}
+.human-image-slot{display:grid;gap:6px}
 .human-image-slot[hidden]{display:none!important}
-.image-captcha-row{display:grid;grid-template-columns:minmax(160px,1fr) minmax(190px,280px);gap:12px;align-items:stretch}
-.image-captcha-answer{min-height:66px;font-size:20px;letter-spacing:3px;text-transform:uppercase}
-.image-captcha-picture{min-height:66px;padding:0;overflow:hidden;border:1px solid #cfd9e8;border-radius:12px;background:#f8fafc;cursor:pointer}
-.image-captcha-picture svg{display:block;width:100%;height:66px;object-fit:cover}
-.image-captcha-picture span{display:grid;place-items:center;min-height:64px;color:#64748b}
-.image-captcha-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px}
-.link-button{border:0;background:none;color:var(--accent);padding:2px 0;cursor:pointer;text-decoration:underline;font:inherit}
-.turnstile-loading{padding:14px;text-align:center;color:#64748b}
+.image-captcha-row{display:grid;grid-template-columns:minmax(0,1fr) 168px;gap:10px;align-items:center}
+.image-captcha-answer{width:100%;height:52px;min-height:52px;border:1px solid #d8e0ee;border-radius:12px;background:#fff;padding:0 14px;outline:0;font-size:16px;line-height:1;letter-spacing:2px;text-transform:uppercase;color:#111827}
+.image-captcha-answer:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,99,246,.10)}
+.image-captcha-answer::placeholder{letter-spacing:0;color:#94a3b8}
+.image-captcha-picture{width:168px;height:52px;min-height:52px;padding:0;overflow:hidden;border:1px solid #d8e0ee;border-radius:12px;background:#f8fafc;cursor:pointer;box-shadow:none}
+.image-captcha-picture:hover{border-color:#b7c3d6}
+.image-captcha-picture svg{display:block;width:100%;height:50px;object-fit:cover}
+.image-captcha-picture span{display:grid;place-items:center;height:50px;min-height:50px;color:#64748b;font-size:12px}
+.image-captcha-actions{display:flex;align-items:center;justify-content:flex-start;gap:10px;min-height:18px;font-size:12px;line-height:1.4}
+.human-switch-link{font-weight:700;text-decoration:none}
+.human-switch-link:hover{text-decoration:underline}
+.link-button{border:0;background:none;color:var(--accent);padding:1px 0;cursor:pointer;text-decoration:underline;font:inherit}
+.turnstile-loading{padding:12px;text-align:center;color:#64748b;font-size:12px}
 
 /* v88: captcha settings */
 .captcha-background-preview{margin-top:8px;min-height:48px;padding:10px;border:1px dashed #cbd5e1;border-radius:10px;color:#64748b;display:flex;align-items:center;gap:12px}
@@ -3197,11 +3202,18 @@ html[data-theme="dark"] .admin-settings-v79 .settings-section-heading{
 .admin-help-prevention{padding-top:10px;border-top:1px dashed #cbd5e1}
 
 @media (max-width:760px){
-  .image-captcha-row{grid-template-columns:1fr}
-  .image-captcha-picture{min-height:76px}
-  .image-captcha-picture svg{height:76px}
+  .image-captcha-row{grid-template-columns:minmax(0,1fr) 148px;gap:8px}
+  .image-captcha-picture{width:148px;height:50px;min-height:50px}
+  .image-captcha-picture svg,.image-captcha-picture span{height:48px;min-height:48px}
+  .image-captcha-answer{height:50px;min-height:50px;font-size:15px}
   .admin-help-controls{grid-template-columns:1fr}
   .admin-help-match{white-space:normal}
   .admin-help-answer{margin-left:0}
   .template-variable-help>div{grid-template-columns:1fr}
+}
+
+@media (max-width:360px){
+  .human-verification{padding:9px 10px}
+  .image-captcha-row{grid-template-columns:1fr}
+  .image-captcha-picture{width:100%}
 }
