@@ -60,9 +60,9 @@ export interface Env {
 
 type Role = 'admin' | 'user';
 type UserStatus = 'active' | 'disabled' | 'deleted';
-type DnsRecordType = 'A' | 'AAAA' | 'CNAME' | 'TXT' | 'MX' | 'NS';
+type DnsRecordType = 'A' | 'AAAA' | 'CNAME' | 'TXT' | 'MX' | 'NS' | 'CAA' | 'SRV';
 
-const SUPPORTED_DNS_RECORD_TYPES: DnsRecordType[] = ['A', 'AAAA', 'CNAME', 'TXT', 'MX', 'NS'];
+const SUPPORTED_DNS_RECORD_TYPES: DnsRecordType[] = ['A', 'AAAA', 'CNAME', 'TXT', 'MX', 'NS', 'CAA', 'SRV'];
 
 interface DnsRecordTypePolicy {
   type: DnsRecordType;
@@ -460,6 +460,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   if (method === 'GET' && pathname === '/api/admin/worker-variables') return adminListManagedWorkerVariables(request, env);
   if (method === 'POST' && pathname === '/api/admin/worker-variables') return adminUpdateManagedWorkerVariable(request, env);
   if (method === 'DELETE' && pathname === '/api/admin/worker-variables') return adminDeleteManagedWorkerVariable(request, env);
+  if (method === 'POST' && pathname === '/api/admin/dns/sync-allowed-types') return adminSyncDnsAllowedTypesFromWorker(request, env);
 
   match = pathname.match(/^\/api\/admin\/registration-keys\/([^/]+)$/);
   if (match && method === 'DELETE') return adminDeleteRegistrationKey(request, env, decodeURIComponent(match[1]));
@@ -1575,7 +1576,7 @@ async function createOwnDnsRecord(request: Request, env: Env, applicationId: str
   if (Number(recordCount?.count || 0) >= (settings.domain.maxDnsRecordsPerDomain || 20)) throw new HttpError(403, 'DNS_RECORD_LIMIT', `单个域名最多可创建 ${settings.domain.maxDnsRecordsPerDomain || 20} 条 DNS 解析`);
   const content = normalizeDnsTarget(type, body.content || body.target, name);
   if (type === 'CNAME') assertCnameTargetAllowed(content, settings.dns.cnameTargetBlacklist);
-  const priority = type === 'MX' ? clamp(Number(body.priority || 10), 0, 65535) : null;
+  const priority = type === 'MX' ? clamp(Number(body.priority || 10), 0, 65535) : (type === 'SRV' ? clamp(Number(content.split(/\s+/)[0] || 0), 0, 65535) : null);
   const ttl = clamp(Number(body.ttl || suffix.ttl || 1), 1, 86400);
   const proxied = ['A', 'AAAA', 'CNAME'].includes(type) && asBoolean(body.proxied, suffix.proxied ?? settings.dns.defaultProxied ?? false) ? 1 : 0;
 
@@ -1655,7 +1656,7 @@ async function updateOwnDnsRecordManaged(request: Request, env: Env, recordId: s
   if (type === 'MX' && type !== previousType && settings.dns.allowMxRecords === false) throw new HttpError(403, 'MX_DISABLED', '管理员已禁止用户创建 MX 解析记录');
   const content = normalizeDnsTarget(type, body.content || body.target || row.content, name);
   if (type === 'CNAME') assertCnameTargetAllowed(content, settings.dns.cnameTargetBlacklist);
-  const priority = type === 'MX' ? clamp(Number(body.priority || row.priority || 10), 0, 65535) : null;
+  const priority = type === 'MX' ? clamp(Number(body.priority || row.priority || 10), 0, 65535) : (type === 'SRV' ? clamp(Number(content.split(/\s+/)[0] || row.priority || 0), 0, 65535) : null);
   const ttl = clamp(Number(body.ttl || row.ttl || suffix.ttl || 1), 1, 86400);
   const proxied = ['A', 'AAAA', 'CNAME'].includes(type) && asBoolean(body.proxied, Boolean(row.proxied)) ? 1 : 0;
 
@@ -4161,6 +4162,8 @@ function defaultDnsRecordDisplayName(type: DnsRecordType): string {
     TXT: 'TXT（文本验证）',
     MX: 'MX（邮件）',
     NS: 'NS（名称服务器）',
+    CAA: 'CAA（证书授权）',
+    SRV: 'SRV（服务定位）',
   };
   return labels[type] || type;
 }
@@ -4890,14 +4893,14 @@ async function cloudflareWorkersApi(request: Request, env: Env, path: string, in
   if (!token) throw new HttpError(409, 'CF_WORKERS_API_TOKEN_MISSING', '请先在 Cloudflare Worker 中添加 Secret：CF_WORKERS_API_TOKEN，权限为 Workers Scripts Write');
   const accountId = resolveCloudflareEmailAccountId(env, settings);
   if (!/^[a-f0-9]{32}$/i.test(accountId)) throw new HttpError(409, 'CF_WORKERS_ACCOUNT_ID_MISSING', '请先配置有效的 CF_ACCOUNT_ID');
+  const headers = new Headers(init.headers || {});
+  headers.set('Authorization', `Bearer ${token}`);
+  headers.set('Accept', 'application/json');
+  const isMultipart = typeof FormData !== 'undefined' && init.body instanceof FormData;
+  if (init.body && !isMultipart && !headers.has('content-type')) headers.set('content-type', 'application/json');
   const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}${path}`, {
     ...init,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/json',
-      ...(init.body ? { 'content-type': 'application/json' } : {}),
-      ...(init.headers || {}),
-    },
+    headers,
   });
   const payload: any = await response.json().catch(() => ({}));
   if (!response.ok || payload?.success === false) {
@@ -4916,11 +4919,18 @@ async function fetchWorkerScriptSettings(request: Request, env: Env): Promise<an
 
 async function patchWorkerScriptBindings(request: Request, env: Env, bindings: any[]): Promise<void> {
   const scriptName = managedWorkerScriptName(env);
-  // Preserve every existing binding and patch the Worker script/version settings endpoint.
-  // Using `/script-settings` here would ignore environment-variable bindings.
+  // Cloudflare's /settings endpoint requires multipart/form-data. The `settings`
+  // part carries the complete binding list; the browser/Worker runtime supplies
+  // the multipart boundary automatically, so Content-Type must not be set by hand.
+  const form = new FormData();
+  form.append(
+    'settings',
+    new Blob([JSON.stringify({ bindings })], { type: 'application/json' }),
+    'settings.json',
+  );
   await cloudflareWorkersApi(request, env, `/workers/scripts/${encodeURIComponent(scriptName)}/settings`, {
     method: 'PATCH',
-    body: JSON.stringify({ bindings }),
+    body: form,
   });
 }
 
@@ -5063,6 +5073,69 @@ async function adminDeleteManagedWorkerVariable(request: Request, env: Env): Pro
   }
   await audit(env, request, admin.id, 'admin.worker_variable_delete', 'worker_variable', name, { scriptName, type });
   return ok({ deleted: true, name, type, scriptName, message: `${name} 已从 Cloudflare Worker 变量中删除` });
+}
+
+
+function dnsAllowedTypesBindingValue(settings: any, env: Env): { raw: string; source: string } {
+  const bindings = Array.isArray(settings?.bindings) ? settings.bindings : [];
+  const binding = bindings.find((item: any) => String(item?.name || '') === 'DNS_ALLOWED_TYPES');
+  if (binding) {
+    if (String(binding.type) === 'json') {
+      const value = binding.json;
+      if (Array.isArray(value)) return { raw: value.join(','), source: 'Cloudflare JSON variable' };
+      if (typeof value === 'string') return { raw: value, source: 'Cloudflare JSON variable' };
+    }
+    if (typeof binding.text === 'string') return { raw: binding.text, source: 'Cloudflare text variable' };
+  }
+  return { raw: String(env.DNS_ALLOWED_TYPES || ''), source: 'current Worker runtime' };
+}
+
+async function adminSyncDnsAllowedTypesFromWorker(request: Request, env: Env): Promise<Response> {
+  const admin = await requireAdmin(env, request);
+  let sourceSettings: any = null;
+  let warning = '';
+  if (env.CF_WORKERS_API_TOKEN) {
+    try { sourceSettings = await fetchWorkerScriptSettings(request, env); }
+    catch (error: any) { warning = `Cloudflare API 读取失败，已改用当前 Worker 运行时变量：${error?.message || error}`; }
+  }
+  const source = dnsAllowedTypesBindingValue(sourceSettings, env);
+  const types = sanitizeDnsRecordTypes(source.raw, []);
+  if (!types.length) {
+    throw new HttpError(409, 'DNS_ALLOWED_TYPES_EMPTY', 'DNS_ALLOWED_TYPES 未配置有效类型；请先在 Cloudflare 变量中填写，例如 CNAME,A,AAAA,TXT,MX,NS');
+  }
+
+  const settings = await loadSettings(env);
+  const existingByType = new Map(settings.dns.recordTypePolicies.map(item => [item.type, item]));
+  const openSet = new Set(types);
+  settings.dns.recordTypePolicies = SUPPORTED_DNS_RECORD_TYPES.map(type => {
+    const existing = existingByType.get(type);
+    return {
+      type,
+      displayName: existing?.displayName || defaultDnsRecordDisplayName(type),
+      allowUserAdd: openSet.has(type),
+      note: existing?.note || '',
+    };
+  });
+  settings.dns.suffixes = settings.dns.suffixes.map(item => ({
+    ...item,
+    allowedTypes: [...types],
+    defaultType: (types.includes(item.defaultType) ? item.defaultType : types[0]) as DnsRecordType,
+  }));
+  await env.APP_KV.put(SETTINGS_KEY, JSON.stringify(settings));
+  await audit(env, request, admin.id, 'admin.dns_sync_allowed_types', 'setting', 'dns', {
+    source: source.source,
+    raw: source.raw,
+    types,
+  });
+  return ok({
+    synced: true,
+    source: source.source,
+    raw: source.raw,
+    types,
+    warning,
+    settings: adminSettingsView(settings, env),
+    message: `已从 ${source.source} 同步 ${types.length} 种 DNS 类型：${types.join(', ')}`,
+  });
 }
 
 function adminCloudflareEmailSceneEnabled(settings: AppSettings, scene: AdminCloudflareEmailScene): boolean {
@@ -5680,20 +5753,20 @@ async function adminSystemStatus(request: Request, env: Env): Promise<Response> 
       (SELECT COUNT(*) FROM audit_logs WHERE datetime(created_at) >= datetime('now','-' || ? || ' days')) AS logsRetained
   `).bind(auditRetentionDays).first<any>();
   return ok({
-    version: 'v100',
+    version: 'v101',
     settingsKey: SETTINGS_KEY,
     kv: { storage: 'Workers KV', estimatedKeys: '由 Cloudflare 控制台查看实际占用' },
     cfApi: { configured: Boolean(resolveDnsToken(env, settings)), status: resolveDnsToken(env, settings) ? '已配置' : '未配置' },
     cron: { enabled: Boolean(settings.automation?.enabled), expression: settings.automation?.cronExpression || '' },
     counts: { ...counts, logs4d: Number(counts?.logsRetained || 0) },
     auditRetentionDays,
-    update: { current: 'v100', latest: '请以当前部署包为准' },
+    update: { current: 'v101', latest: '请以当前部署包为准' },
   });
 }
 
 async function adminExportSettings(request: Request, env: Env): Promise<Response> {
   await requireAdmin(env, request);
-  return ok({ exportedAt: new Date().toISOString(), version: 'v100', settings: await loadSettings(env) });
+  return ok({ exportedAt: new Date().toISOString(), version: 'v101', settings: await loadSettings(env) });
 }
 
 async function adminImportSettings(request: Request, env: Env): Promise<Response> {
@@ -6122,6 +6195,26 @@ function normalizeDnsTarget(type: string, raw: unknown, fqdn: string): string {
     return cleaned;
   }
 
+  if (type === 'CAA') {
+    const match = original.match(/^(\d{1,3})\s+(issue|issuewild|iodef)\s+(.+)$/i);
+    if (!match || Number(match[1]) > 255 || !match[3].trim()) {
+      throw new HttpError(400, 'INVALID_CAA', 'CAA 请按“标志 标签 值”填写，例如：0 issue letsencrypt.org');
+    }
+    return `${Number(match[1])} ${match[2].toLowerCase()} ${match[3].trim()}`;
+  }
+
+  if (type === 'SRV') {
+    const parts = original.split(/\s+/).filter(Boolean);
+    if (parts.length !== 4) throw new HttpError(400, 'INVALID_SRV', 'SRV 请按“优先级 权重 端口 目标”填写，例如：10 5 443 server.example.com');
+    const [priority, weight, port, srvTargetRaw] = parts;
+    const numbers = [priority, weight, port].map(value => Number(value));
+    const srvTarget = srvTargetRaw.toLowerCase().replace(/\.$/, '');
+    if (numbers.some(value => !Number.isInteger(value) || value < 0 || value > 65535) || !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(srvTarget)) {
+      throw new HttpError(400, 'INVALID_SRV', 'SRV 的优先级、权重、端口必须为 0-65535，目标必须是完整主机名');
+    }
+    return `${numbers[0]} ${numbers[1]} ${numbers[2]} ${srvTarget}`;
+  }
+
   throw new HttpError(400, 'INVALID_RECORD_TYPE', 'DNS 记录类型错误');
 }
 
@@ -6136,6 +6229,20 @@ function dnsPayload(record: DnsRecordRow | { type: DnsRecordType; name: string; 
   };
   if (['A', 'AAAA', 'CNAME'].includes(type)) payload.proxied = Boolean(record.proxied);
   if (type === 'MX') payload.priority = clamp(Number(record.priority || 10), 0, 65535);
+  if (type === 'CAA') {
+    const match = String(record.content || '').match(/^(\d{1,3})\s+(issue|issuewild|iodef)\s+(.+)$/i);
+    if (match) {
+      delete payload.content;
+      payload.data = { flags: Number(match[1]), tag: match[2].toLowerCase(), value: match[3].trim() };
+    }
+  }
+  if (type === 'SRV') {
+    const parts = String(record.content || '').split(/\s+/).filter(Boolean);
+    if (parts.length === 4) {
+      delete payload.content;
+      payload.data = { priority: Number(parts[0]), weight: Number(parts[1]), port: Number(parts[2]), target: parts[3] };
+    }
+  }
   return payload;
 }
 
