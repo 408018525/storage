@@ -4530,12 +4530,16 @@ async function cloudflareWorkersApi(request: Request, env: Env, path: string, in
 
 async function fetchWorkerScriptSettings(request: Request, env: Env): Promise<any> {
   const scriptName = managedWorkerScriptName(env);
-  return cloudflareWorkersApi(request, env, `/workers/scripts/${encodeURIComponent(scriptName)}/script-settings`);
+  // `/script-settings` only returns script-level options such as observability and tail consumers.
+  // Environment bindings (plain_text/json/secret_text) are exposed by `/settings`.
+  return cloudflareWorkersApi(request, env, `/workers/scripts/${encodeURIComponent(scriptName)}/settings`);
 }
 
 async function patchWorkerScriptBindings(request: Request, env: Env, bindings: any[]): Promise<void> {
   const scriptName = managedWorkerScriptName(env);
-  await cloudflareWorkersApi(request, env, `/workers/scripts/${encodeURIComponent(scriptName)}/script-settings`, {
+  // Preserve every existing binding and patch the Worker script/version settings endpoint.
+  // Using `/script-settings` here would ignore environment-variable bindings.
+  await cloudflareWorkersApi(request, env, `/workers/scripts/${encodeURIComponent(scriptName)}/settings`, {
     method: 'PATCH',
     body: JSON.stringify({ bindings }),
   });
@@ -4558,7 +4562,7 @@ function variableItemsFromScriptSettings(settings: any): WorkerVariableItem[] {
       const name = String(binding.name);
       const type: WorkerVariableKind = String(binding.type) === 'secret_text' ? 'secret_text' : (String(binding.type) === 'json' ? 'json' : 'plain_text');
       const value = type === 'plain_text' ? String(binding.text ?? '') : (type === 'json' ? JSON.stringify(binding.json ?? null, null, 2) : '');
-      return buildWorkerVariableItem(name, type, value, 'cloudflare-script-settings');
+      return buildWorkerVariableItem(name, type, value, 'cloudflare-worker-settings');
     });
 }
 
@@ -4619,7 +4623,7 @@ async function adminListManagedWorkerVariables(request: Request, env: Env): Prom
     variables,
     definitions: WORKER_VARIABLE_DEFINITIONS,
     protectedNames: Array.from(PROTECTED_WORKER_VARIABLE_NAMES),
-    note: '这里同步 Cloudflare Worker 当前变量和密钥。CF_WORKERS_API_TOKEN 本身必须在 Cloudflare 控制台维护，网站内不能修改。',
+    note: '这里通过 Worker /settings 同步文本、JSON 和密钥变量，并通过 /secrets 校验密钥列表。CF_WORKERS_API_TOKEN 本身必须在 Cloudflare 控制台维护，网站内不能修改。',
   });
 }
 
