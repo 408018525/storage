@@ -3424,3 +3424,37 @@ html[data-theme="dark"] .admin-settings-v79 .settings-section-heading{
 @media(max-width:760px){.analytics-donut-layout{grid-template-columns:1fr}.analytics-donut-svg{justify-self:center;width:175px;height:175px}.analytics-donut-legend{order:2}.analytics-waffle{grid-template-columns:1fr}.waffle-copy{text-align:left}.analytics-dashboard-v100 .analytics-chart-stage{margin-left:-5px;margin-right:-5px}.analytics-dashboard-v100 .chart-legend{overflow-x:auto;flex-wrap:nowrap;padding-bottom:4px}.stacked-row{grid-template-columns:100px 1fr}.analytics-global-tooltip{font-size:12px}}
 @media(max-width:520px){.analytics-donut-layout{min-height:0}.analytics-donut-svg{width:150px;height:150px}.analytics-treemap>div{min-width:78px}.analytics-dashboard-v100 .analytics-svg{min-width:650px}.analytics-dashboard-v100 .analytics-heatmap-wrap{min-width:700px}}
 .analytics-dashboard-v100 .line-3{stroke:#9b6cff;background:#9b6cff;fill:#9b6cff}.analytics-dashboard-v100 .line-4{stroke:#f0a52b;background:#f0a52b;fill:#f0a52b}.analytics-dashboard-v100 .line-5{stroke:#4faac3;background:#4faac3;fill:#4faac3}.analytics-dashboard-v100 .line-area-3{fill:#9b6cff}.analytics-dashboard-v100 .line-area-4{fill:#f0a52b}.analytics-dashboard-v100 .line-area-5{fill:#4faac3}.analytics-global-tooltip .tip-swatch.line-3{background:#9b6cff}.analytics-global-tooltip .tip-swatch.line-4{background:#f0a52b}.analytics-global-tooltip .tip-swatch.line-5{background:#4faac3}
+
+
+/* v103 domain availability and Cloudflare DNS import */
+.domain-availability{
+  min-height:24px;
+  margin:9px 2px 2px;
+  font-size:14px;
+  line-height:1.5;
+  font-weight:800;
+  color:var(--muted);
+}
+.domain-availability.is-checking{color:var(--muted)}
+.domain-availability.is-available{color:var(--success)}
+.domain-availability.is-unavailable{color:var(--danger)}
+.loading-card.compact{min-height:180px}
+.dns-sync-warnings{margin-bottom:14px}
+.dns-sync-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:14px}
+.dns-sync-summary>div{padding:14px 16px;border:1px solid var(--line);border-radius:16px;background:var(--soft)}
+.dns-sync-summary strong{display:block;font-size:24px}
+.dns-sync-summary span{display:block;margin-top:4px;color:var(--muted);font-weight:700}
+.dns-sync-toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:10px 0 12px}
+.dns-sync-toolbar .check{display:flex;align-items:center;gap:9px;font-weight:800}
+.dns-sync-toolbar input[type="checkbox"],.dns-sync-table input[type="checkbox"]{width:20px;height:20px;accent-color:var(--accent)}
+.dns-sync-table-wrap{max-height:52vh;overflow:auto;border:1px solid var(--line);border-radius:16px}
+.dns-sync-table{min-width:980px}
+.dns-sync-table th{position:sticky;top:0;z-index:2;background:#f8fafc}
+.dns-sync-table td{vertical-align:top}
+.dns-sync-table small{color:var(--muted)}
+.dns-sync-content-value{display:inline-block;max-width:360px;white-space:normal;overflow-wrap:anywhere}
+@media(max-width:760px){
+  .dns-sync-summary{grid-template-columns:1fr}
+  .dns-sync-toolbar{align-items:flex-start;flex-direction:column}
+  .domain-availability{font-size:13px}
+}
