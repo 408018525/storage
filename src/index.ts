@@ -4357,7 +4357,6 @@ function buildCloudflareRawEmail(input: {
     `To: ${input.toEmail}`,
     `Subject: ${encodeEmailHeaderUtf8(subject)}`,
     `Date: ${new Date().toUTCString()}`,
-    'X-FLORE-Mail-Provider: Cloudflare-SEB',
     'MIME-Version: 1.0',
     `Content-Type: multipart/alternative; boundary="${boundary}"`,
     '',
@@ -4503,7 +4502,6 @@ async function sendEmailWithResend(env: Env, settings: AppSettings, message: Res
       subject: cleanText(message.subject, 300).replace(/[\r\n]+/g, ' ') || '系统邮件',
       text: String(message.text || ''),
       html: String(message.html || '') || plainTextToEmailHtml(String(message.text || '')),
-      headers: { 'X-FLORE-Mail-Provider': 'Resend' },
     }),
   });
   const payload: any = await response.json().catch(() => ({}));
