@@ -402,6 +402,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   if (method === 'GET' && pathname === '/api/account/devices') return listOwnLoginDevices(request, env);
 
   if (method === 'GET' && pathname === '/api/applications') return listOwnApplications(request, env);
+  if (method === 'POST' && pathname === '/api/applications/check-availability') return checkDomainAvailability(request, env);
   if (method === 'POST' && pathname === '/api/applications') return createApplication(request, env);
 
   let match = pathname.match(/^\/api\/applications\/([^/]+)$/);
@@ -461,6 +462,8 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   if (method === 'POST' && pathname === '/api/admin/worker-variables') return adminUpdateManagedWorkerVariable(request, env);
   if (method === 'DELETE' && pathname === '/api/admin/worker-variables') return adminDeleteManagedWorkerVariable(request, env);
   if (method === 'POST' && pathname === '/api/admin/dns/sync-allowed-types') return adminSyncDnsAllowedTypesFromWorker(request, env);
+  if (method === 'POST' && pathname === '/api/admin/dns/discover-existing') return adminDiscoverExistingDns(request, env);
+  if (method === 'POST' && pathname === '/api/admin/dns/import-existing') return adminImportExistingDns(request, env);
 
   match = pathname.match(/^\/api\/admin\/registration-keys\/([^/]+)$/);
   if (match && method === 'DELETE') return adminDeleteRegistrationKey(request, env, decodeURIComponent(match[1]));
@@ -1324,6 +1327,91 @@ async function getOwnApplication(request: Request, env: Env, id: string): Promis
   `).bind(id, user.id).first<ApplicationRow>();
   if (!app) throw new HttpError(404, 'NOT_FOUND', '域名不存在');
   return ok({ application: serializeApplication(app, await loadSettings(env)) });
+}
+
+
+async function checkDomainAvailability(request: Request, env: Env): Promise<Response> {
+  const user = await requireUser(env, request);
+  await rateLimit(env, request, `domain-availability:${user.id}`, 180, 3600);
+  const body = await readJson<Record<string, unknown>>(request, 32 * 1024);
+  const settings = await loadSettings(env);
+
+  if (user.status !== 'active') {
+    return ok({ available: false, registered: false, message: '账户已被禁用，无法注册域名。' });
+  }
+
+  const prefix = normalizePrefix(body.prefix);
+  const prefixRules = settings.domain;
+  const p = prefix.unicode;
+  const minLen = prefixRules.prefixMinLength || 2;
+  const maxLen = prefixRules.prefixMaxLength || 36;
+  if (p.length < minLen || p.length > maxLen) {
+    return ok({ available: false, registered: false, message: `域名前缀长度必须为 ${minLen}-${maxLen} 位。` });
+  }
+  if (!prefixRules.allowUnderscorePrefix && p.includes('_')) {
+    return ok({ available: false, registered: false, message: '当前不允许使用下划线前缀。' });
+  }
+  if (!prefixRules.allowNumericPrefix && /^\d+$/.test(p)) {
+    return ok({ available: false, registered: false, message: '当前不允许使用纯数字前缀。' });
+  }
+
+  const suffixInput = normalizeSuffix(String(body.suffix || ''));
+  const suffix = settings.dns.suffixes.find(x => x.enabled && (x.suffix === suffixInput || x.suffixAscii === suffixInput));
+  if (!suffix || (user.role !== 'admin' && suffix.allowRegister === false)) {
+    return ok({ available: false, registered: false, message: '该根域名当前不可申请。' });
+  }
+
+  const reserved = new Set(settings.dns.reservedPrefixes.map(x => x.toLowerCase()));
+  const blacklistRules = [
+    ...sanitizeStringList(settings.domain.prefixBlacklistText || ''),
+    ...sanitizeStringList(settings.domain.blockedPrefixText || ''),
+    ...(settings.blacklist?.prefixes || []),
+  ];
+  const adminOnlyRules = sanitizeStringList(settings.domain.adminOnlyPrefixText || '');
+  if (reserved.has(prefix.unicode) || reserved.has(prefix.ascii)
+    || prefixMatchesRule(prefix.unicode, blacklistRules) || prefixMatchesRule(prefix.ascii, blacklistRules)) {
+    return ok({ available: false, registered: false, message: '该域名不可注册。' });
+  }
+  if (user.role !== 'admin' && (prefixMatchesRule(prefix.unicode, adminOnlyRules) || prefixMatchesRule(prefix.ascii, adminOnlyRules))) {
+    return ok({ available: false, registered: false, message: '该域名不可注册。' });
+  }
+
+  const fqdnUnicode = `${prefix.unicode}.${suffix.suffix}`;
+  const fqdnAscii = `${prefix.ascii}.${suffix.suffixAscii}`;
+  const duplicate = await env.DB.prepare(`
+    SELECT id FROM domain_applications
+    WHERE fqdn_ascii=? COLLATE NOCASE
+      AND status NOT IN ('rejected','revoked')
+      AND (deleted_at IS NULL OR deleted_at='')
+    LIMIT 1
+  `).bind(fqdnAscii).first<{ id: string }>();
+  if (duplicate) {
+    return ok({ available: false, registered: true, fqdnUnicode, fqdnAscii, message: '此域名已注册。' });
+  }
+
+  const token = resolveDnsToken(env, settings, suffix);
+  let cloudflareChecked = false;
+  if (token && suffix.zoneId) {
+    cloudflareChecked = true;
+    try {
+      const remoteRecords = await listCloudflareDnsRecordsByName(token, suffix.zoneId, fqdnAscii);
+      if (remoteRecords.length) {
+        return ok({ available: false, registered: true, fqdnUnicode, fqdnAscii, cloudflareChecked, message: '此域名已注册。' });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Cloudflare DNS 查询失败';
+      throw new HttpError(502, 'DOMAIN_AVAILABILITY_CHECK_FAILED', `暂时无法检查域名，请稍后重试：${message}`);
+    }
+  }
+
+  return ok({
+    available: true,
+    registered: false,
+    fqdnUnicode,
+    fqdnAscii,
+    cloudflareChecked,
+    message: '此域名可注册。',
+  });
 }
 
 async function createApplication(request: Request, env: Env): Promise<Response> {
@@ -2671,6 +2759,222 @@ async function adminOverview(request: Request, env: Env): Promise<Response> {
   ]);
 
   return ok({ overview: { users, applications: apps, today: Number(today?.count || 0) } });
+}
+
+
+async function adminDiscoverExistingDns(request: Request, env: Env): Promise<Response> {
+  await requireAdmin(env, request);
+  const settings = await loadSettings(env);
+  const appsResult = await env.DB.prepare(`
+    SELECT a.*, u.username
+    FROM domain_applications a
+    LEFT JOIN users u ON u.id=a.user_id
+    WHERE a.status='approved' AND (a.deleted_at IS NULL OR a.deleted_at='')
+    ORDER BY LENGTH(a.fqdn_ascii) DESC, a.fqdn_ascii ASC
+    LIMIT 2000
+  `).all<ApplicationRow>();
+  const applications = appsResult.results || [];
+  if (!applications.length) return ok({ records: [], warnings: [], scannedDomains: 0, scannedZones: 0, unsupportedCount: 0 });
+
+  const localResult = await env.DB.prepare(`
+    SELECT application_id, cf_record_id, name, type, content, priority
+    FROM dns_records
+    WHERE (deleted_at IS NULL OR deleted_at='')
+  `).all<any>();
+  const localIds = new Set<string>();
+  const localSignatures = new Set<string>();
+  for (const row of localResult.results || []) {
+    if (row.cf_record_id) localIds.add(`${row.application_id}|${row.cf_record_id}`);
+    localSignatures.add(dnsImportSignature(row.application_id, row));
+  }
+
+  const bySuffix = new Map<string, ApplicationRow[]>();
+  for (const app of applications) {
+    const key = String(app.suffix_ascii || '').toLowerCase();
+    const list = bySuffix.get(key) || [];
+    list.push(app);
+    bySuffix.set(key, list);
+  }
+
+  const discovered: any[] = [];
+  const warnings: string[] = [];
+  let unsupportedCount = 0;
+  let scannedZones = 0;
+  for (const [suffixAscii, suffixApps] of bySuffix.entries()) {
+    const suffix = settings.dns.suffixes.find(item => String(item.suffixAscii || '').toLowerCase() === suffixAscii);
+    if (!suffix) {
+      warnings.push(`${suffixAscii}：系统中没有对应的根域名配置`);
+      continue;
+    }
+    const token = resolveDnsToken(env, settings, suffix);
+    if (!token || !suffix.zoneId) {
+      warnings.push(`${suffixAscii}：缺少 Cloudflare API Token 或 Zone ID`);
+      continue;
+    }
+    let remoteRecords: any[] = [];
+    try {
+      remoteRecords = await listCloudflareDnsRecords(token, suffix.zoneId);
+      scannedZones += 1;
+    } catch (error) {
+      warnings.push(`${suffixAscii}：${error instanceof Error ? error.message : 'Cloudflare DNS 查询失败'}`);
+      continue;
+    }
+    const sortedApps = [...suffixApps].sort((a, b) => b.fqdn_ascii.length - a.fqdn_ascii.length);
+    for (const remote of remoteRecords) {
+      const remoteName = normalizeCloudflareDnsName(remote?.name);
+      const app = sortedApps.find(item => {
+        const fqdn = normalizeCloudflareDnsName(item.fqdn_ascii);
+        return remoteName === fqdn || remoteName.endsWith(`.${fqdn}`);
+      });
+      if (!app) continue;
+      const local = cloudflareDnsRecordToLocal(remote, app.fqdn_ascii);
+      if (!local) {
+        unsupportedCount += 1;
+        continue;
+      }
+      const cfRecordId = String(remote?.id || '').trim();
+      if (!cfRecordId) continue;
+      if (localIds.has(`${app.id}|${cfRecordId}`) || localSignatures.has(dnsImportSignature(app.id, local))) continue;
+      discovered.push({
+        key: `${app.id}:${cfRecordId}`,
+        applicationId: app.id,
+        cfRecordId,
+        domain: app.fqdn_unicode || app.fqdn_ascii,
+        domainAscii: app.fqdn_ascii,
+        username: app.username || '',
+        host: local.host,
+        name: local.name,
+        type: local.type,
+        content: local.content,
+        priority: local.priority,
+        proxied: Boolean(local.proxied),
+        ttl: local.ttl,
+      });
+      if (discovered.length >= 3000) break;
+    }
+    if (discovered.length >= 3000) {
+      warnings.push('待同步记录超过 3000 条，本次只显示前 3000 条');
+      break;
+    }
+  }
+
+  return ok({
+    records: discovered,
+    warnings: Array.from(new Set(warnings)).slice(0, 30),
+    scannedDomains: applications.length,
+    scannedZones,
+    unsupportedCount,
+  });
+}
+
+async function adminImportExistingDns(request: Request, env: Env): Promise<Response> {
+  const admin = await requireAdmin(env, request);
+  const body = await readJson<Record<string, unknown>>(request, 256 * 1024);
+  const rawSelections = Array.isArray(body.records) ? body.records : [];
+  const selections = Array.from(new Map(rawSelections.map((value: any) => {
+    const applicationId = cleanText(value?.applicationId, 80);
+    const cfRecordId = cleanText(value?.cfRecordId, 120);
+    return [`${applicationId}|${cfRecordId}`, { applicationId, cfRecordId }];
+  })).values()).filter(item => item.applicationId && item.cfRecordId).slice(0, 1000);
+  if (!selections.length) throw new HttpError(400, 'DNS_IMPORT_SELECTION_REQUIRED', '请选择要同步的 DNS 记录');
+
+  const appIds = Array.from(new Set(selections.map(item => item.applicationId)));
+  const placeholders = appIds.map(() => '?').join(',');
+  const appResult = await env.DB.prepare(`
+    SELECT a.*, u.username
+    FROM domain_applications a
+    LEFT JOIN users u ON u.id=a.user_id
+    WHERE a.id IN (${placeholders})
+      AND a.status='approved'
+      AND (a.deleted_at IS NULL OR a.deleted_at='')
+  `).bind(...appIds).all<ApplicationRow>();
+  const appMap = new Map((appResult.results || []).map(app => [app.id, app]));
+  const settings = await loadSettings(env);
+  const bySuffix = new Map<string, typeof selections>();
+  for (const selection of selections) {
+    const app = appMap.get(selection.applicationId);
+    if (!app) continue;
+    const key = String(app.suffix_ascii || '').toLowerCase();
+    const list = bySuffix.get(key) || [];
+    list.push(selection);
+    bySuffix.set(key, list);
+  }
+
+  let imported = 0;
+  let skipped = 0;
+  const errors: string[] = [];
+  const touchedApps = new Set<string>();
+  for (const [suffixAscii, suffixSelections] of bySuffix.entries()) {
+    const suffix = settings.dns.suffixes.find(item => String(item.suffixAscii || '').toLowerCase() === suffixAscii);
+    if (!suffix) {
+      skipped += suffixSelections.length;
+      errors.push(`${suffixAscii}：根域名配置不存在`);
+      continue;
+    }
+    const token = resolveDnsToken(env, settings, suffix);
+    if (!token || !suffix.zoneId) {
+      skipped += suffixSelections.length;
+      errors.push(`${suffixAscii}：缺少 Cloudflare API Token 或 Zone ID`);
+      continue;
+    }
+    let remoteRecords: any[];
+    try {
+      remoteRecords = await listCloudflareDnsRecords(token, suffix.zoneId);
+    } catch (error) {
+      skipped += suffixSelections.length;
+      errors.push(`${suffixAscii}：${error instanceof Error ? error.message : 'Cloudflare DNS 查询失败'}`);
+      continue;
+    }
+    const remoteMap = new Map(remoteRecords.map(record => [String(record?.id || ''), record]));
+    for (const selection of suffixSelections) {
+      const app = appMap.get(selection.applicationId);
+      const remote = remoteMap.get(selection.cfRecordId);
+      if (!app || !remote) {
+        skipped += 1;
+        continue;
+      }
+      const local = cloudflareDnsRecordToLocal(remote, app.fqdn_ascii);
+      if (!local) {
+        skipped += 1;
+        continue;
+      }
+      const duplicate = await env.DB.prepare(`
+        SELECT id FROM dns_records
+        WHERE application_id=?
+          AND (deleted_at IS NULL OR deleted_at='')
+          AND (
+            cf_record_id=?
+            OR (name=? COLLATE NOCASE AND type=? AND content=? AND COALESCE(priority,-1)=?)
+          )
+        LIMIT 1
+      `).bind(app.id, selection.cfRecordId, local.name, local.type, local.content, local.priority ?? -1).first<{ id: string }>();
+      if (duplicate) {
+        skipped += 1;
+        continue;
+      }
+      const id = crypto.randomUUID();
+      await env.DB.prepare(`
+        INSERT INTO dns_records (
+          id,application_id,user_id,host,name,type,content,priority,proxied,ttl,cf_record_id,status,error_message
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NULL)
+      `).bind(
+        id, app.id, app.user_id, local.host, local.name, local.type, local.content,
+        local.priority, local.proxied, local.ttl, selection.cfRecordId, 'active',
+      ).run();
+      imported += 1;
+      touchedApps.add(app.id);
+    }
+  }
+
+  for (const applicationId of touchedApps) await syncApplicationDnsSummary(env, applicationId);
+  await audit(env, request, admin.id, 'admin.dns_import_existing', 'dns_record', null, {
+    requested: selections.length,
+    imported,
+    skipped,
+    applications: touchedApps.size,
+    errors: errors.slice(0, 10),
+  });
+  return ok({ imported, skipped, applications: touchedApps.size, errors: errors.slice(0, 20) });
 }
 
 async function adminApplications(request: Request, env: Env, url: URL): Promise<Response> {
@@ -5646,6 +5950,81 @@ async function deleteDnsRecord(token: string, zoneId: string, recordId: string):
   }
 }
 
+
+async function listCloudflareDnsRecords(token: string, zoneId: string): Promise<any[]> {
+  if (!zoneId) return [];
+  const all: any[] = [];
+  const perPage = 500;
+  for (let page = 1; page <= 100; page += 1) {
+    const url = new URL(`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records`);
+    url.searchParams.set('page', String(page));
+    url.searchParams.set('per_page', String(perPage));
+    url.searchParams.set('order', 'name');
+    url.searchParams.set('direction', 'asc');
+    const res = await fetch(url.toString(), { headers: { authorization: `Bearer ${token}` } });
+    const data: any = await res.json().catch(() => ({}));
+    if (!res.ok || data.success === false) {
+      throw new Error(data.errors?.[0]?.message || `Cloudflare DNS 查询失败 HTTP ${res.status}`);
+    }
+    const rows = Array.isArray(data.result) ? data.result : [];
+    all.push(...rows);
+    const totalPages = Number(data.result_info?.total_pages || 0);
+    if (!rows.length || rows.length < perPage || (totalPages > 0 && page >= totalPages)) break;
+  }
+  return all;
+}
+
+function normalizeCloudflareDnsName(value: unknown): string {
+  return String(value || '').trim().toLowerCase().replace(/\.$/, '');
+}
+
+function cloudflareDnsRecordToLocal(record: any, applicationFqdn: string): {
+  type: DnsRecordType;
+  name: string;
+  host: string;
+  content: string;
+  priority: number | null;
+  proxied: number;
+  ttl: number;
+} | null {
+  const type = String(record?.type || '').trim().toUpperCase() as DnsRecordType;
+  if (!SUPPORTED_DNS_RECORD_TYPES.includes(type)) return null;
+  const name = normalizeCloudflareDnsName(record?.name);
+  const fqdn = normalizeCloudflareDnsName(applicationFqdn);
+  if (!name || !(name === fqdn || name.endsWith(`.${fqdn}`))) return null;
+  const host = name === fqdn ? '@' : name.slice(0, -(fqdn.length + 1));
+  let content = String(record?.content ?? '').trim();
+  let priority: number | null = record?.priority === undefined || record?.priority === null ? null : Number(record.priority);
+  if (type === 'CAA' && record?.data) {
+    const flags = Number(record.data.flags || 0);
+    const tag = String(record.data.tag || 'issue').trim().toLowerCase();
+    const value = String(record.data.value || '').trim();
+    content = `${flags} ${tag} ${value}`.trim();
+  }
+  if (type === 'SRV' && record?.data) {
+    const srvPriority = Number(record.data.priority || 0);
+    const weight = Number(record.data.weight || 0);
+    const port = Number(record.data.port || 0);
+    const target = normalizeCloudflareDnsName(record.data.target);
+    priority = srvPriority;
+    content = `${srvPriority} ${weight} ${port} ${target}`.trim();
+  }
+  if (!content) return null;
+  return {
+    type,
+    name,
+    host: host || '@',
+    content,
+    priority: Number.isFinite(Number(priority)) ? Number(priority) : null,
+    proxied: Boolean(record?.proxied) ? 1 : 0,
+    ttl: clamp(Number(record?.ttl || 1), 1, 86400),
+  };
+}
+
+function dnsImportSignature(applicationId: string, record: { type: string; name: string; content: string; priority?: number | null }): string {
+  return [applicationId, String(record.type || '').toUpperCase(), normalizeCloudflareDnsName(record.name), String(record.content || '').trim(), record.priority ?? ''].join('|');
+}
+
 async function listCloudflareDnsRecordsByName(token: string, zoneId: string, name: string): Promise<Array<{ id: string; name?: string; type?: string }>> {
   if (!zoneId || !name) return [];
   const url = new URL(`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records`);
@@ -5753,20 +6132,20 @@ async function adminSystemStatus(request: Request, env: Env): Promise<Response> 
       (SELECT COUNT(*) FROM audit_logs WHERE datetime(created_at) >= datetime('now','-' || ? || ' days')) AS logsRetained
   `).bind(auditRetentionDays).first<any>();
   return ok({
-    version: 'v102',
+    version: 'v103',
     settingsKey: SETTINGS_KEY,
     kv: { storage: 'Workers KV', estimatedKeys: '由 Cloudflare 控制台查看实际占用' },
     cfApi: { configured: Boolean(resolveDnsToken(env, settings)), status: resolveDnsToken(env, settings) ? '已配置' : '未配置' },
     cron: { enabled: Boolean(settings.automation?.enabled), expression: settings.automation?.cronExpression || '' },
     counts: { ...counts, logs4d: Number(counts?.logsRetained || 0) },
     auditRetentionDays,
-    update: { current: 'v102', latest: '请以当前部署包为准' },
+    update: { current: 'v103', latest: '请以当前部署包为准' },
   });
 }
 
 async function adminExportSettings(request: Request, env: Env): Promise<Response> {
   await requireAdmin(env, request);
-  return ok({ exportedAt: new Date().toISOString(), version: 'v102', settings: await loadSettings(env) });
+  return ok({ exportedAt: new Date().toISOString(), version: 'v103', settings: await loadSettings(env) });
 }
 
 async function adminImportSettings(request: Request, env: Env): Promise<Response> {
