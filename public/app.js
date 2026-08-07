@@ -4185,69 +4185,141 @@ async function syncCloudflareEmailRecipients(force = false) {
 
 let managedWorkerVariablesState = null;
 
-function updateManagedWorkerVariableEditor() {
-  const select = document.querySelector('#managed-worker-variable-name');
-  const input = document.querySelector('#managed-worker-variable-value');
-  const current = document.querySelector('#managed-worker-variable-current');
-  if (!select || !input || !current) return;
-  const item = managedWorkerVariablesState?.variables?.find(variable => variable.name === select.value);
-  if (!item) {
-    current.textContent = '尚未读取 Worker 变量状态';
-    input.value = '';
-    return;
-  }
-  input.type = item.sensitive ? 'password' : 'text';
-  input.value = '';
-  input.placeholder = item.sensitive
-    ? (item.configured ? '已配置；输入新值将替换，原值不会显示' : '请输入新值')
-    : (item.value || '请输入新值');
-  current.textContent = item.sensitive
-    ? `${item.label}：${item.configured ? '已配置（密钥值不可读取）' : '未配置'}`
-    : `${item.label} 当前生效值：${item.value || '未配置'}`;
+function workerVariableTypeLabel(type) {
+  return String(type || '') === 'secret_text' ? '密钥' : '纯文本';
 }
-
-async function loadManagedWorkerVariables() {
+function workerVariableTypeValue(type) {
+  return String(type || '') === 'secret_text' ? 'secret_text' : 'plain_text';
+}
+function workerVariableValueText(item) {
+  if (!item) return '';
+  if (item.type === 'secret_text' || item.sensitive) return item.configured ? '值已加密' : '未配置';
+  return item.value || '—';
+}
+function workerVariableKnownInfo(name, type) {
+  const defs = managedWorkerVariablesState?.definitions || {};
+  const direct = defs[name];
+  if (direct) return direct;
+  const secretLike = workerVariableTypeValue(type) === 'secret_text' || /(TOKEN|SECRET|KEY|PASSWORD|PRIVATE|SALT|BOOTSTRAP|API_KEY)/i.test(name || '');
+  return {
+    label: name || '自定义变量',
+    purpose: secretLike ? '自定义密钥变量，当前代码或后续功能可能通过 env 读取它。' : '自定义文本变量，当前代码或后续功能可能通过 env 读取它。',
+    addMethod: secretLike ? '类型建议选择“密钥”；填写后代码可通过 env 读取。' : '类型建议选择“纯文本”；填写后代码可通过 env 读取。',
+    suggestedType: secretLike ? 'secret_text' : 'plain_text'
+  };
+}
+function renderWorkerVariableRows(variables) {
+  if (!Array.isArray(variables) || !variables.length) {
+    return '<tr><td colspan="6">暂无变量。请先确认 CF_WORKERS_API_TOKEN 和 CF_ACCOUNT_ID 已配置，或点击刷新同步。</td></tr>';
+  }
+  return variables.map(item => {
+    const type = workerVariableTypeValue(item.type);
+    const label = item.label || item.name;
+    return `<tr>
+      <td><span class="status-pill ${type === 'secret_text' ? 'pending' : 'ok'}">${workerVariableTypeLabel(type)}</span></td>
+      <td><strong><code>${esc(item.name)}</code></strong><p class="muted small">${esc(label)}</p></td>
+      <td class="mono-cell">${esc(workerVariableValueText(item))}</td>
+      <td><p><b>用途：</b>${esc(item.purpose || '')}</p><p class="muted small"><b>添加方法：</b>${esc(item.addMethod || '')}</p></td>
+      <td><span class="muted small">${esc(item.source || '')}</span></td>
+      <td>${item.protected ? '<span class="muted small">控制台维护</span>' : `<button class="icon-btn" data-worker-var-edit="${attr(item.name)}" title="编辑">✎</button><button class="icon-btn danger" data-worker-var-delete="${attr(item.name)}" data-worker-var-type="${attr(type)}" title="删除">🗑</button>`}</td>
+    </tr>`;
+  }).join('');
+}
+function renderWorkerVariableTable() {
+  const box = document.querySelector('#worker-variables-list');
+  if (!box) return;
+  const variables = managedWorkerVariablesState?.variables || [];
+  box.innerHTML = `<div class="table-wrap worker-variable-table-wrap"><table><thead><tr><th>类型</th><th>变量名称</th><th>值</th><th>用途和添加方法</th><th>来源</th><th>操作</th></tr></thead><tbody>${renderWorkerVariableRows(variables)}</tbody></table></div>`;
+  bindWorkerVariableTableActions();
+}
+function openWorkerVariableModal(mode, item = null) {
+  const isEdit = mode === 'edit';
+  const name = item?.name || '';
+  const type = workerVariableTypeValue(item?.type || item?.suggestedType || 'plain_text');
+  const info = workerVariableKnownInfo(name, type);
+  openModal(isEdit ? '编辑 Worker 变量' : '添加 Worker 变量', isEdit ? `修改 ${name}` : '与 Cloudflare 变量和密钥填写方式保持一致', `
+    <form id="worker-variable-form" class="form-grid">
+      <label class="field"><span>类型</span><select name="type"><option value="plain_text" ${type === 'plain_text' ? 'selected' : ''}>纯文本</option><option value="secret_text" ${type === 'secret_text' ? 'selected' : ''}>密钥</option></select><em>密钥不会读取或回显旧值；保存后 Cloudflare 会显示“值已加密”。</em></label>
+      <label class="field"><span>变量名称</span><input name="name" value="${fieldValue(name)}" ${isEdit ? 'readonly' : ''} placeholder="例如 CF_ACCOUNT_ID"><em>只能使用字母、数字和下划线，不能以数字开头。</em></label>
+      <label class="field wide"><span>值</span><textarea name="value" rows="4" placeholder="请输入新值"></textarea><em>${isEdit && type === 'secret_text' ? '密钥旧值不会显示；输入新值后会覆盖原密钥。' : '填写内容与 Cloudflare 后台“值”输入框一致。'}</em></label>
+      <div class="readonly-box wide" id="worker-variable-help"><b>${esc(info.label || name || '变量说明')}</b><p><b>用途：</b>${esc(info.purpose || '')}</p><p><b>添加方法：</b>${esc(info.addMethod || '')}</p></div>
+      <div class="modal-actions wide"><button class="btn soft" type="button" data-close-modal>取消</button><button class="btn primary" type="submit">${isEdit ? '保存修改' : '添加变量'}</button></div>
+    </form>`, 'wide');
+  const form = document.querySelector('#worker-variable-form');
+  const updateHelp = () => {
+    const currentName = String(form?.elements?.name?.value || '').trim();
+    const currentType = workerVariableTypeValue(form?.elements?.type?.value || 'plain_text');
+    const currentInfo = workerVariableKnownInfo(currentName, currentType);
+    const help = document.querySelector('#worker-variable-help');
+    if (help) help.innerHTML = `<b>${esc(currentInfo.label || currentName || '变量说明')}</b><p><b>用途：</b>${esc(currentInfo.purpose || '')}</p><p><b>添加方法：</b>${esc(currentInfo.addMethod || '')}</p>`;
+  };
+  form?.elements?.name?.addEventListener('input', updateHelp);
+  form?.elements?.type?.addEventListener('change', updateHelp);
+  form?.addEventListener('submit', async e => {
+    e.preventDefault();
+    const fd = new FormData(form);
+    const payload = {
+      name: String(fd.get('name') || '').trim(),
+      type: String(fd.get('type') || 'plain_text'),
+      value: String(fd.get('value') || '').trim(),
+    };
+    if (!payload.name || !payload.value) return toast('请填写变量名称和值', 'error');
+    if (payload.name === 'CF_WORKERS_API_TOKEN') return toast('CF_WORKERS_API_TOKEN 只能在 Cloudflare 控制台维护', 'error');
+    const label = isEdit ? '确认保存这个 Worker 变量？' : '确认添加这个 Worker 变量？';
+    if (!confirm(`${label}\n\n变量：${payload.name}\n类型：${workerVariableTypeLabel(payload.type)}\n\n保存后会直接写入 Cloudflare Worker。`)) return;
+    const submit = form.querySelector('button[type="submit"]');
+    submit.disabled = true;
+    try {
+      const result = await api('/api/admin/worker-variables', { method:'POST', body: payload });
+      toast(result.message || 'Worker 变量已更新', 'success');
+      closeModal();
+      await loadManagedWorkerVariables(true);
+    } catch (error) {
+      toast(error.message || '更新失败', 'error');
+    } finally {
+      submit.disabled = false;
+    }
+  });
+}
+function bindWorkerVariableTableActions() {
+  document.querySelectorAll('[data-worker-var-edit]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const name = btn.dataset.workerVarEdit || '';
+      const item = managedWorkerVariablesState?.variables?.find(v => v.name === name);
+      if (item) openWorkerVariableModal('edit', item);
+    });
+  });
+  document.querySelectorAll('[data-worker-var-delete]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const name = btn.dataset.workerVarDelete || '';
+      const type = btn.dataset.workerVarType || 'plain_text';
+      if (!name) return;
+      if (!confirm(`确认删除 Worker 变量 ${name}？\n\n删除后相关功能可能立即失效。`)) return;
+      try {
+        const result = await api('/api/admin/worker-variables', { method:'DELETE', body:{ name, type } });
+        toast(result.message || '变量已删除', 'success');
+        await loadManagedWorkerVariables(true);
+      } catch (error) {
+        toast(error.message || '删除失败', 'error');
+      }
+    });
+  });
+}
+async function loadManagedWorkerVariables(showToast = false) {
   const status = document.querySelector('#managed-worker-variable-status');
   try {
+    if (status) status.textContent = '正在同步 Cloudflare Worker 变量…';
     const result = await api('/api/admin/worker-variables');
     managedWorkerVariablesState = result;
-    if (status) status.textContent = result.enabled
-      ? `API 管理已启用 · Worker：${result.scriptName}`
-      : '未启用：请先在 Cloudflare 添加 CF_WORKERS_API_TOKEN Secret';
-    updateManagedWorkerVariableEditor();
+    if (status) status.textContent = `${result.enabled ? 'API 管理已启用' : 'API 管理未启用'} · Worker：${result.scriptName || 'storage'} · ${result.variables?.length || 0} 个变量${result.warning ? ' · ' + result.warning : ''}`;
+    renderWorkerVariableTable();
+    if (showToast) toast('Worker 变量已同步', 'success');
     return result;
   } catch (error) {
     if (status) status.textContent = error.message || '读取 Worker 变量失败';
+    renderWorkerVariableTable();
+    if (showToast) toast(error.message || '同步失败', 'error');
     throw error;
-  }
-}
-
-async function saveManagedWorkerVariable() {
-  const select = document.querySelector('#managed-worker-variable-name');
-  const input = document.querySelector('#managed-worker-variable-value');
-  const button = document.querySelector('#save-managed-worker-variable');
-  const status = document.querySelector('#managed-worker-variable-status');
-  const name = String(select?.value || '').trim();
-  const value = String(input?.value || '').trim();
-  const item = managedWorkerVariablesState?.variables?.find(variable => variable.name === name);
-  if (!name || !item) return toast('请选择要修改的 Worker 变量', 'error');
-  if (!value) return toast('请输入新的变量值', 'error');
-  if (!confirm(`确认更新 ${item.label}？
-
-该操作会直接修改 Cloudflare Worker Secret，并可能生成新的 Worker 版本。`)) return;
-  if (button) button.disabled = true;
-  if (status) status.textContent = '正在更新 Cloudflare Worker 变量…';
-  try {
-    const result = await api('/api/admin/worker-variables', { method:'POST', body:{ name, value } });
-    if (input) input.value = '';
-    if (status) status.textContent = result.message || '更新成功';
-    toast(result.message || 'Worker 变量已更新', 'success');
-    setTimeout(() => loadManagedWorkerVariables().catch(() => undefined), 5000);
-  } catch (error) {
-    if (status) status.textContent = error.message || '更新失败';
-    toast(error.message || '更新失败', 'error');
-  } finally {
-    if (button) button.disabled = false;
   }
 }
 
@@ -4471,14 +4543,15 @@ async function renderAdminSettings() {
       </div>
 
       <div class="tab-page" data-page="variables">
-        <section class="card settings-grid">
-          <div class="settings-section-heading wide"><span>01</span><div><h3>Worker 变量同步</h3><p>同步当前 Worker 环境变量状态，并通过安全白名单直接更新指定变量。</p></div></div>
-          <div class="readonly-box wide"><b>管理说明</b><p>这里对应 Cloudflare Workers 的“变量和机密”页面。网站不会开放任意脚本修改，只允许白名单变量。</p><p>需要先在 Cloudflare 手动添加 <code>CF_WORKERS_API_TOKEN</code>（Workers Scripts Write 权限），用于管理员页面更新变量。</p></div>
-          <div class="email-test-row wide"><select id="managed-worker-variable-name"><option value="EMAIL_FROM">发件邮箱 EMAIL_FROM</option><option value="EMAIL_FROM_NAME">发件名称 EMAIL_FROM_NAME</option><option value="CF_ADMIN_EMAIL">管理员收件邮箱 CF_ADMIN_EMAIL</option><option value="CF_ACCOUNT_ID">Cloudflare Account ID</option><option value="APP_ENVIRONMENT">运行环境 APP_ENVIRONMENT</option><option value="TURNSTILE_SITE_KEY">Turnstile Site Key</option><option value="RESEND_API_KEY">Resend API Key</option><option value="CF_EMAIL_ROUTING_API_TOKEN">Email Routing API Token</option><option value="CF_API_TOKEN">Cloudflare DNS API Token</option><option value="TURNSTILE_SECRET">Turnstile Secret</option></select><input id="managed-worker-variable-value" type="text" placeholder="请输入新的变量值"><button class="btn soft" id="save-managed-worker-variable" type="button">更新 Worker 变量</button></div>
-          <p id="managed-worker-variable-current" class="muted wide">尚未读取 Worker 变量状态</p>
+        <section class="card settings-grid worker-variables-page">
+          <div class="settings-section-heading wide"><span>01</span><div><h3>变量和密钥</h3><p>同步当前 Cloudflare Worker 的变量和密钥，显示方式与 Cloudflare 后台“变量和密钥”保持一致。</p></div></div>
+          <div class="readonly-box wide"><b>使用说明</b><p>这里会通过 Cloudflare API 读取当前 <code>storage</code> Worker 的实际变量列表，不再使用固定白名单。你可以直接添加、编辑、删除普通变量或密钥。</p><p><code>CF_WORKERS_API_TOKEN</code> 是管理令牌本身，必须在 Cloudflare 控制台手动维护，网站内不会允许修改或删除。</p></div>
+          <div class="toolbar-actions wide"><button class="btn soft" id="refresh-worker-variables" type="button">同步当前 Worker 变量</button><button class="btn primary" id="add-worker-variable" type="button">＋ 添加变量</button></div>
           <p id="managed-worker-variable-status" class="muted wide">正在读取变量状态…</p>
-          <div class="settings-section-heading wide"><span>02</span><div><h3>当前变量说明</h3><p>修改前建议先查看用途，避免误改导致邮件、DNS 或验证功能异常。</p></div></div>
-          <div class="readonly-box wide"><b>邮件相关</b><p><code>EMAIL_FROM</code>：邮件发件地址。<br><code>EMAIL_FROM_NAME</code>：邮件显示名称。<br><code>RESEND_API_KEY</code>：注册验证码邮件发送。<br><code>CF_EMAIL_ROUTING_API_TOKEN</code>：同步 Cloudflare 已验证邮箱。</p><b>Cloudflare 相关</b><p><code>CF_ACCOUNT_ID</code>：Cloudflare 账户 ID。<br><code>CF_API_TOKEN</code>：DNS 管理 API Token。<br><code>CF_ADMIN_EMAIL</code>：管理员通知目标邮箱。</p><b>安全相关</b><p><code>CF_WORKERS_API_TOKEN</code>：管理员变量修改权限令牌，只能在 Cloudflare 控制台修改，网站内禁止修改。</p></div>
+          <div id="worker-variables-list" class="wide"><div class="loading-card">正在同步 Cloudflare Worker 变量…</div></div>
+          <div class="settings-section-heading wide"><span>02</span><div><h3>常用变量用途速查</h3><p>下方只用于说明，实际变量以同步出来的 Cloudflare 列表为准。</p></div></div>
+          <div class="readonly-box wide"><b>邮件相关</b><p><code>EMAIL_FROM</code>：邮件发件地址。<br><code>EMAIL_FROM_NAME</code>：邮件显示名称。<br><code>CF_ADMIN_EMAIL</code>：管理员通知目标邮箱。<br><code>RESEND_API_KEY</code>：发送注册验证码到任意用户邮箱。<br><code>CF_EMAIL_ROUTING_API_TOKEN</code>：同步 Cloudflare 已验证邮箱。</p><b>DNS 相关</b><p><code>CF_API_TOKEN</code>：写入 Cloudflare DNS。<br><code>DNS_SUFFIX</code>、<code>DNS_ZONE_ID</code>、<code>DNS_ALLOWED_TYPES</code>、<code>DNS_DEFAULT_TYPE</code>、<code>DNS_TTL</code>、<code>DNS_PROXIED</code>：单根域名兼容配置；多根域名编辑器保存后会优先使用后台设置。</p><b>验证相关</b><p><code>TURNSTILE_SITE_KEY</code>：前端显示 Turnstile。<br><code>TURNSTILE_SECRET</code>：后端校验 Turnstile。<br><code>TURNSTILE_ACTION_LOGIN</code>、<code>TURNSTILE_ACTION_REGISTER</code>、<code>TURNSTILE_ACTION_APPLY</code>：区分登录、注册和域名申请场景。</p><b>管理相关</b><p><code>CF_ACCOUNT_ID</code>：Cloudflare 账户 ID。<br><code>CF_WORKERS_API_TOKEN</code>：允许网站内管理 Worker 变量；只能在 Cloudflare 控制台维护。</p></div>
+        </section>
       </div>
 
       <div class="tab-page" data-page="system">
@@ -4535,8 +4608,8 @@ async function renderAdminSettings() {
     });
     document.querySelector('#sync-cloudflare-email-addresses')?.addEventListener('click', () => syncCloudflareEmailRecipients(true).catch(() => undefined));
     document.querySelector('#cloudflare-admin-recipient')?.addEventListener('change', updateCloudflareEmailTestButton);
-    document.querySelector('#managed-worker-variable-name')?.addEventListener('change', updateManagedWorkerVariableEditor);
-    document.querySelector('#save-managed-worker-variable')?.addEventListener('click', saveManagedWorkerVariable);
+    document.querySelector('#refresh-worker-variables')?.addEventListener('click', () => loadManagedWorkerVariables(true).catch(() => undefined));
+    document.querySelector('#add-worker-variable')?.addEventListener('click', () => openWorkerVariableModal('add'));
     updateCloudflareEmailTestButton();
     loadManagedWorkerVariables().catch(() => undefined);
     if (reg.cloudflareEmailAccountId && reg.cloudflareEmailApiTokenConfigured) syncCloudflareEmailRecipients(false).catch(() => undefined);
