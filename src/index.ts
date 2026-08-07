@@ -2800,7 +2800,7 @@ function applicationFqdnForDnsImport(app: any): string {
 }
 
 async function adminDiscoverExistingDns(request: Request, env: Env): Promise<Response> {
-  await requireAdmin(env, request);
+  const admin = await requireAdmin(env, request);
   const settings = await loadSettings(env);
   const appsResult = await env.DB.prepare(`
     SELECT a.*, u.username
@@ -2822,9 +2822,13 @@ async function adminDiscoverExistingDns(request: Request, env: Env): Promise<Res
     WHERE (deleted_at IS NULL OR deleted_at='')
   `).all<any>();
   const localIds = new Set<string>();
+  const localCfRecordIds = new Set<string>();
   const localSignatures = new Set<string>();
   for (const row of localResult.results || []) {
-    if (row.cf_record_id) localIds.add(`${row.application_id}|${row.cf_record_id}`);
+    if (row.cf_record_id) {
+      localIds.add(`${row.application_id}|${row.cf_record_id}`);
+      localCfRecordIds.add(String(row.cf_record_id));
+    }
     localSignatures.add(dnsImportSignature(row.application_id, row));
   }
 
@@ -2890,15 +2894,51 @@ async function adminDiscoverExistingDns(request: Request, env: Env): Promise<Res
       if (!app) {
         unmatchedCount += 1;
         stat.unmatched += 1;
-        if (skippedRecords.length < 300) {
-          skippedRecords.push({
-            zone: root,
-            name: remoteName,
-            type: String(remote?.type || '').toUpperCase(),
-            content: String(remote?.content || ''),
-            reason: '未匹配到系统中的域名注册记录',
-          });
+        const cfRecordId = String(remote?.id || '').trim();
+        const local = cloudflareDnsRecordToLocal(remote, remoteName);
+        if (!local) {
+          unsupportedCount += 1;
+          stat.unsupported += 1;
+          if (skippedRecords.length < 300) {
+            skippedRecords.push({
+              zone: root,
+              name: remoteName,
+              type: String(remote?.type || '').toUpperCase(),
+              content: String(remote?.content || ''),
+              reason: SUPPORTED_DNS_RECORD_TYPES.includes(String(remote?.type || '').toUpperCase() as DnsRecordType)
+                ? '记录内容无法转换为系统格式'
+                : '系统暂不支持该 DNS 类型',
+            });
+          }
+          continue;
         }
+        if (!cfRecordId) continue;
+        if (localCfRecordIds.has(cfRecordId)) {
+          duplicateCount += 1;
+          stat.duplicate += 1;
+          continue;
+        }
+        discovered.push({
+          key: `admin:${root}:${cfRecordId}`,
+          applicationId: '',
+          cfRecordId,
+          zoneRoot: root,
+          ownerMode: 'admin',
+          needsAdminDomain: true,
+          domain: remoteName,
+          domainAscii: remoteName,
+          domainStatus: '未登记',
+          username: admin.username || '管理员',
+          host: local.host,
+          name: local.name,
+          type: local.type,
+          content: local.content,
+          priority: local.priority,
+          proxied: Boolean(local.proxied),
+          ttl: local.ttl,
+        });
+        stat.importable += 1;
+        if (discovered.length >= 5000) break;
         continue;
       }
 
@@ -2935,6 +2975,9 @@ async function adminDiscoverExistingDns(request: Request, env: Env): Promise<Res
         key: `${app.id}:${cfRecordId}`,
         applicationId: app.id,
         cfRecordId,
+        zoneRoot: root,
+        ownerMode: 'existing',
+        needsAdminDomain: false,
         domain: app.fqdn_unicode || app.__fqdn,
         domainAscii: app.__fqdn,
         domainStatus: app.status || '',
@@ -2982,43 +3025,95 @@ async function adminImportExistingDns(request: Request, env: Env): Promise<Respo
   const selections = Array.from(new Map(rawSelections.map((value: any) => {
     const applicationId = cleanText(value?.applicationId, 80);
     const cfRecordId = cleanText(value?.cfRecordId, 120);
-    return [`${applicationId}|${cfRecordId}`, { applicationId, cfRecordId }];
-  })).values()).filter(item => item.applicationId && item.cfRecordId).slice(0, 1000);
+    const ownerMode = cleanText(value?.ownerMode, 20) === 'admin' ? 'admin' : 'existing';
+    const zoneRoot = normalizeCloudflareDnsName(value?.zoneRoot || '');
+    const domainAscii = normalizeCloudflareDnsName(value?.domainAscii || value?.domain || '');
+    const identity = applicationId || `${ownerMode}:${zoneRoot}:${domainAscii}`;
+    return [`${identity}|${cfRecordId}`, { applicationId, cfRecordId, ownerMode, zoneRoot, domainAscii }];
+  })).values()).filter(item => item.cfRecordId && (item.applicationId || (item.ownerMode === 'admin' && item.zoneRoot && item.domainAscii))).slice(0, 1000);
   if (!selections.length) throw new HttpError(400, 'DNS_IMPORT_SELECTION_REQUIRED', '请选择要同步的 DNS 记录');
 
-  const appIds = Array.from(new Set(selections.map(item => item.applicationId)));
-  const placeholders = appIds.map(() => '?').join(',');
-  const appResult = await env.DB.prepare(`
-    SELECT a.*, u.username
-    FROM domain_applications a
-    LEFT JOIN users u ON u.id=a.user_id
-    WHERE a.id IN (${placeholders})
-      AND (a.deleted_at IS NULL OR a.deleted_at='')
-  `).bind(...appIds).all<ApplicationRow>();
-  const appMap = new Map((appResult.results || []).map(app => [app.id, app]));
+  const existingSelections = selections.filter(item => item.applicationId);
+  const appIds = Array.from(new Set(existingSelections.map(item => item.applicationId)));
+  const appMap = new Map<string, ApplicationRow>();
+  if (appIds.length) {
+    const placeholders = appIds.map(() => '?').join(',');
+    const appResult = await env.DB.prepare(`
+      SELECT a.*, u.username
+      FROM domain_applications a
+      LEFT JOIN users u ON u.id=a.user_id
+      WHERE a.id IN (${placeholders})
+        AND (a.deleted_at IS NULL OR a.deleted_at='')
+    `).bind(...appIds).all<ApplicationRow>();
+    for (const app of appResult.results || []) appMap.set(app.id, app);
+  }
+
   const settings = await loadSettings(env);
   const suffixConfigs = (settings.dns.suffixes || [])
     .map(item => ({ item, root: normalizeCloudflareDnsName(item.suffixAscii || item.suffix || '') }))
     .filter(entry => entry.root)
     .sort((a, b) => b.root.length - a.root.length);
-  const bySuffix = new Map<string, typeof selections>();
+
+  const grouped = new Map<string, typeof selections>();
   for (const selection of selections) {
-    const app = appMap.get(selection.applicationId);
-    if (!app) continue;
-    const appFqdn = applicationFqdnForDnsImport(app);
-    const match = suffixConfigs.find(entry => appFqdn === entry.root || appFqdn.endsWith(`.${entry.root}`));
-    const key = match?.root || normalizeCloudflareDnsName(app.suffix_ascii || app.suffix_unicode || '');
-    if (!key) continue;
-    const list = bySuffix.get(key) || [];
+    let root = selection.zoneRoot;
+    if (selection.applicationId) {
+      const app = appMap.get(selection.applicationId);
+      if (!app) continue;
+      const appFqdn = applicationFqdnForDnsImport(app);
+      const match = suffixConfigs.find(entry => appFqdn === entry.root || appFqdn.endsWith(`.${entry.root}`));
+      root = match?.root || normalizeCloudflareDnsName(app.suffix_ascii || app.suffix_unicode || '');
+    }
+    if (!root) continue;
+    const list = grouped.get(root) || [];
     list.push(selection);
-    bySuffix.set(key, list);
+    grouped.set(root, list);
+  }
+
+  async function ensureAdminImportedApplication(root: string, fqdn: string, remote: any): Promise<ApplicationRow> {
+    const normalizedFqdn = normalizeCloudflareDnsName(fqdn);
+    if (!normalizedFqdn || !(normalizedFqdn === root || normalizedFqdn.endsWith(`.${root}`))) {
+      throw new Error(`记录 ${fqdn || '—'} 不属于根域名 ${root}`);
+    }
+    const existing = await env.DB.prepare(`
+      SELECT * FROM domain_applications
+      WHERE fqdn_ascii=? COLLATE NOCASE
+        AND (deleted_at IS NULL OR deleted_at='')
+      ORDER BY CASE status WHEN 'approved' THEN 0 ELSE 1 END, created_at DESC
+      LIMIT 1
+    `).bind(normalizedFqdn).first<ApplicationRow>();
+    if (existing) return existing;
+
+    const prefix = normalizedFqdn === root ? '@' : normalizedFqdn.slice(0, -(root.length + 1));
+    const suffixCfg = suffixConfigs.find(entry => entry.root === root)?.item;
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const remoteType = String(remote?.type || suffixCfg?.defaultType || 'CNAME').toUpperCase();
+    const remoteContent = String(remote?.content || '').trim();
+    await env.DB.prepare(`
+      INSERT INTO domain_applications (
+        id,user_id,prefix_unicode,prefix_ascii,suffix_unicode,suffix_ascii,fqdn_unicode,fqdn_ascii,
+        record_type,record_content,proxied,ttl,status,review_note,reviewed_at,reviewed_by,expires_at,updated_at
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    `).bind(
+      id, admin.id, prefix, prefix, suffixCfg?.suffix || root, suffixCfg?.suffixAscii || root,
+      normalizedFqdn, normalizedFqdn, remoteType, remoteContent,
+      Boolean(remote?.proxied) ? 1 : 0, clamp(Number(remote?.ttl || suffixCfg?.ttl || 1), 1, 86400),
+      'approved', '从 Cloudflare 已有 DNS 同步到管理员名下', now, admin.id, null, now,
+    ).run();
+    const created = await env.DB.prepare(`SELECT * FROM domain_applications WHERE id=?`).bind(id).first<ApplicationRow>();
+    if (!created) throw new Error(`无法建立管理员域名 ${normalizedFqdn}`);
+    return created;
   }
 
   let imported = 0;
   let skipped = 0;
+  let createdAdminDomains = 0;
   const errors: string[] = [];
   const touchedApps = new Set<string>();
-  for (const [suffixAscii, suffixSelections] of bySuffix.entries()) {
+  const createdDomainIds = new Set<string>();
+
+  for (const [suffixAscii, suffixSelections] of grouped.entries()) {
     const suffix = settings.dns.suffixes.find(item => normalizeCloudflareDnsName(item.suffixAscii || item.suffix || '') === suffixAscii);
     if (!suffix) {
       skipped += suffixSelections.length;
@@ -3040,28 +3135,53 @@ async function adminImportExistingDns(request: Request, env: Env): Promise<Respo
       continue;
     }
     const remoteMap = new Map(remoteRecords.map(record => [String(record?.id || ''), record]));
+
     for (const selection of suffixSelections) {
-      const app = appMap.get(selection.applicationId);
       const remote = remoteMap.get(selection.cfRecordId);
-      if (!app || !remote) {
+      if (!remote) {
+        skipped += 1;
+        errors.push(`${suffixAscii}：Cloudflare 记录 ${selection.cfRecordId} 已不存在`);
+        continue;
+      }
+      let app: ApplicationRow | undefined;
+      if (selection.applicationId) app = appMap.get(selection.applicationId);
+      if (!app && selection.ownerMode === 'admin') {
+        const remoteName = normalizeCloudflareDnsName(remote?.name || selection.domainAscii);
+        const before = await env.DB.prepare(`SELECT id FROM domain_applications WHERE fqdn_ascii=? COLLATE NOCASE AND (deleted_at IS NULL OR deleted_at='') LIMIT 1`).bind(remoteName).first<{id:string}>();
+        try {
+          app = await ensureAdminImportedApplication(suffixAscii, remoteName, remote);
+          if (!before && app?.id && !createdDomainIds.has(app.id)) {
+            createdDomainIds.add(app.id);
+            createdAdminDomains += 1;
+          }
+          appMap.set(app.id, app);
+        } catch (error) {
+          skipped += 1;
+          errors.push(error instanceof Error ? error.message : `${remoteName}：建立管理员域名失败`);
+          continue;
+        }
+      }
+      if (!app) {
         skipped += 1;
         continue;
       }
-      const local = cloudflareDnsRecordToLocal(remote, app.fqdn_ascii);
+
+      const appFqdn = applicationFqdnForDnsImport(app);
+      const local = cloudflareDnsRecordToLocal(remote, appFqdn);
       if (!local) {
         skipped += 1;
+        errors.push(`${appFqdn}：记录 ${String(remote?.name || '')} 无法转换为系统格式`);
         continue;
       }
       const duplicate = await env.DB.prepare(`
         SELECT id FROM dns_records
-        WHERE application_id=?
-          AND (deleted_at IS NULL OR deleted_at='')
+        WHERE (deleted_at IS NULL OR deleted_at='')
           AND (
             cf_record_id=?
-            OR (name=? COLLATE NOCASE AND type=? AND content=? AND COALESCE(priority,-1)=?)
+            OR (application_id=? AND name=? COLLATE NOCASE AND type=? AND content=? AND COALESCE(priority,-1)=?)
           )
         LIMIT 1
-      `).bind(app.id, selection.cfRecordId, local.name, local.type, local.content, local.priority ?? -1).first<{ id: string }>();
+      `).bind(selection.cfRecordId, app.id, local.name, local.type, local.content, local.priority ?? -1).first<{ id: string }>();
       if (duplicate) {
         skipped += 1;
         continue;
@@ -3086,9 +3206,10 @@ async function adminImportExistingDns(request: Request, env: Env): Promise<Respo
     imported,
     skipped,
     applications: touchedApps.size,
+    createdAdminDomains,
     errors: errors.slice(0, 10),
   });
-  return ok({ imported, skipped, applications: touchedApps.size, errors: errors.slice(0, 20) });
+  return ok({ imported, skipped, applications: touchedApps.size, createdAdminDomains, errors: errors.slice(0, 20) });
 }
 
 async function adminApplications(request: Request, env: Env, url: URL): Promise<Response> {
@@ -6246,20 +6367,20 @@ async function adminSystemStatus(request: Request, env: Env): Promise<Response> 
       (SELECT COUNT(*) FROM audit_logs WHERE datetime(created_at) >= datetime('now','-' || ? || ' days')) AS logsRetained
   `).bind(auditRetentionDays).first<any>();
   return ok({
-    version: 'v105',
+    version: 'v106',
     settingsKey: SETTINGS_KEY,
     kv: { storage: 'Workers KV', estimatedKeys: '由 Cloudflare 控制台查看实际占用' },
     cfApi: { configured: Boolean(resolveDnsToken(env, settings)), status: resolveDnsToken(env, settings) ? '已配置' : '未配置' },
     cron: { enabled: Boolean(settings.automation?.enabled), expression: settings.automation?.cronExpression || '' },
     counts: { ...counts, logs4d: Number(counts?.logsRetained || 0) },
     auditRetentionDays,
-    update: { current: 'v105', latest: '请以当前部署包为准' },
+    update: { current: 'v106', latest: '请以当前部署包为准' },
   });
 }
 
 async function adminExportSettings(request: Request, env: Env): Promise<Response> {
   await requireAdmin(env, request);
-  return ok({ exportedAt: new Date().toISOString(), version: 'v105', settings: await loadSettings(env) });
+  return ok({ exportedAt: new Date().toISOString(), version: 'v106', settings: await loadSettings(env) });
 }
 
 async function adminImportSettings(request: Request, env: Env): Promise<Response> {
