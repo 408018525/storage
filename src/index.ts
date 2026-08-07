@@ -3043,72 +3043,238 @@ async function adminAnalytics(request: Request, env: Env, url: URL): Promise<Res
   const prevStartSql = sqlDate(range.prevStart);
   const prevEndSql = sqlDate(range.prevEnd);
 
-  const periodWhere = `datetime({field}) >= datetime(?) AND datetime({field}) < datetime(?)`;
-  const [domainTotals, activeDomains, users, dnsTotal, apps, statusRows, dnsTypeRows, cfRows, cfFails,
-    totalDomainsPeriod, totalDomainsPrev, activePeriod, activePrev, usersPeriod, usersPrev, dnsPeriod, dnsPrev, appsPeriod, appsPrev,
-    createdRows, approvedRows, rejectedRows, dnsAddedRows, dnsRemovedRows] = await Promise.all([
-    env.DB.prepare(`SELECT COUNT(*) AS total, SUM(CASE WHEN deleted_at IS NOT NULL AND deleted_at!='' THEN 1 ELSE 0 END) AS deleted FROM domain_applications`).first<any>(),
-    env.DB.prepare(`SELECT COUNT(*) AS count FROM domain_applications WHERE status='approved' AND (deleted_at IS NULL OR deleted_at='') AND (expires_at IS NULL OR datetime(expires_at)>datetime('now'))`).first<any>(),
-    env.DB.prepare(`SELECT COUNT(*) AS total FROM users WHERE status!='deleted'`).first<any>(),
-    env.DB.prepare(`SELECT COUNT(*) AS total FROM dns_records WHERE (deleted_at IS NULL OR deleted_at='')`).first<any>(),
-    env.DB.prepare(`SELECT COUNT(*) AS total FROM domain_applications`).first<any>(),
-    env.DB.prepare(`SELECT status, COUNT(*) AS count FROM domain_applications GROUP BY status`).all<any>(),
-    env.DB.prepare(`SELECT type, COUNT(*) AS count FROM dns_records WHERE (deleted_at IS NULL OR deleted_at='') GROUP BY type`).all<any>(),
-    env.DB.prepare(`SELECT COUNT(*) AS total, SUM(CASE WHEN action LIKE '%failed%' OR action LIKE '%error%' THEN 1 ELSE 0 END) AS failed FROM audit_logs WHERE (action LIKE '%dns%' OR action LIKE '%cf_api%') AND datetime(created_at) >= datetime(?) AND datetime(created_at) < datetime(?)`).bind(startSql, endSql).first<any>(),
-    env.DB.prepare(`SELECT action AS reason, COUNT(*) AS count FROM audit_logs WHERE (action LIKE '%dns%' OR action LIKE '%cf_api%') AND (action LIKE '%failed%' OR action LIKE '%error%') AND datetime(created_at) >= datetime(?) AND datetime(created_at) < datetime(?) GROUP BY action LIMIT 10`).bind(startSql, endSql).all<any>(),
+  const [
+    userTotals, domainTotals, dnsTotals, messageTotals, auditTotals, keyTotals,
+    userStatusRows, userRoleRows, domainStatusRows, suffixRows, dnsTypeRows, dnsStatusRows, dnsProxyRows,
+    messageLevelRows, messageTargetRows, auditCategoryRows, expiryRows, funnelRows, approvalRows,
+    topUsersRows, topSuffixRows, failureRows, recentAuditRows, recentAppRows, heatmapRows,
+    usersTrendRows, createdRows, approvedRows, rejectedRows, dnsAddedRows, dnsRemovedRows,
+    messagesTrendRows, loginSuccessRows, loginFailureRows, errorTrendRows
+  ] = await Promise.all([
+    env.DB.prepare(`
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN status='active' THEN 1 ELSE 0 END) AS active,
+        SUM(CASE WHEN status='disabled' THEN 1 ELSE 0 END) AS disabled,
+        SUM(CASE WHEN role='admin' AND status!='deleted' THEN 1 ELSE 0 END) AS admins,
+        SUM(CASE WHEN datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) THEN 1 ELSE 0 END) AS current,
+        SUM(CASE WHEN datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) THEN 1 ELSE 0 END) AS previous,
+        SUM(CASE WHEN last_login_at IS NOT NULL AND datetime(last_login_at)>=datetime(?) AND datetime(last_login_at)<datetime(?) THEN 1 ELSE 0 END) AS logged_in_period
+      FROM users WHERE status!='deleted'
+    `).bind(startSql,endSql,prevStartSql,prevEndSql,startSql,endSql).first<any>(),
+    env.DB.prepare(`
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN status='approved' AND (deleted_at IS NULL OR deleted_at='') AND (expires_at IS NULL OR datetime(expires_at)>datetime('now')) THEN 1 ELSE 0 END) AS active,
+        SUM(CASE WHEN status='pending' AND (deleted_at IS NULL OR deleted_at='') THEN 1 ELSE 0 END) AS pending,
+        SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) AS approved,
+        SUM(CASE WHEN status='rejected' THEN 1 ELSE 0 END) AS rejected,
+        SUM(CASE WHEN status='revoked' THEN 1 ELSE 0 END) AS revoked,
+        SUM(CASE WHEN controlled_at IS NOT NULL AND controlled_at!='' THEN 1 ELSE 0 END) AS controlled,
+        SUM(CASE WHEN delete_requested_at IS NOT NULL AND delete_requested_at!='' THEN 1 ELSE 0 END) AS delete_requested,
+        SUM(CASE WHEN expires_at IS NOT NULL AND datetime(expires_at)<=datetime('now') AND (deleted_at IS NULL OR deleted_at='') THEN 1 ELSE 0 END) AS expired,
+        SUM(CASE WHEN expires_at IS NOT NULL AND datetime(expires_at)>datetime('now') AND datetime(expires_at)<=datetime('now','+7 days') AND (deleted_at IS NULL OR deleted_at='') THEN 1 ELSE 0 END) AS expiring_7d,
+        SUM(CASE WHEN datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) THEN 1 ELSE 0 END) AS current,
+        SUM(CASE WHEN datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) THEN 1 ELSE 0 END) AS previous
+      FROM domain_applications
+    `).bind(startSql,endSql,prevStartSql,prevEndSql).first<any>(),
+    env.DB.prepare(`
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN (deleted_at IS NULL OR deleted_at='') THEN 1 ELSE 0 END) AS active,
+        SUM(CASE WHEN status='pending' AND (deleted_at IS NULL OR deleted_at='') THEN 1 ELSE 0 END) AS pending,
+        SUM(CASE WHEN (status='failed' OR error_message IS NOT NULL AND error_message!='') AND (deleted_at IS NULL OR deleted_at='') THEN 1 ELSE 0 END) AS errors,
+        SUM(CASE WHEN proxied=1 AND (deleted_at IS NULL OR deleted_at='') THEN 1 ELSE 0 END) AS proxied,
+        SUM(CASE WHEN datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) THEN 1 ELSE 0 END) AS current,
+        SUM(CASE WHEN datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) THEN 1 ELSE 0 END) AS previous
+      FROM dns_records
+    `).bind(startSql,endSql,prevStartSql,prevEndSql).first<any>(),
+    env.DB.prepare(`
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN datetime(COALESCE(sent_at,created_at))>=datetime(?) AND datetime(COALESCE(sent_at,created_at))<datetime(?) THEN 1 ELSE 0 END) AS current,
+        SUM(CASE WHEN datetime(COALESCE(sent_at,created_at))>=datetime(?) AND datetime(COALESCE(sent_at,created_at))<datetime(?) THEN 1 ELSE 0 END) AS previous,
+        SUM(CASE WHEN level IN ('warning','error','danger') THEN 1 ELSE 0 END) AS important
+      FROM system_messages WHERE status='sent' AND (deleted_at IS NULL OR deleted_at='')
+    `).bind(startSql,endSql,prevStartSql,prevEndSql).first<any>(),
+    env.DB.prepare(`
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) THEN 1 ELSE 0 END) AS current,
+        SUM(CASE WHEN datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) THEN 1 ELSE 0 END) AS previous,
+        SUM(CASE WHEN (action LIKE '%failed%' OR action LIKE '%error%' OR action LIKE '%denied%' OR action LIKE '%blocked%') AND datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) THEN 1 ELSE 0 END) AS errors,
+        SUM(CASE WHEN action='auth.login' AND datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) THEN 1 ELSE 0 END) AS logins,
+        SUM(CASE WHEN (action LIKE '%login%failed%' OR action LIKE '%auth%failed%') AND datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) THEN 1 ELSE 0 END) AS login_failures
+      FROM audit_logs
+    `).bind(startSql,endSql,prevStartSql,prevEndSql,startSql,endSql,startSql,endSql,startSql,endSql).first<any>(),
+    env.DB.prepare(`
+      SELECT COUNT(*) AS total,
+        SUM(CASE WHEN status='active' THEN 1 ELSE 0 END) AS active,
+        SUM(CASE WHEN max_uses>0 AND used_count>=max_uses THEN 1 ELSE 0 END) AS exhausted,
+        SUM(CASE WHEN expires_at IS NOT NULL AND datetime(expires_at)<datetime('now') THEN 1 ELSE 0 END) AS expired,
+        SUM(used_count) AS used
+      FROM registration_keys WHERE status!='deleted'
+    `).first<any>(),
 
-    env.DB.prepare(`SELECT COUNT(*) AS count FROM domain_applications WHERE datetime(created_at) >= datetime(?) AND datetime(created_at) < datetime(?)`).bind(startSql, endSql).first<any>(),
-    env.DB.prepare(`SELECT COUNT(*) AS count FROM domain_applications WHERE datetime(created_at) >= datetime(?) AND datetime(created_at) < datetime(?)`).bind(prevStartSql, prevEndSql).first<any>(),
-    env.DB.prepare(`SELECT COUNT(*) AS count FROM domain_applications WHERE status='approved' AND datetime(COALESCE(reviewed_at, created_at)) >= datetime(?) AND datetime(COALESCE(reviewed_at, created_at)) < datetime(?)`).bind(startSql, endSql).first<any>(),
-    env.DB.prepare(`SELECT COUNT(*) AS count FROM domain_applications WHERE status='approved' AND datetime(COALESCE(reviewed_at, created_at)) >= datetime(?) AND datetime(COALESCE(reviewed_at, created_at)) < datetime(?)`).bind(prevStartSql, prevEndSql).first<any>(),
-    env.DB.prepare(`SELECT COUNT(*) AS count FROM users WHERE datetime(created_at) >= datetime(?) AND datetime(created_at) < datetime(?)`).bind(startSql, endSql).first<any>(),
-    env.DB.prepare(`SELECT COUNT(*) AS count FROM users WHERE datetime(created_at) >= datetime(?) AND datetime(created_at) < datetime(?)`).bind(prevStartSql, prevEndSql).first<any>(),
-    env.DB.prepare(`SELECT COUNT(*) AS count FROM dns_records WHERE datetime(created_at) >= datetime(?) AND datetime(created_at) < datetime(?)`).bind(startSql, endSql).first<any>(),
-    env.DB.prepare(`SELECT COUNT(*) AS count FROM dns_records WHERE datetime(created_at) >= datetime(?) AND datetime(created_at) < datetime(?)`).bind(prevStartSql, prevEndSql).first<any>(),
-    env.DB.prepare(`SELECT COUNT(*) AS count FROM domain_applications WHERE datetime(created_at) >= datetime(?) AND datetime(created_at) < datetime(?)`).bind(startSql, endSql).first<any>(),
-    env.DB.prepare(`SELECT COUNT(*) AS count FROM domain_applications WHERE datetime(created_at) >= datetime(?) AND datetime(created_at) < datetime(?)`).bind(prevStartSql, prevEndSql).first<any>(),
+    env.DB.prepare(`SELECT status, COUNT(*) AS count FROM users WHERE status!='deleted' GROUP BY status ORDER BY count DESC`).all<any>(),
+    env.DB.prepare(`SELECT role, COUNT(*) AS count FROM users WHERE status!='deleted' GROUP BY role ORDER BY count DESC`).all<any>(),
+    env.DB.prepare(`SELECT status, COUNT(*) AS count FROM domain_applications GROUP BY status ORDER BY count DESC`).all<any>(),
+    env.DB.prepare(`SELECT suffix_ascii AS suffix, COUNT(*) AS count FROM domain_applications GROUP BY suffix_ascii ORDER BY count DESC LIMIT 12`).all<any>(),
+    env.DB.prepare(`SELECT UPPER(type) AS type, COUNT(*) AS count FROM dns_records WHERE (deleted_at IS NULL OR deleted_at='') GROUP BY UPPER(type) ORDER BY count DESC`).all<any>(),
+    env.DB.prepare(`SELECT status, COUNT(*) AS count FROM dns_records WHERE (deleted_at IS NULL OR deleted_at='') GROUP BY status ORDER BY count DESC`).all<any>(),
+    env.DB.prepare(`SELECT CASE WHEN proxied=1 THEN 'proxied' ELSE 'dns_only' END AS proxy, COUNT(*) AS count FROM dns_records WHERE (deleted_at IS NULL OR deleted_at='') GROUP BY proxy`).all<any>(),
+    env.DB.prepare(`SELECT level, COUNT(*) AS count FROM system_messages WHERE status='sent' AND (deleted_at IS NULL OR deleted_at='') GROUP BY level ORDER BY count DESC`).all<any>(),
+    env.DB.prepare(`SELECT target_type AS target, COUNT(*) AS count FROM system_messages WHERE status='sent' AND (deleted_at IS NULL OR deleted_at='') GROUP BY target_type ORDER BY count DESC`).all<any>(),
+    env.DB.prepare(`
+      SELECT CASE
+        WHEN action LIKE 'auth.%' OR action LIKE '%login%' THEN 'auth'
+        WHEN action LIKE '%dns%' OR action LIKE '%cf_api%' THEN 'dns'
+        WHEN action LIKE '%domain%' OR action LIKE '%application%' THEN 'domain'
+        WHEN action LIKE '%message%' OR action LIKE '%email%' THEN 'message'
+        WHEN action LIKE '%user%' OR action LIKE '%registration%' THEN 'user'
+        WHEN action LIKE '%settings%' OR action LIKE '%config%' THEN 'settings'
+        ELSE 'other' END AS category, COUNT(*) AS count
+      FROM audit_logs WHERE datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?)
+      GROUP BY category ORDER BY count DESC
+    `).bind(startSql,endSql).all<any>(),
+    env.DB.prepare(`
+      SELECT CASE
+        WHEN expires_at IS NULL OR expires_at='' THEN 'no_expiry'
+        WHEN datetime(expires_at)<=datetime('now') THEN 'expired'
+        WHEN datetime(expires_at)<=datetime('now','+7 days') THEN 'within_7d'
+        WHEN datetime(expires_at)<=datetime('now','+30 days') THEN 'within_30d'
+        WHEN datetime(expires_at)<=datetime('now','+90 days') THEN 'within_90d'
+        ELSE 'after_90d' END AS bucket, COUNT(*) AS count
+      FROM domain_applications WHERE status='approved' AND (deleted_at IS NULL OR deleted_at='')
+      GROUP BY bucket
+    `).all<any>(),
+    env.DB.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM users WHERE status!='deleted') AS users,
+        (SELECT COUNT(DISTINCT user_id) FROM domain_applications) AS applicants,
+        (SELECT COUNT(DISTINCT user_id) FROM domain_applications WHERE status='approved' AND (deleted_at IS NULL OR deleted_at='')) AS approved_users,
+        (SELECT COUNT(DISTINCT user_id) FROM dns_records WHERE (deleted_at IS NULL OR deleted_at='')) AS dns_users,
+        (SELECT COUNT(*) FROM domain_applications) AS applications,
+        (SELECT COUNT(*) FROM domain_applications WHERE status='approved') AS approved_applications,
+        (SELECT COUNT(DISTINCT application_id) FROM dns_records WHERE (deleted_at IS NULL OR deleted_at='')) AS configured_applications
+    `).first<any>(),
+    env.DB.prepare(`
+      SELECT
+        SUM(CASE WHEN datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) THEN 1 ELSE 0 END) AS submitted,
+        SUM(CASE WHEN status='approved' AND datetime(COALESCE(reviewed_at,created_at))>=datetime(?) AND datetime(COALESCE(reviewed_at,created_at))<datetime(?) THEN 1 ELSE 0 END) AS approved,
+        SUM(CASE WHEN status='rejected' AND datetime(COALESCE(reviewed_at,created_at))>=datetime(?) AND datetime(COALESCE(reviewed_at,created_at))<datetime(?) THEN 1 ELSE 0 END) AS rejected,
+        AVG(CASE WHEN reviewed_at IS NOT NULL THEN (julianday(reviewed_at)-julianday(created_at))*24 END) AS avg_review_hours,
+        AVG(CASE WHEN status='pending' THEN (julianday('now')-julianday(created_at))*24 END) AS avg_pending_hours
+      FROM domain_applications
+    `).bind(startSql,endSql,startSql,endSql,startSql,endSql).first<any>(),
 
-    env.DB.prepare(`SELECT strftime('${bucketFormat}', created_at) AS bucket, COUNT(*) AS count FROM domain_applications WHERE datetime(created_at) >= datetime(?) AND datetime(created_at) < datetime(?) GROUP BY bucket`).bind(startSql, endSql).all<any>(),
-    env.DB.prepare(`SELECT strftime('${bucketFormat}', reviewed_at) AS bucket, COUNT(*) AS count FROM domain_applications WHERE status='approved' AND reviewed_at IS NOT NULL AND datetime(reviewed_at) >= datetime(?) AND datetime(reviewed_at) < datetime(?) GROUP BY bucket`).bind(startSql, endSql).all<any>(),
-    env.DB.prepare(`SELECT strftime('${bucketFormat}', COALESCE(deleted_at, reviewed_at, created_at)) AS bucket, COUNT(*) AS count FROM domain_applications WHERE (status IN ('rejected','revoked','deleted') OR deleted_at IS NOT NULL) AND datetime(COALESCE(deleted_at, reviewed_at, created_at)) >= datetime(?) AND datetime(COALESCE(deleted_at, reviewed_at, created_at)) < datetime(?) GROUP BY bucket`).bind(startSql, endSql).all<any>(),
-    env.DB.prepare(`SELECT strftime('${bucketFormat}', created_at) AS bucket, COUNT(*) AS count FROM dns_records WHERE datetime(created_at) >= datetime(?) AND datetime(created_at) < datetime(?) GROUP BY bucket`).bind(startSql, endSql).all<any>(),
-    env.DB.prepare(`SELECT strftime('${bucketFormat}', deleted_at) AS bucket, COUNT(*) AS count FROM dns_records WHERE deleted_at IS NOT NULL AND deleted_at!='' AND datetime(deleted_at) >= datetime(?) AND datetime(deleted_at) < datetime(?) GROUP BY bucket`).bind(startSql, endSql).all<any>(),
+    env.DB.prepare(`
+      SELECT u.id,u.username,u.email,u.status,u.last_login_at,
+        (SELECT COUNT(*) FROM domain_applications a WHERE a.user_id=u.id) AS domains,
+        (SELECT COUNT(*) FROM domain_applications a WHERE a.user_id=u.id AND a.status='approved' AND (a.deleted_at IS NULL OR a.deleted_at='')) AS active_domains,
+        (SELECT COUNT(*) FROM dns_records d WHERE d.user_id=u.id AND (d.deleted_at IS NULL OR d.deleted_at='')) AS dns_records
+      FROM users u WHERE u.status!='deleted'
+      ORDER BY active_domains DESC,dns_records DESC,domains DESC LIMIT 15
+    `).all<any>(),
+    env.DB.prepare(`
+      SELECT suffix_ascii AS suffix,
+        COUNT(*) AS total,
+        SUM(CASE WHEN status='approved' AND (deleted_at IS NULL OR deleted_at='') THEN 1 ELSE 0 END) AS active,
+        SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,
+        SUM(CASE WHEN status='rejected' THEN 1 ELSE 0 END) AS rejected
+      FROM domain_applications GROUP BY suffix_ascii ORDER BY total DESC LIMIT 15
+    `).all<any>(),
+    env.DB.prepare(`
+      SELECT action,COUNT(*) AS count,MAX(created_at) AS latest
+      FROM audit_logs
+      WHERE (action LIKE '%failed%' OR action LIKE '%error%' OR action LIKE '%denied%' OR action LIKE '%blocked%')
+        AND datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?)
+      GROUP BY action ORDER BY count DESC LIMIT 15
+    `).bind(startSql,endSql).all<any>(),
+    env.DB.prepare(`
+      SELECT l.id,l.action,l.target_type,l.target_id,l.ip,l.created_at,u.username
+      FROM audit_logs l LEFT JOIN users u ON u.id=l.actor_user_id
+      WHERE datetime(l.created_at)>=datetime(?) AND datetime(l.created_at)<datetime(?)
+      ORDER BY datetime(l.created_at) DESC LIMIT 30
+    `).bind(startSql,endSql).all<any>(),
+    env.DB.prepare(`
+      SELECT a.id,a.fqdn_unicode,a.fqdn_ascii,a.status,a.record_type,a.created_at,a.reviewed_at,a.error_message,u.username
+      FROM domain_applications a LEFT JOIN users u ON u.id=a.user_id
+      ORDER BY datetime(a.created_at) DESC LIMIT 20
+    `).all<any>(),
+    env.DB.prepare(`
+      SELECT CAST(strftime('%w',created_at) AS INTEGER) AS weekday,
+             CAST(strftime('%H',created_at) AS INTEGER) AS hour,
+             COUNT(*) AS count
+      FROM audit_logs WHERE datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?)
+      GROUP BY weekday,hour
+    `).bind(startSql,endSql).all<any>(),
+
+    env.DB.prepare(`SELECT strftime('${bucketFormat}',created_at) AS bucket,COUNT(*) AS count FROM users WHERE datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) GROUP BY bucket`).bind(startSql,endSql).all<any>(),
+    env.DB.prepare(`SELECT strftime('${bucketFormat}',created_at) AS bucket,COUNT(*) AS count FROM domain_applications WHERE datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) GROUP BY bucket`).bind(startSql,endSql).all<any>(),
+    env.DB.prepare(`SELECT strftime('${bucketFormat}',reviewed_at) AS bucket,COUNT(*) AS count FROM domain_applications WHERE status='approved' AND reviewed_at IS NOT NULL AND datetime(reviewed_at)>=datetime(?) AND datetime(reviewed_at)<datetime(?) GROUP BY bucket`).bind(startSql,endSql).all<any>(),
+    env.DB.prepare(`SELECT strftime('${bucketFormat}',COALESCE(deleted_at,reviewed_at,created_at)) AS bucket,COUNT(*) AS count FROM domain_applications WHERE (status IN ('rejected','revoked','deleted') OR deleted_at IS NOT NULL) AND datetime(COALESCE(deleted_at,reviewed_at,created_at))>=datetime(?) AND datetime(COALESCE(deleted_at,reviewed_at,created_at))<datetime(?) GROUP BY bucket`).bind(startSql,endSql).all<any>(),
+    env.DB.prepare(`SELECT strftime('${bucketFormat}',created_at) AS bucket,COUNT(*) AS count FROM dns_records WHERE datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) GROUP BY bucket`).bind(startSql,endSql).all<any>(),
+    env.DB.prepare(`SELECT strftime('${bucketFormat}',deleted_at) AS bucket,COUNT(*) AS count FROM dns_records WHERE deleted_at IS NOT NULL AND deleted_at!='' AND datetime(deleted_at)>=datetime(?) AND datetime(deleted_at)<datetime(?) GROUP BY bucket`).bind(startSql,endSql).all<any>(),
+    env.DB.prepare(`SELECT strftime('${bucketFormat}',COALESCE(sent_at,created_at)) AS bucket,COUNT(*) AS count FROM system_messages WHERE status='sent' AND datetime(COALESCE(sent_at,created_at))>=datetime(?) AND datetime(COALESCE(sent_at,created_at))<datetime(?) GROUP BY bucket`).bind(startSql,endSql).all<any>(),
+    env.DB.prepare(`SELECT strftime('${bucketFormat}',created_at) AS bucket,COUNT(*) AS count FROM audit_logs WHERE action='auth.login' AND datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) GROUP BY bucket`).bind(startSql,endSql).all<any>(),
+    env.DB.prepare(`SELECT strftime('${bucketFormat}',created_at) AS bucket,COUNT(*) AS count FROM audit_logs WHERE (action LIKE '%login%failed%' OR action LIKE '%auth%failed%') AND datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) GROUP BY bucket`).bind(startSql,endSql).all<any>(),
+    env.DB.prepare(`SELECT strftime('${bucketFormat}',created_at) AS bucket,COUNT(*) AS count FROM audit_logs WHERE (action LIKE '%failed%' OR action LIKE '%error%' OR action LIKE '%denied%' OR action LIKE '%blocked%') AND datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) GROUP BY bucket`).bind(startSql,endSql).all<any>(),
   ]);
 
-  const bucketList = buildAnalyticsBuckets(range.start, range.end, range.bucket);
-  const domainTrend = mergeMultiTrend(bucketList, [
-    { key: 'created', rows: createdRows.results || [] },
-    { key: 'approved', rows: approvedRows.results || [] },
-    { key: 'rejected', rows: rejectedRows.results || [] },
+  const buckets = buildAnalyticsBuckets(range.start,range.end,range.bucket);
+  const growthTrend = mergeMultiTrend(buckets,[
+    {key:'users',rows:usersTrendRows.results||[]},
+    {key:'applications',rows:createdRows.results||[]},
+    {key:'approved',rows:approvedRows.results||[]},
+    {key:'dns',rows:dnsAddedRows.results||[]},
+    {key:'messages',rows:messagesTrendRows.results||[]},
   ]);
-  const dnsTrend = mergeMultiTrend(bucketList, [
-    { key: 'added', rows: dnsAddedRows.results || [] },
-    { key: 'removed', rows: dnsRemovedRows.results || [] },
+  const domainTrend = mergeMultiTrend(buckets,[
+    {key:'created',rows:createdRows.results||[]},
+    {key:'approved',rows:approvedRows.results||[]},
+    {key:'rejected',rows:rejectedRows.results||[]},
+  ]);
+  const dnsTrend = mergeMultiTrend(buckets,[
+    {key:'added',rows:dnsAddedRows.results||[]},
+    {key:'removed',rows:dnsRemovedRows.results||[]},
+  ]);
+  const operationTrend = mergeMultiTrend(buckets,[
+    {key:'logins',rows:loginSuccessRows.results||[]},
+    {key:'loginFailures',rows:loginFailureRows.results||[]},
+    {key:'errors',rows:errorTrendRows.results||[]},
   ]);
 
-  return ok({ analytics: {
-    range: {
-      preset: range.preset,
-      days: range.days,
-      start: range.start.toISOString(),
-      end: range.end.toISOString(),
-      bucket: range.bucket,
-      label: range.label,
+  const submitted=Number(approvalRows?.submitted||0);
+  const approved=Number(approvalRows?.approved||0);
+  const rejected=Number(approvalRows?.rejected||0);
+  const decided=approved+rejected;
+  const readReceipts=await env.DB.prepare(`SELECT COUNT(*) AS count,COUNT(DISTINCT user_id) AS readers FROM message_reads WHERE datetime(read_at)>=datetime(?) AND datetime(read_at)<datetime(?)`).bind(startSql,endSql).first<any>();
+
+  return ok({analytics:{
+    generatedAt:new Date().toISOString(),
+    range:{preset:range.preset,days:range.days,start:range.start.toISOString(),end:range.end.toISOString(),bucket:range.bucket,label:range.label,previousStart:range.prevStart.toISOString(),previousEnd:range.prevEnd.toISOString()},
+    metrics:{
+      users:metric(Number(userTotals?.total||0),0,Number(userTotals?.current||0),Number(userTotals?.previous||0)),
+      activeUsers:{total:Number(userTotals?.active||0),loggedInPeriod:Number(userTotals?.logged_in_period||0),disabled:Number(userTotals?.disabled||0),admins:Number(userTotals?.admins||0)},
+      domains:metric(Number(domainTotals?.total||0),0,Number(domainTotals?.current||0),Number(domainTotals?.previous||0)),
+      activeDomains:{total:Number(domainTotals?.active||0),pending:Number(domainTotals?.pending||0),controlled:Number(domainTotals?.controlled||0),expired:Number(domainTotals?.expired||0),expiring7d:Number(domainTotals?.expiring_7d||0),deleteRequested:Number(domainTotals?.delete_requested||0)},
+      dns:metric(Number(dnsTotals?.active||0),Math.max(0,Number(dnsTotals?.total||0)-Number(dnsTotals?.active||0)),Number(dnsTotals?.current||0),Number(dnsTotals?.previous||0)),
+      dnsHealth:{pending:Number(dnsTotals?.pending||0),errors:Number(dnsTotals?.errors||0),proxied:Number(dnsTotals?.proxied||0)},
+      messages:metric(Number(messageTotals?.total||0),0,Number(messageTotals?.current||0),Number(messageTotals?.previous||0)),
+      audit:metric(Number(auditTotals?.total||0),0,Number(auditTotals?.current||0),Number(auditTotals?.previous||0)),
+      security:{errors:Number(auditTotals?.errors||0),logins:Number(auditTotals?.logins||0),loginFailures:Number(auditTotals?.login_failures||0)},
+      registrationKeys:{total:Number(keyTotals?.total||0),active:Number(keyTotals?.active||0),exhausted:Number(keyTotals?.exhausted||0),expired:Number(keyTotals?.expired||0),used:Number(keyTotals?.used||0)},
     },
-    days: range.days,
-    metrics: {
-      totalDomains: metric(Number(domainTotals?.total || 0), Number(domainTotals?.deleted || 0), Number(totalDomainsPeriod?.count || 0), Number(totalDomainsPrev?.count || 0)),
-      activeDomains: metric(Number(activeDomains?.count || 0), 0, Number(activePeriod?.count || 0), Number(activePrev?.count || 0)),
-      users: metric(Number(users?.total || 0), 0, Number(usersPeriod?.count || 0), Number(usersPrev?.count || 0)),
-      dnsRecords: metric(Number(dnsTotal?.total || 0), 0, Number(dnsPeriod?.count || 0), Number(dnsPrev?.count || 0)),
-      applications: metric(Number(apps?.total || 0), 0, Number(appsPeriod?.count || 0), Number(appsPrev?.count || 0)),
-    },
-    domainTrend,
-    dnsTrend,
-    statusDistribution: statusRows.results || [],
-    dnsTypeDistribution: dnsTypeRows.results || [],
-    cfApi: { total: Number(cfRows?.total || 0), failed: Number(cfRows?.failed || 0), success: Math.max(0, Number(cfRows?.total || 0) - Number(cfRows?.failed || 0)), failures: cfFails.results || [] },
-  } });
+    approval:{submitted,approved,rejected,pending:Number(domainTotals?.pending||0),approvalRate:decided?Math.round(approved/decided*1000)/10:0,avgReviewHours:Math.round(Number(approvalRows?.avg_review_hours||0)*10)/10,avgPendingHours:Math.round(Number(approvalRows?.avg_pending_hours||0)*10)/10},
+    messageEngagement:{sent:Number(messageTotals?.current||0),readReceipts:Number(readReceipts?.count||0),readers:Number(readReceipts?.readers||0)},
+    funnel:{users:Number(funnelRows?.users||0),applicants:Number(funnelRows?.applicants||0),approvedUsers:Number(funnelRows?.approved_users||0),dnsUsers:Number(funnelRows?.dns_users||0),applications:Number(funnelRows?.applications||0),approvedApplications:Number(funnelRows?.approved_applications||0),configuredApplications:Number(funnelRows?.configured_applications||0)},
+    trends:{growth:growthTrend,domains:domainTrend,dns:dnsTrend,operations:operationTrend},
+    distributions:{userStatus:userStatusRows.results||[],userRole:userRoleRows.results||[],domainStatus:domainStatusRows.results||[],suffix:suffixRows.results||[],dnsType:dnsTypeRows.results||[],dnsStatus:dnsStatusRows.results||[],dnsProxy:dnsProxyRows.results||[],messageLevel:messageLevelRows.results||[],messageTarget:messageTargetRows.results||[],auditCategory:auditCategoryRows.results||[],expiry:expiryRows.results||[]},
+    rankings:{users:topUsersRows.results||[],suffixes:topSuffixRows.results||[],failures:failureRows.results||[]},
+    recent:{audit:recentAuditRows.results||[],applications:recentAppRows.results||[]},
+    heatmap:heatmapRows.results||[],
+  }});
 }
 
 type AnalyticsRange = { preset: string; start: Date; end: Date; prevStart: Date; prevEnd: Date; days: number; bucket: 'hour' | 'day'; label: string };
@@ -5419,20 +5585,20 @@ async function adminSystemStatus(request: Request, env: Env): Promise<Response> 
       (SELECT COUNT(*) FROM audit_logs WHERE datetime(created_at) >= datetime('now','-' || ? || ' days')) AS logsRetained
   `).bind(auditRetentionDays).first<any>();
   return ok({
-    version: 'v98',
+    version: 'v99',
     settingsKey: SETTINGS_KEY,
     kv: { storage: 'Workers KV', estimatedKeys: '由 Cloudflare 控制台查看实际占用' },
     cfApi: { configured: Boolean(resolveDnsToken(env, settings)), status: resolveDnsToken(env, settings) ? '已配置' : '未配置' },
     cron: { enabled: Boolean(settings.automation?.enabled), expression: settings.automation?.cronExpression || '' },
     counts: { ...counts, logs4d: Number(counts?.logsRetained || 0) },
     auditRetentionDays,
-    update: { current: 'v98', latest: '请以当前部署包为准' },
+    update: { current: 'v99', latest: '请以当前部署包为准' },
   });
 }
 
 async function adminExportSettings(request: Request, env: Env): Promise<Response> {
   await requireAdmin(env, request);
-  return ok({ exportedAt: new Date().toISOString(), version: 'v98', settings: await loadSettings(env) });
+  return ok({ exportedAt: new Date().toISOString(), version: 'v99', settings: await loadSettings(env) });
 }
 
 async function adminImportSettings(request: Request, env: Env): Promise<Response> {
