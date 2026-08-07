@@ -449,6 +449,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   if (method === 'POST' && pathname === '/api/admin/email/cloudflare-addresses/sync') return adminSyncCloudflareEmailAddresses(request, env);
   if (method === 'GET' && pathname === '/api/admin/worker-variables') return adminListManagedWorkerVariables(request, env);
   if (method === 'POST' && pathname === '/api/admin/worker-variables') return adminUpdateManagedWorkerVariable(request, env);
+  if (method === 'DELETE' && pathname === '/api/admin/worker-variables') return adminDeleteManagedWorkerVariable(request, env);
 
   match = pathname.match(/^\/api\/admin\/registration-keys\/([^/]+)$/);
   if (match && method === 'DELETE') return adminDeleteRegistrationKey(request, env, decodeURIComponent(match[1]));
@@ -4181,29 +4182,214 @@ async function adminSyncCloudflareEmailAddresses(request: Request, env: Env): Pr
   });
 }
 
-type ManagedWorkerVariableName =
-  | 'EMAIL_FROM'
-  | 'EMAIL_FROM_NAME'
-  | 'CF_ADMIN_EMAIL'
-  | 'CF_ACCOUNT_ID'
-  | 'APP_ENVIRONMENT'
-  | 'TURNSTILE_SITE_KEY'
-  | 'RESEND_API_KEY'
-  | 'CF_EMAIL_ROUTING_API_TOKEN'
-  | 'CF_API_TOKEN'
-  | 'TURNSTILE_SECRET';
+type WorkerVariableKind = 'plain_text' | 'secret_text';
 
-const MANAGED_WORKER_VARIABLES: Record<ManagedWorkerVariableName, { label: string; sensitive: boolean; maxLength: number }> = {
-  EMAIL_FROM: { label: '发件邮箱 EMAIL_FROM', sensitive: false, maxLength: 254 },
-  EMAIL_FROM_NAME: { label: '发件名称 EMAIL_FROM_NAME', sensitive: false, maxLength: 120 },
-  CF_ADMIN_EMAIL: { label: '管理员收件邮箱 CF_ADMIN_EMAIL', sensitive: false, maxLength: 254 },
-  CF_ACCOUNT_ID: { label: 'Cloudflare Account ID', sensitive: false, maxLength: 64 },
-  APP_ENVIRONMENT: { label: '运行环境 APP_ENVIRONMENT', sensitive: false, maxLength: 80 },
-  TURNSTILE_SITE_KEY: { label: 'Turnstile Site Key', sensitive: false, maxLength: 300 },
-  RESEND_API_KEY: { label: 'Resend API Key', sensitive: true, maxLength: 2000 },
-  CF_EMAIL_ROUTING_API_TOKEN: { label: 'Email Routing API Token', sensitive: true, maxLength: 2000 },
-  CF_API_TOKEN: { label: 'Cloudflare DNS API Token', sensitive: true, maxLength: 2000 },
-  TURNSTILE_SECRET: { label: 'Turnstile Secret', sensitive: true, maxLength: 2000 },
+type WorkerVariableDefinition = {
+  label: string;
+  purpose: string;
+  addMethod: string;
+  suggestedType?: WorkerVariableKind;
+};
+
+type WorkerVariableItem = {
+  name: string;
+  type: WorkerVariableKind;
+  label: string;
+  purpose: string;
+  addMethod: string;
+  sensitive: boolean;
+  configured: boolean;
+  value: string;
+  source: string;
+  protected: boolean;
+};
+
+const RUNTIME_ONLY_BINDING_NAMES = new Set(['DB', 'APP_KV', 'ASSETS', 'SEB']);
+const WORKER_VARIABLE_BINDING_TYPES = new Set(['plain_text', 'secret_text']);
+const PROTECTED_WORKER_VARIABLE_NAMES = new Set(['CF_WORKERS_API_TOKEN']);
+const SECRET_VARIABLE_PATTERN = /(TOKEN|SECRET|KEY|PASSWORD|PRIVATE|SALT|BOOTSTRAP|API_KEY)/i;
+
+const WORKER_VARIABLE_DEFINITIONS: Record<string, WorkerVariableDefinition> = {
+  BOOTSTRAP_ADMIN_TOKEN: {
+    label: '初始化管理员令牌',
+    purpose: '系统首次初始化管理员时使用；初始化完成后建议删除，避免别人拿到令牌后重新创建管理员。',
+    addMethod: '类型选“密钥”；值填写一次性强随机字符串。初始化管理员完成后回到 Cloudflare 变量页面删除。',
+    suggestedType: 'secret_text',
+  },
+  CF_ACCOUNT_ID: {
+    label: 'Cloudflare 账户 ID',
+    purpose: '用于调用 Cloudflare 账户级 API，例如同步已验证邮箱、管理 Worker 变量。',
+    addMethod: '类型选“纯文本”；值从 Cloudflare 账户首页或 Workers 页面复制 Account ID。',
+    suggestedType: 'plain_text',
+  },
+  CF_API_TOKEN: {
+    label: 'Cloudflare DNS API Token',
+    purpose: '写入、更新和删除用户二级域名 DNS 记录。',
+    addMethod: '类型选“密钥”；Token 至少需要对应 Zone 的 DNS Edit 权限，不要使用 Global API Key。',
+    suggestedType: 'secret_text',
+  },
+  CF_EMAIL_ROUTING_API_TOKEN: {
+    label: 'Cloudflare 邮箱地址读取 Token',
+    purpose: '同步 Cloudflare Email Routing 中已验证的收件邮箱列表。',
+    addMethod: '类型选“密钥”；权限选择账户级 Email Routing Addresses Read。',
+    suggestedType: 'secret_text',
+  },
+  CF_WORKERS_API_TOKEN: {
+    label: 'Worker 变量管理 Token',
+    purpose: '允许本系统调用 Cloudflare API 添加、修改、删除当前 Worker 的变量和密钥。',
+    addMethod: '类型选“密钥”；权限选择账户级 Workers Scripts Edit/Write。这个变量本身只能在 Cloudflare 控制台维护，网站内不允许修改。',
+    suggestedType: 'secret_text',
+  },
+  CF_WORKER_SCRIPT_NAME: {
+    label: 'Worker 脚本名称',
+    purpose: '当 Worker 名称不是 storage 时，用它指定 Cloudflare API 要管理的脚本名称。',
+    addMethod: '类型选“纯文本”；值填写 Cloudflare Workers 列表中的脚本名称，例如 storage。',
+    suggestedType: 'plain_text',
+  },
+  CONFIG_MODE: {
+    label: '配置读取模式',
+    purpose: '标记当前配置来源；常用于区分 env、kv 或其他配置策略。',
+    addMethod: '类型选“纯文本”；一般填写 env。',
+    suggestedType: 'plain_text',
+  },
+  DNS_ALLOWED_TYPES: {
+    label: '全局允许 DNS 类型',
+    purpose: '控制用户能创建哪些 DNS 记录类型。多根域名单独设置时优先生效。',
+    addMethod: '类型选“纯文本”；值用英文逗号分隔，例如 CNAME,A,AAAA,TXT,MX,NS。',
+    suggestedType: 'plain_text',
+  },
+  DNS_DEFAULT_TYPE: {
+    label: '默认 DNS 类型',
+    purpose: '用户新增解析时默认选中的记录类型。',
+    addMethod: '类型选“纯文本”；常用值为 CNAME。',
+    suggestedType: 'plain_text',
+  },
+  DNS_PROXIED: {
+    label: '默认代理状态',
+    purpose: '控制新建 A/AAAA/CNAME 记录是否默认开启 Cloudflare 代理。',
+    addMethod: '类型选“纯文本”；填写 true 或 false。',
+    suggestedType: 'plain_text',
+  },
+  DNS_RESERVED_PREFIXES: {
+    label: '保留前缀',
+    purpose: '禁止用户注册系统、邮箱、常用服务等敏感前缀。',
+    addMethod: '类型选“纯文本”；用英文逗号分隔，例如 api,admin,mail,smtp。',
+    suggestedType: 'plain_text',
+  },
+  DNS_SUFFIX: {
+    label: '默认根域名',
+    purpose: '单根域名模式下的默认后缀；多根域名设置启用后仅作为兼容配置。',
+    addMethod: '类型选“纯文本”；填写根域名，例如 flore.top。',
+    suggestedType: 'plain_text',
+  },
+  DNS_SUFFIX_LABEL: {
+    label: '默认根域名显示名',
+    purpose: '注册页展示根域名时的描述文字。',
+    addMethod: '类型选“纯文本”；可填写“免费一级域名”等显示名称，也可留空不显示。',
+    suggestedType: 'plain_text',
+  },
+  DNS_TTL: {
+    label: '默认 TTL',
+    purpose: '新建 DNS 记录时的 TTL 默认值。Cloudflare 中 1 通常表示 Auto。',
+    addMethod: '类型选“纯文本”；填写数字，例如 1。',
+    suggestedType: 'plain_text',
+  },
+  DNS_ZONE_ID: {
+    label: '默认 Zone ID',
+    purpose: '单根域名模式下写入 Cloudflare DNS 的 Zone ID。多根域名设置中每个域名可单独配置。',
+    addMethod: '类型选“纯文本”；从 Cloudflare 对应域名概览页复制 Zone ID。',
+    suggestedType: 'plain_text',
+  },
+  EMAIL_FROM: {
+    label: '邮件发件地址',
+    purpose: '系统邮件显示的 From 地址。Cloudflare SEB 管理员邮件和 Resend 注册验证码都会读取。',
+    addMethod: '类型选“纯文本”；填写已验证域名下的邮箱，例如 admin@flore.top。',
+    suggestedType: 'plain_text',
+  },
+  EMAIL_FROM_NAME: {
+    label: '邮件发件名称',
+    purpose: '收件箱中显示的发件人名称。',
+    addMethod: '类型选“纯文本”；填写品牌名，例如 FLORE域名注册中心。',
+    suggestedType: 'plain_text',
+  },
+  CF_ADMIN_EMAIL: {
+    label: '管理员通知邮箱',
+    purpose: 'Cloudflare 免费邮件通知的默认收件邮箱。',
+    addMethod: '类型选“纯文本”；填写 Cloudflare Email Routing 中已验证的邮箱。',
+    suggestedType: 'plain_text',
+  },
+  RESEND_API_KEY: {
+    label: 'Resend API Key',
+    purpose: '向任意用户邮箱发送注册验证码。管理员固定通知不依赖它。',
+    addMethod: '类型选“密钥”；在 Resend 后台创建 Sending access API Key 后粘贴完整 re_ 开头密钥。',
+    suggestedType: 'secret_text',
+  },
+  APP_ENVIRONMENT: {
+    label: '运行环境',
+    purpose: '用于邮件模板、环境限制和排查日志中标识当前环境。',
+    addMethod: '类型选“纯文本”；常用值 production、preview、staging。',
+    suggestedType: 'plain_text',
+  },
+  ENVIRONMENT: {
+    label: '兼容运行环境',
+    purpose: '兼容旧版本环境名称，优先建议使用 APP_ENVIRONMENT。',
+    addMethod: '类型选“纯文本”；常用值 production。',
+    suggestedType: 'plain_text',
+  },
+  TURNSTILE_SITE_KEY: {
+    label: 'Turnstile Site Key',
+    purpose: '前端显示 Turnstile 组件用的公开站点密钥。',
+    addMethod: '类型选“纯文本”；从 Cloudflare Turnstile 小组件页面复制 Site Key。',
+    suggestedType: 'plain_text',
+  },
+  TURNSTILE_SECRET: {
+    label: 'Turnstile Secret',
+    purpose: '后端校验 Turnstile token 的密钥。',
+    addMethod: '类型选“密钥”；从 Cloudflare Turnstile 小组件页面复制 Secret Key。',
+    suggestedType: 'secret_text',
+  },
+  TURNSTILE_EXPECTED_HOSTNAME: {
+    label: 'Turnstile 允许域名',
+    purpose: '限制 Turnstile 校验必须来自指定站点域名。',
+    addMethod: '类型选“纯文本”；填写正式访问域名，例如 storage.flore.top。',
+    suggestedType: 'plain_text',
+  },
+  TURNSTILE_ACTION_APPLY: {
+    label: '域名申请 Turnstile Action',
+    purpose: '校验域名申请场景的 Turnstile action。',
+    addMethod: '类型选“纯文本”；默认可填写 domain_apply。',
+    suggestedType: 'plain_text',
+  },
+  TURNSTILE_ACTION_LOGIN: {
+    label: '登录 Turnstile Action',
+    purpose: '校验登录场景的 Turnstile action。',
+    addMethod: '类型选“纯文本”；默认可填写 login。',
+    suggestedType: 'plain_text',
+  },
+  TURNSTILE_ACTION_REGISTER: {
+    label: '注册 Turnstile Action',
+    purpose: '校验注册场景的 Turnstile action。',
+    addMethod: '类型选“纯文本”；默认可填写 register。',
+    suggestedType: 'plain_text',
+  },
+  TURNSTILE_ENABLE_APPLY: {
+    label: '域名申请 Turnstile 开关',
+    purpose: '控制域名申请场景是否启用 Turnstile。',
+    addMethod: '类型选“纯文本”；填写 true 或 false。',
+    suggestedType: 'plain_text',
+  },
+  TURNSTILE_ENABLE_LOGIN: {
+    label: '登录 Turnstile 开关',
+    purpose: '控制登录场景是否启用 Turnstile。',
+    addMethod: '类型选“纯文本”；填写 true 或 false。',
+    suggestedType: 'plain_text',
+  },
+  TURNSTILE_ENABLE_REGISTER: {
+    label: '注册 Turnstile 开关',
+    purpose: '控制注册场景是否启用 Turnstile。',
+    addMethod: '类型选“纯文本”；填写 true 或 false。',
+    suggestedType: 'plain_text',
+  },
 };
 
 function managedWorkerScriptName(env: Env): string {
@@ -4211,167 +4397,314 @@ function managedWorkerScriptName(env: Env): string {
   return value || 'storage';
 }
 
-function managedWorkerEffectiveValue(name: ManagedWorkerVariableName, env: Env, settings: AppSettings): string {
-  switch (name) {
-    case 'EMAIL_FROM': return String(env.EMAIL_FROM || settings.registration.emailFrom || '');
-    case 'EMAIL_FROM_NAME': return String(env.EMAIL_FROM_NAME || settings.registration.emailFromName || '');
-    case 'CF_ADMIN_EMAIL': return String(env.CF_ADMIN_EMAIL || settings.registration.cloudflareAdminRecipient || '');
-    case 'CF_ACCOUNT_ID': return String(env.CF_ACCOUNT_ID || settings.registration.cloudflareEmailAccountId || '');
-    case 'APP_ENVIRONMENT': return String(env.APP_ENVIRONMENT || env.ENVIRONMENT || 'production');
-    case 'TURNSTILE_SITE_KEY': return String(env.TURNSTILE_SITE_KEY || settings.registration.turnstileSiteKey || '');
-    case 'RESEND_API_KEY': return String(env.RESEND_API_KEY || settings.registration.emailApiKey || '');
-    case 'CF_EMAIL_ROUTING_API_TOKEN': return String(env.CF_EMAIL_ROUTING_API_TOKEN || settings.registration.cloudflareEmailApiToken || '');
-    case 'CF_API_TOKEN': return String(env.CF_API_TOKEN || settings.dns.cfApiToken || '');
-    case 'TURNSTILE_SECRET': return String(env.TURNSTILE_SECRET || settings.registration.turnstileSecret || '');
-  }
+function resolveWorkerVariableDefinition(name: string, type?: WorkerVariableKind): WorkerVariableDefinition {
+  const known = WORKER_VARIABLE_DEFINITIONS[name];
+  if (known) return known;
+  const secretLike = type === 'secret_text' || SECRET_VARIABLE_PATTERN.test(name);
+  return {
+    label: name,
+    purpose: secretLike ? '自定义密钥变量，当前代码或后续功能可能通过 env 读取它。' : '自定义文本变量，当前代码或后续功能可能通过 env 读取它。',
+    addMethod: secretLike ? '类型建议选择“密钥”；填写后代码可通过 env.' + name + ' 读取。' : '类型建议选择“纯文本”；填写后代码可通过 env.' + name + ' 读取。',
+    suggestedType: secretLike ? 'secret_text' : 'plain_text',
+  };
 }
 
-function validateManagedWorkerVariable(name: ManagedWorkerVariableName, rawValue: unknown): string {
-  const definition = MANAGED_WORKER_VARIABLES[name];
+function isSensitiveWorkerVariableName(name: string, type?: WorkerVariableKind): boolean {
+  return type === 'secret_text' || SECRET_VARIABLE_PATTERN.test(name);
+}
+
+function isValidWorkerVariableName(name: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(name);
+}
+
+function normalizeWorkerVariableName(rawName: unknown): string {
+  const name = String(rawName || '').trim();
+  if (!isValidWorkerVariableName(name)) throw new HttpError(400, 'WORKER_VARIABLE_NAME_INVALID', '变量名称只能使用字母、数字和下划线，并且不能以数字开头');
+  return name;
+}
+
+function normalizeWorkerVariableType(rawType: unknown, name: string): WorkerVariableKind {
+  const value = String(rawType || '').trim();
+  if (value === 'plain_text' || value === 'text') return 'plain_text';
+  if (value === 'secret_text' || value === 'secret') return 'secret_text';
+  return isSensitiveWorkerVariableName(name) ? 'secret_text' : 'plain_text';
+}
+
+function validateWorkerVariableValue(name: string, rawValue: unknown): string {
   const value = String(rawValue ?? '').trim();
-  if (!value) throw new HttpError(400, 'WORKER_VARIABLE_VALUE_REQUIRED', '请输入新的变量值');
-  if (value.length > definition.maxLength) throw new HttpError(400, 'WORKER_VARIABLE_VALUE_TOO_LONG', `${definition.label} 内容过长`);
+  if (!value) throw new HttpError(400, 'WORKER_VARIABLE_VALUE_REQUIRED', '请输入变量值');
+  if (value.length > 5000) throw new HttpError(400, 'WORKER_VARIABLE_VALUE_TOO_LONG', '变量内容过长，请控制在 5000 字符以内');
   if (['EMAIL_FROM','CF_ADMIN_EMAIL'].includes(name) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
-    throw new HttpError(400, 'WORKER_VARIABLE_EMAIL_INVALID', `${definition.label} 邮箱格式不正确`);
+    throw new HttpError(400, 'WORKER_VARIABLE_EMAIL_INVALID', `${name} 邮箱格式不正确`);
   }
   if (name === 'CF_ACCOUNT_ID' && !/^[a-f0-9]{32}$/i.test(value)) {
     throw new HttpError(400, 'WORKER_VARIABLE_ACCOUNT_ID_INVALID', 'Cloudflare Account ID 应为 32 位字符');
   }
-  if (name === 'APP_ENVIRONMENT' && !/^[a-zA-Z0-9._-]{1,80}$/.test(value)) {
+  if ((name === 'APP_ENVIRONMENT' || name === 'ENVIRONMENT') && !/^[a-zA-Z0-9._-]{1,80}$/.test(value)) {
     throw new HttpError(400, 'WORKER_VARIABLE_ENV_INVALID', '运行环境只能使用字母、数字、点、下划线或短横线');
   }
   return value;
 }
 
+function buildWorkerVariableItem(name: string, type: WorkerVariableKind, value: string, source: string): WorkerVariableItem {
+  const definition = resolveWorkerVariableDefinition(name, type);
+  const sensitive = isSensitiveWorkerVariableName(name, type);
+  return {
+    name,
+    type,
+    label: definition.label,
+    purpose: definition.purpose,
+    addMethod: definition.addMethod,
+    sensitive,
+    configured: type === 'secret_text' ? true : Boolean(value),
+    value: sensitive ? '' : value,
+    source,
+    protected: PROTECTED_WORKER_VARIABLE_NAMES.has(name),
+  };
+}
+
+function mergeWorkerVariableItems(items: WorkerVariableItem[]): WorkerVariableItem[] {
+  const map = new Map<string, WorkerVariableItem>();
+  for (const item of items) {
+    const existing = map.get(item.name);
+    if (!existing || existing.source === 'runtime-fallback' || item.source.includes('cloudflare')) {
+      map.set(item.name, item);
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function runtimeWorkerVariables(env: Env): WorkerVariableItem[] {
+  return Object.keys(env as unknown as Record<string, unknown>)
+    .filter(name => !RUNTIME_ONLY_BINDING_NAMES.has(name))
+    .filter(name => isValidWorkerVariableName(name))
+    .map(name => {
+      const value = String((env as unknown as Record<string, unknown>)[name] ?? '');
+      const type = isSensitiveWorkerVariableName(name) ? 'secret_text' : 'plain_text';
+      return buildWorkerVariableItem(name, type, value, 'runtime-fallback');
+    });
+}
+
+async function cloudflareWorkersApi(request: Request, env: Env, path: string, init: RequestInit = {}): Promise<any> {
+  const settings = await loadSettings(env);
+  const token = String(env.CF_WORKERS_API_TOKEN || '').trim();
+  if (!token) throw new HttpError(409, 'CF_WORKERS_API_TOKEN_MISSING', '请先在 Cloudflare Worker 中添加 Secret：CF_WORKERS_API_TOKEN，权限为 Workers Scripts Write');
+  const accountId = resolveCloudflareEmailAccountId(env, settings);
+  if (!/^[a-f0-9]{32}$/i.test(accountId)) throw new HttpError(409, 'CF_WORKERS_ACCOUNT_ID_MISSING', '请先配置有效的 CF_ACCOUNT_ID');
+  const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+      ...(init.body ? { 'content-type': 'application/json' } : {}),
+      ...(init.headers || {}),
+    },
+  });
+  const payload: any = await response.json().catch(() => ({}));
+  if (!response.ok || payload?.success === false) {
+    const detail = payload?.errors?.[0]?.message || payload?.message || `HTTP ${response.status}`;
+    throw new HttpError(502, 'CLOUDFLARE_WORKERS_API_FAILED', String(detail).slice(0, 500));
+  }
+  return payload?.result ?? payload;
+}
+
+async function fetchWorkerScriptSettings(request: Request, env: Env): Promise<any> {
+  const scriptName = managedWorkerScriptName(env);
+  return cloudflareWorkersApi(request, env, `/workers/scripts/${encodeURIComponent(scriptName)}/script-settings`);
+}
+
+async function patchWorkerScriptBindings(request: Request, env: Env, bindings: any[]): Promise<void> {
+  const scriptName = managedWorkerScriptName(env);
+  await cloudflareWorkersApi(request, env, `/workers/scripts/${encodeURIComponent(scriptName)}/script-settings`, {
+    method: 'PATCH',
+    body: JSON.stringify({ bindings }),
+  });
+}
+
+async function fetchWorkerSecretBindings(request: Request, env: Env): Promise<any[]> {
+  const scriptName = managedWorkerScriptName(env);
+  const result = await cloudflareWorkersApi(request, env, `/workers/scripts/${encodeURIComponent(scriptName)}/secrets`);
+  if (Array.isArray(result)) return result;
+  if (Array.isArray(result?.secrets)) return result.secrets;
+  return [];
+}
+
+function variableItemsFromScriptSettings(settings: any): WorkerVariableItem[] {
+  const bindings = Array.isArray(settings?.bindings) ? settings.bindings : [];
+  return bindings
+    .filter((binding: any) => WORKER_VARIABLE_BINDING_TYPES.has(String(binding?.type || '')))
+    .filter((binding: any) => isValidWorkerVariableName(String(binding?.name || '')))
+    .map((binding: any) => {
+      const name = String(binding.name);
+      const type = String(binding.type) === 'secret_text' ? 'secret_text' : 'plain_text';
+      const value = type === 'plain_text' ? String(binding.text ?? '') : '';
+      return buildWorkerVariableItem(name, type, value, 'cloudflare-script-settings');
+    });
+}
+
+function variableItemsFromSecretList(secrets: any[]): WorkerVariableItem[] {
+  return secrets
+    .filter((secret: any) => isValidWorkerVariableName(String(secret?.name || '')))
+    .map((secret: any) => buildWorkerVariableItem(String(secret.name), 'secret_text', '', 'cloudflare-secrets'));
+}
+
+function removeVariableBinding(bindings: any[], name: string): any[] {
+  return bindings.filter((binding: any) => !(String(binding?.name || '') === name && WORKER_VARIABLE_BINDING_TYPES.has(String(binding?.type || ''))));
+}
+
+async function putWorkerSecret(request: Request, env: Env, name: string, value: string): Promise<void> {
+  const scriptName = managedWorkerScriptName(env);
+  await cloudflareWorkersApi(request, env, `/workers/scripts/${encodeURIComponent(scriptName)}/secrets`, {
+    method: 'PUT',
+    body: JSON.stringify({ name, text: value, type: 'secret_text' }),
+  });
+}
+
+async function deleteWorkerSecret(request: Request, env: Env, name: string): Promise<void> {
+  const scriptName = managedWorkerScriptName(env);
+  await cloudflareWorkersApi(request, env, `/workers/scripts/${encodeURIComponent(scriptName)}/secrets/${encodeURIComponent(name)}`, {
+    method: 'DELETE',
+  });
+}
+
 async function adminListManagedWorkerVariables(request: Request, env: Env): Promise<Response> {
   await requireAdmin(env, request);
-  const settings = await loadSettings(env);
-  const variables = (Object.keys(MANAGED_WORKER_VARIABLES) as ManagedWorkerVariableName[]).map(name => {
-    const definition = MANAGED_WORKER_VARIABLES[name];
-    const current = managedWorkerEffectiveValue(name, env, settings);
-    return {
-      name,
-      label: definition.label,
-      sensitive: definition.sensitive,
-      configured: Boolean(current),
-      value: definition.sensitive ? '' : current,
-    };
-  });
+  const items: WorkerVariableItem[] = [];
+  let syncMode = 'runtime-fallback';
+  let warning = '';
+  if (env.CF_WORKERS_API_TOKEN) {
+    try {
+      const [settings, secrets] = await Promise.all([
+        fetchWorkerScriptSettings(request, env),
+        fetchWorkerSecretBindings(request, env).catch(() => []),
+      ]);
+      items.push(...variableItemsFromScriptSettings(settings));
+      items.push(...variableItemsFromSecretList(secrets));
+      syncMode = 'cloudflare-api';
+    } catch (error: any) {
+      warning = `Cloudflare API 同步失败，已显示当前运行时可见变量：${error?.message || error}`;
+      items.push(...runtimeWorkerVariables(env));
+    }
+  } else {
+    warning = '未配置 CF_WORKERS_API_TOKEN，只能显示当前运行时可见变量，不能同步 Cloudflare 后台完整类型。';
+    items.push(...runtimeWorkerVariables(env));
+  }
+  const variables = mergeWorkerVariableItems(items);
   return ok({
     enabled: Boolean(env.CF_WORKERS_API_TOKEN),
-    accountIdConfigured: Boolean(resolveCloudflareEmailAccountId(env, settings)),
+    accountIdConfigured: Boolean(env.CF_ACCOUNT_ID),
     scriptName: managedWorkerScriptName(env),
+    syncMode,
+    warning,
     variables,
-    note: 'CF_WORKERS_API_TOKEN 本身必须在 Cloudflare 控制台以 Secret 添加，不能在网站内修改。',
+    definitions: WORKER_VARIABLE_DEFINITIONS,
+    protectedNames: Array.from(PROTECTED_WORKER_VARIABLE_NAMES),
+    note: '这里同步 Cloudflare Worker 当前变量和密钥。CF_WORKERS_API_TOKEN 本身必须在 Cloudflare 控制台维护，网站内不能修改。',
   });
 }
 
 async function adminUpdateManagedWorkerVariable(request: Request, env: Env): Promise<Response> {
   const admin = await requireAdmin(env, request);
-  const settings = await loadSettings(env);
-  const managementToken = String(env.CF_WORKERS_API_TOKEN || '').trim();
-  if (!managementToken) throw new HttpError(409, 'CF_WORKERS_API_TOKEN_MISSING', '请先在 Cloudflare Worker 中添加 Secret：CF_WORKERS_API_TOKEN，权限为 Workers Scripts Write');
-  const accountId = resolveCloudflareEmailAccountId(env, settings);
-  if (!/^[a-f0-9]{32}$/i.test(accountId)) throw new HttpError(409, 'CF_WORKERS_ACCOUNT_ID_MISSING', '请先配置有效的 CF_ACCOUNT_ID 或在邮件设置中填写 Cloudflare Account ID');
   const body = await readJson<Record<string, unknown>>(request);
-  const name = String(body.name || '') as ManagedWorkerVariableName;
-  if (!Object.prototype.hasOwnProperty.call(MANAGED_WORKER_VARIABLES, name)) {
-    throw new HttpError(400, 'WORKER_VARIABLE_NOT_ALLOWED', '该变量不在网站允许修改的安全白名单中');
+  const name = normalizeWorkerVariableName(body.name);
+  if (PROTECTED_WORKER_VARIABLE_NAMES.has(name)) {
+    throw new HttpError(403, 'WORKER_VARIABLE_PROTECTED', 'CF_WORKERS_API_TOKEN 只能在 Cloudflare 控制台修改，不能在网站内修改');
   }
-  const value = validateManagedWorkerVariable(name, body.value);
+  const type = normalizeWorkerVariableType(body.type, name);
+  const value = validateWorkerVariableValue(name, body.value);
   const scriptName = managedWorkerScriptName(env);
-  const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/workers/scripts/${encodeURIComponent(scriptName)}/secrets`, {
-    method: 'PUT',
-    headers: {
-      Authorization: `Bearer ${managementToken}`,
-      'content-type': 'application/json',
-      Accept: 'application/json',
-    },
-    body: JSON.stringify({ name, text: value, type: 'secret_text' }),
-  });
-  const payload: any = await response.json().catch(() => ({}));
-  if (!response.ok || payload?.success === false) {
-    const detail = payload?.errors?.[0]?.message || payload?.message || `HTTP ${response.status}`;
-    throw new HttpError(502, 'WORKER_VARIABLE_UPDATE_FAILED', `更新 Worker 变量失败：${String(detail).slice(0, 500)}`);
+  if (type === 'secret_text') {
+    await putWorkerSecret(request, env, name, value);
+  } else {
+    const settings = await fetchWorkerScriptSettings(request, env);
+    const bindings = Array.isArray(settings?.bindings) ? settings.bindings : [];
+    const nextBindings = removeVariableBinding(bindings, name);
+    nextBindings.push({ name, type: 'plain_text', text: value });
+    await patchWorkerScriptBindings(request, env, nextBindings);
   }
   await audit(env, request, admin.id, 'admin.worker_variable_update', 'worker_variable', name, {
     scriptName,
-    sensitive: MANAGED_WORKER_VARIABLES[name].sensitive,
+    type,
     valueHash: await sha256(value),
   });
+  const definition = resolveWorkerVariableDefinition(name, type);
   return ok({
     updated: true,
     name,
-    label: MANAGED_WORKER_VARIABLES[name].label,
+    type,
+    label: definition.label,
     scriptName,
-    message: `${MANAGED_WORKER_VARIABLES[name].label} 已提交到 Cloudflare；新值通常会在数秒内对后续请求生效`,
+    message: `${definition.label || name} 已提交到 Cloudflare；新值通常会在数秒内对后续请求生效`,
   });
 }
 
-function resolveCloudflareAdminSender(env: Env, settings: AppSettings): { fromEmail: string; fromName: string } {
-  const adminEmail = resolveCloudflareAdminEmail(env, settings);
-  const configured = String(env.EMAIL_FROM || settings.registration.emailFrom || '').trim();
-  const fromEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(configured) ? configured : adminEmail;
-  const fromName = cleanText(env.EMAIL_FROM_NAME || settings.registration.emailFromName || settings.site.title || 'FLORE域名注册中心', 120) || 'FLORE域名注册中心';
-  return { fromEmail, fromName };
+async function adminDeleteManagedWorkerVariable(request: Request, env: Env): Promise<Response> {
+  const admin = await requireAdmin(env, request);
+  const body = await readJson<Record<string, unknown>>(request);
+  const name = normalizeWorkerVariableName(body.name);
+  if (PROTECTED_WORKER_VARIABLE_NAMES.has(name)) {
+    throw new HttpError(403, 'WORKER_VARIABLE_PROTECTED', 'CF_WORKERS_API_TOKEN 只能在 Cloudflare 控制台删除或修改，不能在网站内删除');
+  }
+  const type = normalizeWorkerVariableType(body.type, name);
+  const scriptName = managedWorkerScriptName(env);
+  if (type === 'secret_text') {
+    await deleteWorkerSecret(request, env, name);
+  } else {
+    const settings = await fetchWorkerScriptSettings(request, env);
+    const bindings = Array.isArray(settings?.bindings) ? settings.bindings : [];
+    await patchWorkerScriptBindings(request, env, removeVariableBinding(bindings, name));
+  }
+  await audit(env, request, admin.id, 'admin.worker_variable_delete', 'worker_variable', name, { scriptName, type });
+  return ok({ deleted: true, name, type, scriptName, message: `${name} 已从 Cloudflare Worker 变量中删除` });
 }
 
 function adminCloudflareEmailSceneEnabled(settings: AppSettings, scene: AdminCloudflareEmailScene): boolean {
   if (scene === 'admin_test') return settings.registration.emailTestSceneEnabled !== false;
-  const events = settings.notification?.events || {};
-  if (scene === 'system_error') return events.systemErrorEmail !== false;
-  if (scene === 'help_submission') return events.helpSubmissionEmail !== false;
-  if (scene === 'domain_review') return events.domainReviewEmail !== false;
-  if (scene === 'dns_anomaly') return events.dnsAnomalyEmail !== false;
   return true;
 }
 
-function encodeEmailHeaderUtf8(value: string): string {
-  const bytes = new TextEncoder().encode(String(value || ''));
+function resolveCloudflareAdminSender(env: Env, settings: AppSettings): { fromEmail: string; fromName: string } {
+  const fromEmail = normalizeOptionalEmailStrict(env.EMAIL_FROM || settings.registration.emailFrom) || resolveCloudflareAdminEmail(env, settings);
+  const fromName = cleanText(env.EMAIL_FROM_NAME || settings.registration.emailFromName || settings.site.title || '域名注册中心', 120) || '域名注册中心';
+  return { fromEmail, fromName };
+}
+
+function encodeMailHeader(value: string): string {
+  const text = String(value || '').replace(/[\r\n]+/g, ' ').trim();
+  if (!text) return '';
+  if (/^[\x20-\x7e]*$/.test(text)) return text;
+  const bytes = new TextEncoder().encode(text);
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return `=?UTF-8?B?${btoa(binary)}?=`;
 }
 
-function base64EmailBody(value: string): string {
-  const bytes = new TextEncoder().encode(String(value || ''));
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/(.{76})/g, '$1\r\n');
-}
-
-function buildCloudflareRawEmail(input: {
-  fromEmail: string;
-  fromName: string;
-  toEmail: string;
-  subject: string;
-  text: string;
-  html?: string;
-}): string {
-  const boundary = `storage_${crypto.randomUUID().replace(/-/g, '')}`;
-  const subject = cleanText(input.subject, 300).replace(/[\r\n]+/g, ' ').trim() || '系统通知';
-  const text = String(input.text || '').trim() || '系统通知';
-  const html = String(input.html || '').trim() || plainTextToEmailHtml(text);
+function buildCloudflareRawEmail(message: { fromEmail: string; fromName: string; toEmail: string; subject: string; text: string; html?: string }): string {
+  const boundary = `flore-${crypto.randomUUID().replace(/-/g, '')}`;
+  const subject = encodeMailHeader(message.subject || '系统通知');
+  const fromName = encodeMailHeader(message.fromName || '域名注册中心');
+  const text = String(message.text || '');
+  const html = String(message.html || '') || plainTextToEmailHtml(text);
   return [
-    `From: ${encodeEmailHeaderUtf8(input.fromName)} <${input.fromEmail}>`,
-    `To: ${input.toEmail}`,
-    `Subject: ${encodeEmailHeaderUtf8(subject)}`,
-    `Date: ${new Date().toUTCString()}`,
+    `From: ${fromName} <${message.fromEmail}>`,
+    `To: ${message.toEmail}`,
+    `Subject: ${subject}`,
     'MIME-Version: 1.0',
     `Content-Type: multipart/alternative; boundary="${boundary}"`,
     '',
     `--${boundary}`,
-    'Content-Type: text/plain; charset=UTF-8',
-    'Content-Transfer-Encoding: base64',
+    'Content-Type: text/plain; charset=utf-8',
+    'Content-Transfer-Encoding: 8bit',
     '',
-    base64EmailBody(text),
+    text,
+    '',
     `--${boundary}`,
-    'Content-Type: text/html; charset=UTF-8',
-    'Content-Transfer-Encoding: base64',
+    'Content-Type: text/html; charset=utf-8',
+    'Content-Transfer-Encoding: 8bit',
     '',
-    base64EmailBody(html),
+    html,
+    '',
     `--${boundary}--`,
-    '',
   ].join('\r\n');
 }
 
