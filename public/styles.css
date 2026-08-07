@@ -3616,3 +3616,113 @@ html[data-theme="dark"] .admin-settings-v79 .settings-section-heading{
   .modal-body { padding:9px !important; }
   .dns-sync-summary,.dns-sync-summary-detailed { grid-template-columns:1fr 1fr !important; }
 }
+
+/* v107 mobile layout hardening: remove gutter shadows, make DNS settings truly responsive,
+   compact analytics touch tooltips, prevent login overflow, and paginate domain management. */
+.domain-pagination-toolbar{
+  display:grid;
+  grid-template-columns:minmax(220px,1fr) auto auto;
+  gap:12px;
+  align-items:end;
+  margin:0 0 14px;
+  padding:12px;
+  border:1px solid var(--line);
+  border-radius:16px;
+  background:#f8fafc;
+}
+.domain-root-filter{display:grid;gap:5px;min-width:0}.domain-root-filter span{font-size:12px;color:var(--muted);font-weight:900}.domain-root-filter select{width:100%;min-width:0;border:1px solid #d8e0ee;border-radius:11px;background:#fff;min-height:38px;padding:7px 10px;font:inherit;font-weight:800;color:#26334a}
+.domain-page-summary{display:grid;gap:2px;white-space:nowrap}.domain-page-summary strong{font-size:13px}.domain-page-summary span{font-size:11px;color:var(--muted);font-weight:750}.domain-page-actions{display:flex;gap:6px}
+.domain-card-compact-list .domain-list-dns{display:flex;align-items:center;gap:10px;min-width:0;padding:10px 12px;border:1px solid var(--line);border-radius:13px;background:#f8fafc}.domain-card-compact-list .domain-list-dns span{color:var(--muted);font-weight:900;flex:none}.domain-card-compact-list .domain-list-dns strong{min-width:0;overflow-wrap:anywhere;word-break:break-word}
+
+@media (max-width: 768px) {
+  /* Remove the gray/blurred side gutters and desktop shadows on iPhone Safari. */
+  body{background:#f6f8ff!important;background-image:none!important;}
+  .main,.content,.admin-settings-v79,.analytics-dashboard-v100,.domain-management-card{box-shadow:none!important;filter:none!important;}
+  .card,.domain-card,.detail-hero,.detail-panel,.stat,.info-card,.analytics-dashboard-v100 .chart-card,.analytics-dashboard-head{box-shadow:none!important;}
+  .app-footer{margin:0!important;padding:12px 10px calc(14px + env(safe-area-inset-bottom))!important;max-width:100%!important;overflow-wrap:anywhere;}
+
+  /* Drawer should not cast a permanent shadow while closed. */
+  .sidebar{box-shadow:none!important;}
+  .sidebar.open{box-shadow:14px 0 32px rgba(15,23,42,.18)!important;}
+  .sidebar-mask{backdrop-filter:none!important;}
+
+  /* DNS policy becomes a native mobile card list; no horizontal drag is required. */
+  #dns-type-policy-table{margin:0!important;padding:0!important;overflow:visible!important;max-width:100%!important;}
+  #dns-type-policy-table table,
+  #dns-type-policy-table tbody{display:block!important;width:100%!important;min-width:0!important;}
+  #dns-type-policy-table thead{display:none!important;}
+  #dns-type-policy-table tr[data-dns-type-policy]{
+    display:grid!important;
+    grid-template-columns:76px minmax(0,1fr)!important;
+    gap:7px 9px!important;
+    width:100%!important;
+    min-width:0!important;
+    padding:10px 0!important;
+    border-bottom:1px solid var(--line)!important;
+  }
+  #dns-type-policy-table tr[data-dns-type-policy]:last-child{border-bottom:0!important;}
+  #dns-type-policy-table td{
+    display:grid!important;
+    grid-template-columns:88px minmax(0,1fr)!important;
+    gap:7px!important;
+    align-items:center!important;
+    width:100%!important;
+    min-width:0!important;
+    padding:0!important;
+    border:0!important;
+  }
+  #dns-type-policy-table td::before{content:attr(data-mobile-label);font-size:10px;color:#7a8799;font-weight:850;line-height:1.25;}
+  #dns-type-policy-table td:first-child{grid-row:1 / span 3;grid-column:1;display:flex!important;align-items:flex-start!important;padding-top:4px!important;}
+  #dns-type-policy-table td:first-child::before{display:none!important;}
+  #dns-type-policy-table td:first-child strong{font-size:13px!important;color:#111827;}
+  #dns-type-policy-table td:nth-child(n+2){grid-column:2;}
+  #dns-type-policy-table input:not([type="checkbox"]){width:100%!important;min-width:0!important;max-width:100%!important;height:34px!important;font-size:10.5px!important;padding:6px 8px!important;}
+  #dns-type-policy-table .check{justify-content:flex-start!important;font-size:10.5px!important;}
+  #dns-type-policy-table input[type="checkbox"]{width:18px!important;height:18px!important;}
+
+  /* Variable tables keep touch scrolling, but stay within the viewport. */
+  .worker-variable-table-wrap{max-width:100%!important;overflow-x:auto!important;overscroll-behavior-x:contain!important;touch-action:pan-x pan-y!important;-webkit-overflow-scrolling:touch!important;}
+  .worker-variable-table-wrap table{min-width:620px!important;}
+
+  /* Login form cannot exceed its card, including Safari autofill rendering. */
+  .login-split-wrap,.login-compact-card,.login-compact-form,.login-field,.login-input-wrap{width:100%!important;max-width:100%!important;min-width:0!important;box-sizing:border-box!important;}
+  .login-compact-card{overflow:hidden!important;}
+  .login-input-wrap{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;gap:7px!important;overflow:hidden!important;padding:0 10px!important;}
+  .login-input-wrap input{display:block!important;width:100%!important;max-width:100%!important;min-width:0!important;box-sizing:border-box!important;font-size:14px!important;padding:0!important;}
+  .login-input-wrap input:-webkit-autofill{-webkit-text-size-adjust:100%!important;}
+  .password-eye{width:32px!important;min-width:32px!important;padding:0!important;font-size:18px!important;}
+  .login-row{min-width:0!important;gap:8px!important;}.login-link-btn{font-size:12px!important;white-space:nowrap!important;}.login-check{font-size:12px!important;min-width:0!important;}.login-check input{width:18px!important;height:18px!important;}
+
+  /* Analytics touch hint: compact and positioned away from the finger. */
+  .analytics-global-tooltip,.analytics-global-tooltip.is-mobile-tip{
+    min-width:0!important;
+    width:auto!important;
+    max-width:min(220px,calc(100vw - 20px))!important;
+    max-height:180px!important;
+    overflow:auto!important;
+    padding:8px 9px!important;
+    border-radius:9px!important;
+    font-size:10.5px!important;
+    line-height:1.32!important;
+    box-shadow:0 8px 20px rgba(15,23,42,.16)!important;
+  }
+  .analytics-global-tooltip .tip-title{font-size:11px!important;margin-bottom:4px!important;}
+  .analytics-global-tooltip .tip-row{padding:1px 0!important;}
+  .analytics-dashboard-v100 .chart-legend{display:flex!important;flex-wrap:nowrap!important;overflow-x:auto!important;gap:5px!important;padding:0 0 5px!important;-webkit-overflow-scrolling:touch!important;}
+  .analytics-legend-item{flex:0 0 auto!important;white-space:nowrap!important;font-size:10px!important;padding:4px 5px!important;}
+
+  /* Root-domain pagination and compact domain cards. */
+  .domain-pagination-toolbar{grid-template-columns:1fr!important;gap:7px!important;padding:9px!important;border-radius:12px!important;margin-bottom:9px!important;}
+  .domain-root-filter select{min-height:34px!important;font-size:11px!important;padding:6px 8px!important;}
+  .domain-page-summary{white-space:normal!important;}.domain-page-summary strong{font-size:11px!important}.domain-page-summary span{font-size:10px!important}.domain-page-actions{display:grid!important;grid-template-columns:1fr 1fr!important;}
+  .domain-card-compact-list .domain-list-dns{padding:8px 9px!important;border-radius:10px!important;font-size:10.5px!important;}
+  .domain-card-compact-list .domain-head{grid-template-columns:auto minmax(0,1fr) auto!important;}
+  .domain-card-compact-list .domain-title h3{font-size:15px!important;}
+  .domain-card-compact-list .domain-title code{font-size:10px!important;}
+}
+
+@media (max-width: 390px) {
+  #dns-type-policy-table tr[data-dns-type-policy]{grid-template-columns:58px minmax(0,1fr)!important;gap:6px!important;}
+  #dns-type-policy-table td{grid-template-columns:72px minmax(0,1fr)!important;}
+  .analytics-global-tooltip,.analytics-global-tooltip.is-mobile-tip{max-width:min(200px,calc(100vw - 16px))!important;font-size:10px!important;}
+}
