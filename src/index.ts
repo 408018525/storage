@@ -60,7 +60,16 @@ export interface Env {
 
 type Role = 'admin' | 'user';
 type UserStatus = 'active' | 'disabled' | 'deleted';
-type DnsRecordType = 'A' | 'AAAA' | 'CNAME' | 'TXT' | 'MX';
+type DnsRecordType = 'A' | 'AAAA' | 'CNAME' | 'TXT' | 'MX' | 'NS';
+
+const SUPPORTED_DNS_RECORD_TYPES: DnsRecordType[] = ['A', 'AAAA', 'CNAME', 'TXT', 'MX', 'NS'];
+
+interface DnsRecordTypePolicy {
+  type: DnsRecordType;
+  displayName: string;
+  allowUserAdd: boolean;
+  note: string;
+}
 
 interface UserRow {
   id: string;
@@ -280,6 +289,7 @@ interface AppSettings {
     cfApiToken?: string;
     blockWildcardRecords?: boolean;
     cnameTargetBlacklist?: string;
+    recordTypePolicies: DnsRecordTypePolicy[];
     suffixes: Array<{
       label: string;
       suffix: string;
@@ -862,6 +872,12 @@ async function publicConfigHandler(env: Env): Promise<Response> {
       registration: publicRegistrationSettings(settings.registration),
       domain: settings.domain,
       help: settings.help,
+      dnsRecordTypes: settings.dns.recordTypePolicies.map(policy => ({
+        type: policy.type,
+        displayName: policy.displayName,
+        allowUserAdd: policy.allowUserAdd,
+        note: policy.note,
+      })),
       suffixes: settings.dns.suffixes
         .map((item, index) => ({ item, index }))
         .filter(({ item }) => item.enabled && item.allowRegister !== false)
@@ -1453,6 +1469,7 @@ async function updateOwnDns(request: Request, env: Env, id: string): Promise<Res
   }
 
   const recordType = normalizeRecordType(body.recordType || app.record_type || suffix.defaultType, suffix.allowedTypes);
+  if (!app.record_type || recordType !== String(app.record_type).toUpperCase()) assertUserDnsRecordTypeOpen(settings, recordType);
   const recordContent = normalizeDnsTarget(recordType, body.target, app.fqdn_ascii);
   if (recordType === 'CNAME') assertCnameTargetAllowed(recordContent, settings.dns.cnameTargetBlacklist);
 
@@ -1552,6 +1569,7 @@ async function createOwnDnsRecord(request: Request, env: Env, applicationId: str
   const host = normalizeDnsHost(body.host, settings.dns.blockWildcardRecords !== false);
   const name = fullRecordName(host, app.fqdn_ascii);
   const type = normalizeRecordType(body.type || body.recordType, suffix.allowedTypes);
+  assertUserDnsRecordTypeOpen(settings, type);
   if (type === 'MX' && settings.dns.allowMxRecords === false) throw new HttpError(403, 'MX_DISABLED', '管理员已禁止用户创建 MX 解析记录');
   const recordCount = await env.DB.prepare(`SELECT COUNT(*) AS count FROM dns_records WHERE application_id=? AND (deleted_at IS NULL OR deleted_at='')`).bind(applicationId).first<{ count: number }>();
   if (Number(recordCount?.count || 0) >= (settings.domain.maxDnsRecordsPerDomain || 20)) throw new HttpError(403, 'DNS_RECORD_LIMIT', `单个域名最多可创建 ${settings.domain.maxDnsRecordsPerDomain || 20} 条 DNS 解析`);
@@ -1632,7 +1650,9 @@ async function updateOwnDnsRecordManaged(request: Request, env: Env, recordId: s
   const host = normalizeDnsHost(body.host ?? row.host, settings.dns.blockWildcardRecords !== false);
   const name = fullRecordName(host, row.fqdn_ascii);
   const type = normalizeRecordType(body.type || body.recordType || row.type, suffix.allowedTypes);
-  if (type === 'MX' && settings.dns.allowMxRecords === false) throw new HttpError(403, 'MX_DISABLED', '管理员已禁止用户创建 MX 解析记录');
+  const previousType = String(row.type || '').toUpperCase();
+  if (type !== previousType) assertUserDnsRecordTypeOpen(settings, type);
+  if (type === 'MX' && type !== previousType && settings.dns.allowMxRecords === false) throw new HttpError(403, 'MX_DISABLED', '管理员已禁止用户创建 MX 解析记录');
   const content = normalizeDnsTarget(type, body.content || body.target || row.content, name);
   if (type === 'CNAME') assertCnameTargetAllowed(content, settings.dns.cnameTargetBlacklist);
   const priority = type === 'MX' ? clamp(Number(body.priority || row.priority || 10), 0, 65535) : null;
@@ -3268,7 +3288,7 @@ async function adminUpdateHelpSettings(request: Request, env: Env): Promise<Resp
 function defaultHelpSettings(): { categories: HelpCategorySetting[] } {
   return { categories: [
     { key:'faq', title:'常见问题', subtitle:'账号、注册、审核、登录、额度、语言、消息等常见问题', items: [] },
-    { key:'dns', title:'DNS 记录说明', subtitle:'A / AAAA / CNAME / TXT / MX、代理、TTL、生效时间、第三方平台配置', items: [] },
+    { key:'dns', title:'DNS 记录说明', subtitle:'A / AAAA / CNAME / TXT / MX / NS、代理、TTL、生效时间、第三方平台配置', items: [] },
     { key:'domain', title:'域名管理问题', subtitle:'解析管理、删除撤销、续期、禁用、管理员处理、手机端操作等问题', items: [] },
   ] };
 }
@@ -3476,15 +3496,29 @@ async function adminUpdateSettings(request: Request, env: Env, group: AdminSetti
 
   if (group === 'dns') {
     const suffixesInput = Array.isArray((body as any).suffixes) ? (body as any).suffixes : parseJsonArray(body.suffixesJson);
+    const recordTypePolicies = sanitizeDnsRecordTypePolicies(
+      (body as any).recordTypePolicies,
+      settings.dns.recordTypePolicies,
+      settings.dns.allowMxRecords !== false,
+    );
+    const suffixes = sanitizeDnsSuffixes(suffixesInput, settings.dns.suffixes);
+    const globallyOpenTypes = new Set(recordTypePolicies.filter(policy => policy.allowUserAdd).map(policy => policy.type));
+    if (!globallyOpenTypes.size) throw new HttpError(400, 'DNS_TYPE_POLICY_EMPTY', '至少开放一种 DNS 类型供用户添加');
+    for (const suffix of suffixes) {
+      const effectiveTypes = suffix.allowedTypes.filter(type => globallyOpenTypes.has(type as DnsRecordType));
+      if (!effectiveTypes.length) throw new HttpError(400, 'DNS_SUFFIX_TYPE_EMPTY', `根域名 ${suffix.suffix} 至少需要包含一种全局开放的 DNS 类型`);
+      if (!effectiveTypes.includes(suffix.defaultType)) throw new HttpError(400, 'DNS_DEFAULT_TYPE_CLOSED', `根域名 ${suffix.suffix} 的默认类型必须在全局策略中开放`);
+    }
     settings.dns = {
       ...settings.dns,
       defaultProxied: asBoolean(body.defaultProxied, settings.dns.defaultProxied ?? false),
-      allowMxRecords: asBoolean(body.allowMxRecords, settings.dns.allowMxRecords ?? true),
+      allowMxRecords: recordTypePolicies.find(policy => policy.type === 'MX')?.allowUserAdd !== false,
       blockWildcardRecords: asBoolean(body.blockWildcardRecords, settings.dns.blockWildcardRecords ?? true),
       cnameTargetBlacklist: cleanText(body.cnameTargetBlacklist, 10000),
       cfApiToken: asBoolean((body as any).clearCfApiToken, false) ? '' : (cleanText((body as any).cfApiToken, 2000) || settings.dns.cfApiToken || ''),
       reservedPrefixes: sanitizeStringList(body.reservedPrefixes || settings.dns.reservedPrefixes.join('\n')).slice(0, 500),
-      suffixes: sanitizeDnsSuffixes(suffixesInput, settings.dns.suffixes),
+      recordTypePolicies,
+      suffixes,
     };
   }
 
@@ -3553,11 +3587,28 @@ async function loadSettings(env: Env): Promise<AppSettings> {
   const registration = { ...defaults.registration, ...(saved.registration || {}) };
   const domain = { ...defaults.domain, ...(saved.domain || {}) };
   const dnsSaved = (saved as any).dns || {};
+  const hadSavedRecordTypePolicies = Array.isArray(dnsSaved.recordTypePolicies);
+  let sanitizedSuffixes = sanitizeDnsSuffixes(dnsSaved.suffixes, defaults.dns.suffixes);
+  // v98 migration: older KV settings did not have a global DNS-type policy table.
+  // On the first load after upgrading, merge newly configured DNS_ALLOWED_TYPES
+  // into every existing root-domain card so Worker variables and the editor stay aligned.
+  if (!hadSavedRecordTypePolicies) {
+    const envTypes = defaults.dns.recordTypePolicies.filter(policy => policy.allowUserAdd).map(policy => policy.type);
+    sanitizedSuffixes = sanitizedSuffixes.map(item => ({
+      ...item,
+      allowedTypes: Array.from(new Set([...item.allowedTypes, ...envTypes])),
+    }));
+  }
   const dns = {
     ...defaults.dns,
     ...dnsSaved,
     reservedPrefixes: sanitizeStringList(dnsSaved.reservedPrefixes || defaults.dns.reservedPrefixes).slice(0, 500),
-    suffixes: sanitizeDnsSuffixes(dnsSaved.suffixes, defaults.dns.suffixes),
+    recordTypePolicies: sanitizeDnsRecordTypePolicies(
+      dnsSaved.recordTypePolicies,
+      defaults.dns.recordTypePolicies,
+      typeof dnsSaved.allowMxRecords === 'boolean' ? dnsSaved.allowMxRecords : undefined,
+    ),
+    suffixes: sanitizedSuffixes,
   };
 
   return {
@@ -3603,13 +3654,10 @@ async function loadSettings(env: Env): Promise<AppSettings> {
 
 function defaultSettings(env: Env): AppSettings {
   const suffix = normalizeSuffix(env.DNS_SUFFIX || 'flore.top');
-  const allowedTypes = Array.from(new Set(
-    String(env.DNS_ALLOWED_TYPES || 'CNAME,A,AAAA,TXT,MX')
-      .split(',')
-      .map(x => x.trim().toUpperCase())
-      .filter(x => ['CNAME', 'A', 'AAAA', 'TXT', 'MX'].includes(x))
-      .concat(['CNAME', 'A', 'AAAA', 'TXT', 'MX'])
-  ));
+  const allowedTypes = sanitizeDnsRecordTypes(
+    env.DNS_ALLOWED_TYPES || 'CNAME,A,AAAA,TXT,MX',
+    ['CNAME', 'A', 'AAAA', 'TXT', 'MX'],
+  );
 
   const reserved = String(env.DNS_RESERVED_PREFIXES || 'www,api,admin,apply,storage,mail,smtp,imap,pop,ftp,cdn,static,status,support')
     .split(',')
@@ -3730,13 +3778,14 @@ function defaultSettings(env: Env): AppSettings {
       cfApiToken: '',
       blockWildcardRecords: true,
       cnameTargetBlacklist: '',
+      recordTypePolicies: buildDefaultDnsRecordTypePolicies(allowedTypes),
       suffixes: [{
         label: env.DNS_SUFFIX_LABEL || '',
         suffix,
         suffixAscii: suffix,
         zoneId: env.DNS_ZONE_ID || '',
         allowedTypes: allowedTypes.length ? allowedTypes : ['CNAME'],
-        defaultType: (['CNAME','A','AAAA','TXT','MX'].includes(String(env.DNS_DEFAULT_TYPE || '').toUpperCase())
+        defaultType: (SUPPORTED_DNS_RECORD_TYPES.includes(String(env.DNS_DEFAULT_TYPE || '').toUpperCase() as DnsRecordType)
           ? String(env.DNS_DEFAULT_TYPE).toUpperCase()
           : 'CNAME') as DnsRecordType,
         ttl: clamp(Number(env.DNS_TTL || 1), 1, 86400),
@@ -3832,6 +3881,75 @@ function sanitizeBlacklistRecords(value: unknown): unknown[] {
   })).filter((item: any) => item.value);
 }
 
+
+function sanitizeDnsRecordTypes(value: unknown, fallback: DnsRecordType[] = []): DnsRecordType[] {
+  const source = Array.isArray(value) ? value : String(value || '').split(/[\s,]+/);
+  const result = Array.from(new Set(
+    source
+      .map(item => String(item || '').trim().toUpperCase())
+      .filter((item): item is DnsRecordType => SUPPORTED_DNS_RECORD_TYPES.includes(item as DnsRecordType)),
+  ));
+  return result.length ? result : [...fallback];
+}
+
+function defaultDnsRecordDisplayName(type: DnsRecordType): string {
+  const labels: Record<DnsRecordType, string> = {
+    A: 'A（IPv4）',
+    AAAA: 'AAAA（IPv6）',
+    CNAME: 'CNAME（别名）',
+    TXT: 'TXT（文本验证）',
+    MX: 'MX（邮件）',
+    NS: 'NS（名称服务器）',
+  };
+  return labels[type] || type;
+}
+
+function buildDefaultDnsRecordTypePolicies(allowedTypes: DnsRecordType[]): DnsRecordTypePolicy[] {
+  const open = new Set(allowedTypes);
+  return SUPPORTED_DNS_RECORD_TYPES.map(type => ({
+    type,
+    displayName: defaultDnsRecordDisplayName(type),
+    allowUserAdd: open.has(type),
+    note: '',
+  }));
+}
+
+function sanitizeDnsRecordTypePolicies(
+  value: unknown,
+  fallback: DnsRecordTypePolicy[],
+  legacyAllowMx?: boolean,
+): DnsRecordTypePolicy[] {
+  const raw = Array.isArray(value) ? value : [];
+  const byType = new Map<string, any>();
+  for (const item of raw) {
+    const type = String((item as any)?.type || '').trim().toUpperCase();
+    if (SUPPORTED_DNS_RECORD_TYPES.includes(type as DnsRecordType)) byType.set(type, item);
+  }
+  const fallbackByType = new Map((fallback || []).map(item => [item.type, item]));
+  return SUPPORTED_DNS_RECORD_TYPES.map(type => {
+    const item = byType.get(type);
+    const base = fallbackByType.get(type);
+    const defaultOpen = type === 'MX' && typeof legacyAllowMx === 'boolean' ? legacyAllowMx : Boolean(base?.allowUserAdd);
+    return {
+      type,
+      displayName: cleanText(item?.displayName, 80) || base?.displayName || defaultDnsRecordDisplayName(type),
+      allowUserAdd: item ? asBoolean(item.allowUserAdd, defaultOpen) : defaultOpen,
+      note: cleanText(item?.note, 300),
+    };
+  });
+}
+
+function dnsRecordTypePolicy(settings: AppSettings, type: DnsRecordType): DnsRecordTypePolicy | undefined {
+  return settings.dns.recordTypePolicies.find(policy => policy.type === type);
+}
+
+function assertUserDnsRecordTypeOpen(settings: AppSettings, type: DnsRecordType): void {
+  const policy = dnsRecordTypePolicy(settings, type);
+  if (!policy || policy.allowUserAdd === false) {
+    throw new HttpError(403, 'DNS_TYPE_CLOSED', `管理员暂未开放用户添加 ${policy?.displayName || type} 记录`);
+  }
+}
+
 function sanitizeDnsSuffixes(value: unknown, fallback: AppSettings['dns']['suffixes']): AppSettings['dns']['suffixes'] {
   const raw = Array.isArray(value) ? value : [];
   const findExisting = (suffix: string, zoneId: string) => (fallback || []).find(item =>
@@ -3842,9 +3960,9 @@ function sanitizeDnsSuffixes(value: unknown, fallback: AppSettings['dns']['suffi
       const suffix = normalizeSuffix(String(x?.suffix || ''));
       const zoneId = cleanText(x?.zoneId, 120);
       const existing = findExisting(suffix, zoneId);
-      const allowedTypes = Array.from(new Set((Array.isArray(x?.allowedTypes) ? x.allowedTypes : String(x?.allowedTypes || 'A,AAAA,CNAME,TXT,MX').split(','))
+      const allowedTypes = Array.from(new Set((Array.isArray(x?.allowedTypes) ? x.allowedTypes : String(x?.allowedTypes || 'A,AAAA,CNAME,TXT,MX,NS').split(','))
         .map((t: any) => String(t).trim().toUpperCase())
-        .filter((t: string) => ['A','AAAA','CNAME','TXT','MX'].includes(t))));
+        .filter((t: string) => SUPPORTED_DNS_RECORD_TYPES.includes(t as DnsRecordType))));
       const defaultTypeRaw = String(x?.defaultType || allowedTypes[0] || 'CNAME').toUpperCase();
       const defaultType = (allowedTypes.includes(defaultTypeRaw) ? defaultTypeRaw : (allowedTypes[0] || 'CNAME')) as DnsRecordType;
       const incomingToken = cleanText(x?.cfApiToken, 2000);
@@ -5301,20 +5419,20 @@ async function adminSystemStatus(request: Request, env: Env): Promise<Response> 
       (SELECT COUNT(*) FROM audit_logs WHERE datetime(created_at) >= datetime('now','-' || ? || ' days')) AS logsRetained
   `).bind(auditRetentionDays).first<any>();
   return ok({
-    version: 'v97',
+    version: 'v98',
     settingsKey: SETTINGS_KEY,
     kv: { storage: 'Workers KV', estimatedKeys: '由 Cloudflare 控制台查看实际占用' },
     cfApi: { configured: Boolean(resolveDnsToken(env, settings)), status: resolveDnsToken(env, settings) ? '已配置' : '未配置' },
     cron: { enabled: Boolean(settings.automation?.enabled), expression: settings.automation?.cronExpression || '' },
     counts: { ...counts, logs4d: Number(counts?.logsRetained || 0) },
     auditRetentionDays,
-    update: { current: 'v97', latest: '请以当前部署包为准' },
+    update: { current: 'v98', latest: '请以当前部署包为准' },
   });
 }
 
 async function adminExportSettings(request: Request, env: Env): Promise<Response> {
   await requireAdmin(env, request);
-  return ok({ exportedAt: new Date().toISOString(), version: 'v97', settings: await loadSettings(env) });
+  return ok({ exportedAt: new Date().toISOString(), version: 'v98', settings: await loadSettings(env) });
 }
 
 async function adminImportSettings(request: Request, env: Env): Promise<Response> {
@@ -5656,10 +5774,9 @@ function normalizeOptionalSuffix(value: unknown): string {
 
 function normalizeRecordType(raw: unknown, allowed: string[]): DnsRecordType {
   const type = String(raw || 'CNAME').trim().toUpperCase();
-  const publicTypes = ['CNAME', 'A', 'AAAA', 'TXT', 'MX'];
-  const configured = (allowed || []).map(x => String(x).trim().toUpperCase()).filter(x => publicTypes.includes(x));
-  const allowedSet = new Set(configured.length ? configured : publicTypes);
-  if (!publicTypes.includes(type) || !allowedSet.has(type)) {
+  const configured = sanitizeDnsRecordTypes(allowed, SUPPORTED_DNS_RECORD_TYPES);
+  const allowedSet = new Set(configured.length ? configured : SUPPORTED_DNS_RECORD_TYPES);
+  if (!SUPPORTED_DNS_RECORD_TYPES.includes(type as DnsRecordType) || !allowedSet.has(type as DnsRecordType)) {
     throw new HttpError(400, 'INVALID_RECORD_TYPE', `当前根域名未开放 ${type} 记录`);
   }
   return type as DnsRecordType;
@@ -5732,10 +5849,14 @@ function normalizeDnsTarget(type: string, raw: unknown, fqdn: string): string {
     return cleaned;
   }
 
-  if (type === 'MX') {
+  if (type === 'MX' || type === 'NS') {
     const cleaned = target.replace(/^https?:\/\//, '').split('/')[0].replace(/\.$/, '');
     if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(cleaned)) {
-      throw new HttpError(400, 'INVALID_MX', 'MX 目标必须是完整邮件服务器主机名');
+      throw new HttpError(
+        400,
+        type === 'NS' ? 'INVALID_NS' : 'INVALID_MX',
+        type === 'NS' ? 'NS 目标必须是完整名称服务器主机名' : 'MX 目标必须是完整邮件服务器主机名',
+      );
     }
     return cleaned;
   }
