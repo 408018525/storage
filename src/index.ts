@@ -4182,7 +4182,7 @@ async function adminSyncCloudflareEmailAddresses(request: Request, env: Env): Pr
   });
 }
 
-type WorkerVariableKind = 'plain_text' | 'secret_text';
+type WorkerVariableKind = 'plain_text' | 'json' | 'secret_text';
 
 type WorkerVariableDefinition = {
   label: string;
@@ -4205,7 +4205,7 @@ type WorkerVariableItem = {
 };
 
 const RUNTIME_ONLY_BINDING_NAMES = new Set(['DB', 'APP_KV', 'ASSETS', 'SEB']);
-const WORKER_VARIABLE_BINDING_TYPES = new Set(['plain_text', 'secret_text']);
+const WORKER_VARIABLE_BINDING_TYPES = new Set(['plain_text', 'json', 'secret_text']);
 const PROTECTED_WORKER_VARIABLE_NAMES = new Set(['CF_WORKERS_API_TOKEN']);
 const SECRET_VARIABLE_PATTERN = /(TOKEN|SECRET|KEY|PASSWORD|PRIVATE|SALT|BOOTSTRAP|API_KEY)/i;
 
@@ -4424,13 +4424,31 @@ function normalizeWorkerVariableName(rawName: unknown): string {
 }
 
 function normalizeWorkerVariableType(rawType: unknown, name: string): WorkerVariableKind {
-  const value = String(rawType || '').trim();
+  const value = String(rawType || '').trim().toLowerCase();
   if (value === 'plain_text' || value === 'text') return 'plain_text';
+  if (value === 'json') return 'json';
   if (value === 'secret_text' || value === 'secret') return 'secret_text';
   return isSensitiveWorkerVariableName(name) ? 'secret_text' : 'plain_text';
 }
 
-function validateWorkerVariableValue(name: string, rawValue: unknown): string {
+function formatJsonWorkerVariableValue(rawValue: unknown): string {
+  const value = String(rawValue ?? '').trim();
+  if (!value) throw new HttpError(400, 'WORKER_VARIABLE_VALUE_REQUIRED', '请输入变量值');
+  if (value.length > 20000) throw new HttpError(400, 'WORKER_VARIABLE_VALUE_TOO_LONG', 'JSON 变量内容过长，请控制在 20000 字符以内');
+  try {
+    const parsed = JSON.parse(value);
+    return JSON.stringify(parsed, null, 2);
+  } catch {
+    throw new HttpError(400, 'WORKER_VARIABLE_JSON_INVALID', 'JSON 变量内容不是有效 JSON，请检查引号、逗号、括号和布尔值格式');
+  }
+}
+
+function parseJsonWorkerVariableValue(rawValue: unknown): unknown {
+  return JSON.parse(formatJsonWorkerVariableValue(rawValue));
+}
+
+function validateWorkerVariableValue(name: string, rawValue: unknown, type: WorkerVariableKind = 'plain_text'): string {
+  if (type === 'json') return formatJsonWorkerVariableValue(rawValue);
   const value = String(rawValue ?? '').trim();
   if (!value) throw new HttpError(400, 'WORKER_VARIABLE_VALUE_REQUIRED', '请输入变量值');
   if (value.length > 5000) throw new HttpError(400, 'WORKER_VARIABLE_VALUE_TOO_LONG', '变量内容过长，请控制在 5000 字符以内');
@@ -4448,7 +4466,7 @@ function validateWorkerVariableValue(name: string, rawValue: unknown): string {
 
 function buildWorkerVariableItem(name: string, type: WorkerVariableKind, value: string, source: string): WorkerVariableItem {
   const definition = resolveWorkerVariableDefinition(name, type);
-  const sensitive = isSensitiveWorkerVariableName(name, type);
+  const sensitive = type === 'json' ? false : isSensitiveWorkerVariableName(name, type);
   return {
     name,
     type,
@@ -4479,8 +4497,10 @@ function runtimeWorkerVariables(env: Env): WorkerVariableItem[] {
     .filter(name => !RUNTIME_ONLY_BINDING_NAMES.has(name))
     .filter(name => isValidWorkerVariableName(name))
     .map(name => {
-      const value = String((env as unknown as Record<string, unknown>)[name] ?? '');
-      const type = isSensitiveWorkerVariableName(name) ? 'secret_text' : 'plain_text';
+      const raw = (env as unknown as Record<string, unknown>)[name];
+      const isObjectValue = raw !== null && typeof raw === 'object';
+      const type: WorkerVariableKind = isObjectValue ? 'json' : (isSensitiveWorkerVariableName(name) ? 'secret_text' : 'plain_text');
+      const value = isObjectValue ? JSON.stringify(raw, null, 2) : String(raw ?? '');
       return buildWorkerVariableItem(name, type, value, 'runtime-fallback');
     });
 }
@@ -4536,8 +4556,8 @@ function variableItemsFromScriptSettings(settings: any): WorkerVariableItem[] {
     .filter((binding: any) => isValidWorkerVariableName(String(binding?.name || '')))
     .map((binding: any) => {
       const name = String(binding.name);
-      const type = String(binding.type) === 'secret_text' ? 'secret_text' : 'plain_text';
-      const value = type === 'plain_text' ? String(binding.text ?? '') : '';
+      const type: WorkerVariableKind = String(binding.type) === 'secret_text' ? 'secret_text' : (String(binding.type) === 'json' ? 'json' : 'plain_text');
+      const value = type === 'plain_text' ? String(binding.text ?? '') : (type === 'json' ? JSON.stringify(binding.json ?? null, null, 2) : '');
       return buildWorkerVariableItem(name, type, value, 'cloudflare-script-settings');
     });
 }
@@ -4611,7 +4631,7 @@ async function adminUpdateManagedWorkerVariable(request: Request, env: Env): Pro
     throw new HttpError(403, 'WORKER_VARIABLE_PROTECTED', 'CF_WORKERS_API_TOKEN 只能在 Cloudflare 控制台修改，不能在网站内修改');
   }
   const type = normalizeWorkerVariableType(body.type, name);
-  const value = validateWorkerVariableValue(name, body.value);
+  const value = validateWorkerVariableValue(name, body.value, type);
   const scriptName = managedWorkerScriptName(env);
   if (type === 'secret_text') {
     await putWorkerSecret(request, env, name, value);
@@ -4619,7 +4639,11 @@ async function adminUpdateManagedWorkerVariable(request: Request, env: Env): Pro
     const settings = await fetchWorkerScriptSettings(request, env);
     const bindings = Array.isArray(settings?.bindings) ? settings.bindings : [];
     const nextBindings = removeVariableBinding(bindings, name);
-    nextBindings.push({ name, type: 'plain_text', text: value });
+    if (type === 'json') {
+      nextBindings.push({ name, type: 'json', json: parseJsonWorkerVariableValue(body.value) });
+    } else {
+      nextBindings.push({ name, type: 'plain_text', text: value });
+    }
     await patchWorkerScriptBindings(request, env, nextBindings);
   }
   await audit(env, request, admin.id, 'admin.worker_variable_update', 'worker_variable', name, {
