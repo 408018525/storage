@@ -4186,10 +4186,16 @@ async function syncCloudflareEmailRecipients(force = false) {
 let managedWorkerVariablesState = null;
 
 function workerVariableTypeLabel(type) {
-  return String(type || '') === 'secret_text' ? '密钥' : '纯文本';
+  const t = workerVariableTypeValue(type);
+  if (t === 'secret_text') return '密钥';
+  if (t === 'json') return 'JSON';
+  return '文本';
 }
 function workerVariableTypeValue(type) {
-  return String(type || '') === 'secret_text' ? 'secret_text' : 'plain_text';
+  const value = String(type || '').trim().toLowerCase();
+  if (value === 'secret_text' || value === 'secret') return 'secret_text';
+  if (value === 'json') return 'json';
+  return 'plain_text';
 }
 function workerVariableValueText(item) {
   if (!item) return '';
@@ -4200,12 +4206,14 @@ function workerVariableKnownInfo(name, type) {
   const defs = managedWorkerVariablesState?.definitions || {};
   const direct = defs[name];
   if (direct) return direct;
-  const secretLike = workerVariableTypeValue(type) === 'secret_text' || /(TOKEN|SECRET|KEY|PASSWORD|PRIVATE|SALT|BOOTSTRAP|API_KEY)/i.test(name || '');
+  const normalizedType = workerVariableTypeValue(type);
+  const secretLike = normalizedType === 'secret_text' || /(TOKEN|SECRET|KEY|PASSWORD|PRIVATE|SALT|BOOTSTRAP|API_KEY)/i.test(name || '');
+  const jsonLike = normalizedType === 'json';
   return {
     label: name || '自定义变量',
-    purpose: secretLike ? '自定义密钥变量，当前代码或后续功能可能通过 env 读取它。' : '自定义文本变量，当前代码或后续功能可能通过 env 读取它。',
-    addMethod: secretLike ? '类型建议选择“密钥”；填写后代码可通过 env 读取。' : '类型建议选择“纯文本”；填写后代码可通过 env 读取。',
-    suggestedType: secretLike ? 'secret_text' : 'plain_text'
+    purpose: jsonLike ? '自定义 JSON 变量，适合保存对象、数组、布尔值、数字等结构化配置，当前代码或后续功能可能通过 env 读取它。' : (secretLike ? '自定义密钥变量，当前代码或后续功能可能通过 env 读取它。' : '自定义文本变量，当前代码或后续功能可能通过 env 读取它。'),
+    addMethod: jsonLike ? '类型选择“JSON”；值必须是有效 JSON，例如 {"enabled":true} 或 ["A","B"]。' : (secretLike ? '类型建议选择“密钥”；填写后代码可通过 env 读取。' : '类型建议选择“文本”；填写后代码可通过 env 读取。'),
+    suggestedType: jsonLike ? 'json' : (secretLike ? 'secret_text' : 'plain_text')
   };
 }
 function renderWorkerVariableRows(variables) {
@@ -4216,7 +4224,7 @@ function renderWorkerVariableRows(variables) {
     const type = workerVariableTypeValue(item.type);
     const label = item.label || item.name;
     return `<tr>
-      <td><span class="status-pill ${type === 'secret_text' ? 'pending' : 'ok'}">${workerVariableTypeLabel(type)}</span></td>
+      <td><span class="status-pill ${type === 'secret_text' ? 'pending' : (type === 'json' ? 'info' : 'ok')}">${workerVariableTypeLabel(type)}</span></td>
       <td><strong><code>${esc(item.name)}</code></strong><p class="muted small">${esc(label)}</p></td>
       <td class="mono-cell">${esc(workerVariableValueText(item))}</td>
       <td><p><b>用途：</b>${esc(item.purpose || '')}</p><p class="muted small"><b>添加方法：</b>${esc(item.addMethod || '')}</p></td>
@@ -4239,9 +4247,9 @@ function openWorkerVariableModal(mode, item = null) {
   const info = workerVariableKnownInfo(name, type);
   openModal(isEdit ? '编辑 Worker 变量' : '添加 Worker 变量', isEdit ? `修改 ${name}` : '与 Cloudflare 变量和密钥填写方式保持一致', `
     <form id="worker-variable-form" class="form-grid">
-      <label class="field"><span>类型</span><select name="type"><option value="plain_text" ${type === 'plain_text' ? 'selected' : ''}>纯文本</option><option value="secret_text" ${type === 'secret_text' ? 'selected' : ''}>密钥</option></select><em>密钥不会读取或回显旧值；保存后 Cloudflare 会显示“值已加密”。</em></label>
+      <label class="field"><span>类型</span><select name="type"><option value="plain_text" ${type === 'plain_text' ? 'selected' : ''}>文本</option><option value="json" ${type === 'json' ? 'selected' : ''}>JSON</option><option value="secret_text" ${type === 'secret_text' ? 'selected' : ''}>密钥</option></select><em>与 Cloudflare 后台一致：文本、JSON、密钥。密钥不会读取或回显旧值。</em></label>
       <label class="field"><span>变量名称</span><input name="name" value="${fieldValue(name)}" ${isEdit ? 'readonly' : ''} placeholder="例如 CF_ACCOUNT_ID"><em>只能使用字母、数字和下划线，不能以数字开头。</em></label>
-      <label class="field wide"><span>值</span><textarea name="value" rows="4" placeholder="请输入新值"></textarea><em>${isEdit && type === 'secret_text' ? '密钥旧值不会显示；输入新值后会覆盖原密钥。' : '填写内容与 Cloudflare 后台“值”输入框一致。'}</em></label>
+      <label class="field wide"><span>值</span><textarea name="value" rows="6" placeholder="请输入新值">${isEdit && type !== 'secret_text' ? fieldValue(item?.value || '') : ''}</textarea><em>${isEdit && type === 'secret_text' ? '密钥旧值不会显示；输入新值后会覆盖原密钥。' : (type === 'json' ? 'JSON 变量必须填写有效 JSON；系统会保存为结构化 JSON，不是普通字符串。' : '填写内容与 Cloudflare 后台“值”输入框一致。')}</em></label>
       <div class="readonly-box wide" id="worker-variable-help"><b>${esc(info.label || name || '变量说明')}</b><p><b>用途：</b>${esc(info.purpose || '')}</p><p><b>添加方法：</b>${esc(info.addMethod || '')}</p></div>
       <div class="modal-actions wide"><button class="btn soft" type="button" data-close-modal>取消</button><button class="btn primary" type="submit">${isEdit ? '保存修改' : '添加变量'}</button></div>
     </form>`, 'wide');
@@ -4265,6 +4273,9 @@ function openWorkerVariableModal(mode, item = null) {
     };
     if (!payload.name || !payload.value) return toast('请填写变量名称和值', 'error');
     if (payload.name === 'CF_WORKERS_API_TOKEN') return toast('CF_WORKERS_API_TOKEN 只能在 Cloudflare 控制台维护', 'error');
+    if (workerVariableTypeValue(payload.type) === 'json') {
+      try { JSON.parse(payload.value); } catch { return toast('JSON 变量内容不是有效 JSON，请检查引号、逗号、括号和布尔值格式', 'error'); }
+    }
     const label = isEdit ? '确认保存这个 Worker 变量？' : '确认添加这个 Worker 变量？';
     if (!confirm(`${label}\n\n变量：${payload.name}\n类型：${workerVariableTypeLabel(payload.type)}\n\n保存后会直接写入 Cloudflare Worker。`)) return;
     const submit = form.querySelector('button[type="submit"]');
@@ -4545,7 +4556,7 @@ async function renderAdminSettings() {
       <div class="tab-page" data-page="variables">
         <section class="card settings-grid worker-variables-page">
           <div class="settings-section-heading wide"><span>01</span><div><h3>变量和密钥</h3><p>同步当前 Cloudflare Worker 的变量和密钥，显示方式与 Cloudflare 后台“变量和密钥”保持一致。</p></div></div>
-          <div class="readonly-box wide"><b>使用说明</b><p>这里会通过 Cloudflare API 读取当前 <code>storage</code> Worker 的实际变量列表，不再使用固定白名单。你可以直接添加、编辑、删除普通变量或密钥。</p><p><code>CF_WORKERS_API_TOKEN</code> 是管理令牌本身，必须在 Cloudflare 控制台手动维护，网站内不会允许修改或删除。</p></div>
+          <div class="readonly-box wide"><b>使用说明</b><p>这里会通过 Cloudflare API 读取当前 <code>storage</code> Worker 的实际变量列表，不再使用固定白名单。你可以直接添加、编辑、删除文本、JSON 或密钥变量。</p><p><code>CF_WORKERS_API_TOKEN</code> 是管理令牌本身，必须在 Cloudflare 控制台手动维护，网站内不会允许修改或删除。</p></div>
           <div class="toolbar-actions wide"><button class="btn soft" id="refresh-worker-variables" type="button">同步当前 Worker 变量</button><button class="btn primary" id="add-worker-variable" type="button">＋ 添加变量</button></div>
           <p id="managed-worker-variable-status" class="muted wide">正在读取变量状态…</p>
           <div id="worker-variables-list" class="wide"><div class="loading-card">正在同步 Cloudflare Worker 变量…</div></div>
