@@ -3251,6 +3251,91 @@ async function adminAnalytics(request: Request, env: Env, url: URL): Promise<Res
   const decided=approved+rejected;
   const readReceipts=await env.DB.prepare(`SELECT COUNT(*) AS count,COUNT(DISTINCT user_id) AS readers FROM message_reads WHERE datetime(read_at)>=datetime(?) AND datetime(read_at)<datetime(?)`).bind(startSql,endSql).first<any>();
 
+  const [
+    loginRecencyRows, userStageRows, dnsTypeHealthRows, messageLevelReadRows,
+    topActorRows, topIpRows, deviceTypeRows, reviewerRows, domainAgeRows, riskFlagRows
+  ] = await Promise.all([
+    env.DB.prepare(`
+      SELECT CASE
+        WHEN last_login_at IS NULL OR last_login_at='' THEN 'never'
+        WHEN datetime(last_login_at)>=datetime('now','-1 day') THEN 'today'
+        WHEN datetime(last_login_at)>=datetime('now','-7 days') THEN 'within_7d'
+        WHEN datetime(last_login_at)>=datetime('now','-30 days') THEN 'within_30d'
+        ELSE 'older_30d' END AS bucket, COUNT(*) AS count
+      FROM users WHERE status!='deleted' GROUP BY bucket ORDER BY count DESC
+    `).all<any>(),
+    env.DB.prepare(`
+      SELECT stage,COUNT(*) AS count FROM (
+        SELECT u.id,CASE
+          WHEN EXISTS(SELECT 1 FROM dns_records d WHERE d.user_id=u.id AND (d.deleted_at IS NULL OR d.deleted_at='')) THEN 'configured_dns'
+          WHEN EXISTS(SELECT 1 FROM domain_applications a WHERE a.user_id=u.id AND a.status='approved' AND (a.deleted_at IS NULL OR a.deleted_at='')) THEN 'approved_domain'
+          WHEN EXISTS(SELECT 1 FROM domain_applications a WHERE a.user_id=u.id AND (a.deleted_at IS NULL OR a.deleted_at='')) THEN 'applied'
+          ELSE 'registered_only' END AS stage
+        FROM users u WHERE u.status!='deleted'
+      ) GROUP BY stage ORDER BY count DESC
+    `).all<any>(),
+    env.DB.prepare(`
+      SELECT UPPER(type) AS type,
+        COUNT(*) AS total,
+        SUM(CASE WHEN status!='pending' AND status!='failed' AND (error_message IS NULL OR error_message='') THEN 1 ELSE 0 END) AS normal,
+        SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,
+        SUM(CASE WHEN status='failed' OR (error_message IS NOT NULL AND error_message!='') THEN 1 ELSE 0 END) AS errors,
+        SUM(CASE WHEN proxied=1 THEN 1 ELSE 0 END) AS proxied,
+        SUM(CASE WHEN proxied!=1 OR proxied IS NULL THEN 1 ELSE 0 END) AS dns_only
+      FROM dns_records WHERE (deleted_at IS NULL OR deleted_at='')
+      GROUP BY UPPER(type) ORDER BY total DESC
+    `).all<any>(),
+    env.DB.prepare(`
+      SELECT m.level,COUNT(DISTINCT m.id) AS sent,COUNT(r.user_id) AS receipts,COUNT(DISTINCT r.user_id) AS readers
+      FROM system_messages m LEFT JOIN message_reads r ON r.message_id=m.id
+      WHERE m.status='sent' AND (m.deleted_at IS NULL OR m.deleted_at='')
+        AND datetime(COALESCE(m.sent_at,m.created_at))>=datetime(?) AND datetime(COALESCE(m.sent_at,m.created_at))<datetime(?)
+      GROUP BY m.level ORDER BY sent DESC
+    `).bind(startSql,endSql).all<any>(),
+    env.DB.prepare(`
+      SELECT COALESCE(NULLIF(u.username,''),'系统') AS label,COUNT(*) AS count,MAX(l.created_at) AS latest
+      FROM audit_logs l LEFT JOIN users u ON u.id=l.actor_user_id
+      WHERE datetime(l.created_at)>=datetime(?) AND datetime(l.created_at)<datetime(?)
+      GROUP BY COALESCE(NULLIF(u.username,''),'系统') ORDER BY count DESC LIMIT 12
+    `).bind(startSql,endSql).all<any>(),
+    env.DB.prepare(`
+      SELECT COALESCE(NULLIF(ip,''),'未知 IP') AS label,COUNT(*) AS count,MAX(created_at) AS latest
+      FROM audit_logs WHERE datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?)
+      GROUP BY COALESCE(NULLIF(ip,''),'未知 IP') ORDER BY count DESC LIMIT 12
+    `).bind(startSql,endSql).all<any>(),
+    env.DB.prepare(`
+      SELECT COALESCE(NULLIF(device_type,''),'unknown') AS device,COUNT(*) AS count,COUNT(DISTINCT user_id) AS users
+      FROM sessions
+      WHERE datetime(COALESCE(last_seen_at,created_at))>=datetime(?) AND datetime(COALESCE(last_seen_at,created_at))<datetime(?)
+      GROUP BY COALESCE(NULLIF(device_type,''),'unknown') ORDER BY count DESC
+    `).bind(startSql,endSql).all<any>(),
+    env.DB.prepare(`
+      SELECT COALESCE(NULLIF(u.username,''),'系统') AS reviewer,COUNT(*) AS reviewed,
+        SUM(CASE WHEN a.status='approved' THEN 1 ELSE 0 END) AS approved,
+        SUM(CASE WHEN a.status='rejected' THEN 1 ELSE 0 END) AS rejected,
+        AVG(MAX(0,(julianday(a.reviewed_at)-julianday(a.created_at))*24)) AS avg_hours
+      FROM domain_applications a LEFT JOIN users u ON u.id=a.reviewed_by
+      WHERE a.reviewed_at IS NOT NULL AND datetime(a.reviewed_at)>=datetime(?) AND datetime(a.reviewed_at)<datetime(?)
+      GROUP BY COALESCE(NULLIF(u.username,''),'系统') ORDER BY reviewed DESC LIMIT 12
+    `).bind(startSql,endSql).all<any>(),
+    env.DB.prepare(`
+      SELECT CASE
+        WHEN julianday('now')-julianday(created_at)<7 THEN 'age_7d'
+        WHEN julianday('now')-julianday(created_at)<30 THEN 'age_30d'
+        WHEN julianday('now')-julianday(created_at)<90 THEN 'age_90d'
+        WHEN julianday('now')-julianday(created_at)<365 THEN 'age_1y'
+        ELSE 'age_over_1y' END AS bucket,COUNT(*) AS count
+      FROM domain_applications WHERE status='approved' AND (deleted_at IS NULL OR deleted_at='')
+      GROUP BY bucket ORDER BY count DESC
+    `).all<any>(),
+    env.DB.prepare(`
+      SELECT 'controlled' AS flag,COUNT(*) AS count FROM domain_applications WHERE controlled_at IS NOT NULL AND controlled_at!='' AND (deleted_at IS NULL OR deleted_at='')
+      UNION ALL SELECT 'delete_requested',COUNT(*) FROM domain_applications WHERE delete_requested_at IS NOT NULL AND delete_requested_at!='' AND (deleted_at IS NULL OR deleted_at='')
+      UNION ALL SELECT 'dns_error',COUNT(*) FROM dns_records WHERE (status='failed' OR (error_message IS NOT NULL AND error_message!='')) AND (deleted_at IS NULL OR deleted_at='')
+      UNION ALL SELECT 'disabled_users',COUNT(*) FROM users WHERE status='disabled'
+    `).all<any>(),
+  ]);
+
   return ok({analytics:{
     generatedAt:new Date().toISOString(),
     range:{preset:range.preset,days:range.days,start:range.start.toISOString(),end:range.end.toISOString(),bucket:range.bucket,label:range.label,previousStart:range.prevStart.toISOString(),previousEnd:range.prevEnd.toISOString()},
@@ -3262,6 +3347,7 @@ async function adminAnalytics(request: Request, env: Env, url: URL): Promise<Res
       dns:metric(Number(dnsTotals?.active||0),Math.max(0,Number(dnsTotals?.total||0)-Number(dnsTotals?.active||0)),Number(dnsTotals?.current||0),Number(dnsTotals?.previous||0)),
       dnsHealth:{pending:Number(dnsTotals?.pending||0),errors:Number(dnsTotals?.errors||0),proxied:Number(dnsTotals?.proxied||0)},
       messages:metric(Number(messageTotals?.total||0),0,Number(messageTotals?.current||0),Number(messageTotals?.previous||0)),
+      messageHealth:{important:Number(messageTotals?.important||0)},
       audit:metric(Number(auditTotals?.total||0),0,Number(auditTotals?.current||0),Number(auditTotals?.previous||0)),
       security:{errors:Number(auditTotals?.errors||0),logins:Number(auditTotals?.logins||0),loginFailures:Number(auditTotals?.login_failures||0)},
       registrationKeys:{total:Number(keyTotals?.total||0),active:Number(keyTotals?.active||0),exhausted:Number(keyTotals?.exhausted||0),expired:Number(keyTotals?.expired||0),used:Number(keyTotals?.used||0)},
@@ -3270,8 +3356,17 @@ async function adminAnalytics(request: Request, env: Env, url: URL): Promise<Res
     messageEngagement:{sent:Number(messageTotals?.current||0),readReceipts:Number(readReceipts?.count||0),readers:Number(readReceipts?.readers||0)},
     funnel:{users:Number(funnelRows?.users||0),applicants:Number(funnelRows?.applicants||0),approvedUsers:Number(funnelRows?.approved_users||0),dnsUsers:Number(funnelRows?.dns_users||0),applications:Number(funnelRows?.applications||0),approvedApplications:Number(funnelRows?.approved_applications||0),configuredApplications:Number(funnelRows?.configured_applications||0)},
     trends:{growth:growthTrend,domains:domainTrend,dns:dnsTrend,operations:operationTrend},
-    distributions:{userStatus:userStatusRows.results||[],userRole:userRoleRows.results||[],domainStatus:domainStatusRows.results||[],suffix:suffixRows.results||[],dnsType:dnsTypeRows.results||[],dnsStatus:dnsStatusRows.results||[],dnsProxy:dnsProxyRows.results||[],messageLevel:messageLevelRows.results||[],messageTarget:messageTargetRows.results||[],auditCategory:auditCategoryRows.results||[],expiry:expiryRows.results||[]},
-    rankings:{users:topUsersRows.results||[],suffixes:topSuffixRows.results||[],failures:failureRows.results||[]},
+    distributions:{
+      userStatus:userStatusRows.results||[],userRole:userRoleRows.results||[],domainStatus:domainStatusRows.results||[],suffix:suffixRows.results||[],
+      dnsType:dnsTypeRows.results||[],dnsStatus:dnsStatusRows.results||[],dnsProxy:dnsProxyRows.results||[],messageLevel:messageLevelRows.results||[],
+      messageTarget:messageTargetRows.results||[],auditCategory:auditCategoryRows.results||[],expiry:expiryRows.results||[],
+      loginRecency:loginRecencyRows.results||[],userStage:userStageRows.results||[],dnsTypeHealth:dnsTypeHealthRows.results||[],
+      messageLevelRead:messageLevelReadRows.results||[],deviceType:deviceTypeRows.results||[],domainAge:domainAgeRows.results||[],riskFlags:riskFlagRows.results||[]
+    },
+    rankings:{
+      users:topUsersRows.results||[],suffixes:topSuffixRows.results||[],failures:failureRows.results||[],
+      actors:topActorRows.results||[],ips:topIpRows.results||[],reviewers:reviewerRows.results||[]
+    },
     recent:{audit:recentAuditRows.results||[],applications:recentAppRows.results||[]},
     heatmap:heatmapRows.results||[],
   }});
@@ -5585,20 +5680,20 @@ async function adminSystemStatus(request: Request, env: Env): Promise<Response> 
       (SELECT COUNT(*) FROM audit_logs WHERE datetime(created_at) >= datetime('now','-' || ? || ' days')) AS logsRetained
   `).bind(auditRetentionDays).first<any>();
   return ok({
-    version: 'v99',
+    version: 'v100',
     settingsKey: SETTINGS_KEY,
     kv: { storage: 'Workers KV', estimatedKeys: '由 Cloudflare 控制台查看实际占用' },
     cfApi: { configured: Boolean(resolveDnsToken(env, settings)), status: resolveDnsToken(env, settings) ? '已配置' : '未配置' },
     cron: { enabled: Boolean(settings.automation?.enabled), expression: settings.automation?.cronExpression || '' },
     counts: { ...counts, logs4d: Number(counts?.logsRetained || 0) },
     auditRetentionDays,
-    update: { current: 'v99', latest: '请以当前部署包为准' },
+    update: { current: 'v100', latest: '请以当前部署包为准' },
   });
 }
 
 async function adminExportSettings(request: Request, env: Env): Promise<Response> {
   await requireAdmin(env, request);
-  return ok({ exportedAt: new Date().toISOString(), version: 'v99', settings: await loadSettings(env) });
+  return ok({ exportedAt: new Date().toISOString(), version: 'v100', settings: await loadSettings(env) });
 }
 
 async function adminImportSettings(request: Request, env: Env): Promise<Response> {
