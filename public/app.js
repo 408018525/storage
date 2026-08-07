@@ -4141,6 +4141,116 @@ function bindAnalyticsControls(rangeState) {
   document.querySelector('#refresh-analytics')?.addEventListener('click', renderAdminAnalytics);
 }
 
+
+function renderCloudflareRecipientOptions(addresses, selected) {
+  const list = Array.from(new Set([...(Array.isArray(addresses) ? addresses : []), selected].map(x => String(x || '').trim().toLowerCase()).filter(x => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x))));
+  if (!list.length) return '<option value="">请先同步已验证邮箱</option>';
+  return list.map(email => `<option value="${esc(email)}" ${email === String(selected || '').trim().toLowerCase() ? 'selected' : ''}>${esc(email)}</option>`).join('');
+}
+
+function updateCloudflareEmailTestButton() {
+  const select = document.querySelector('#cloudflare-admin-recipient');
+  const button = document.querySelector('#test-email-delivery');
+  const target = String(select?.value || '').trim();
+  if (button) button.textContent = target ? `发送到 ${target}` : '发送到所选邮箱';
+  const targetText = document.querySelector('#cloudflare-test-recipient-text');
+  if (targetText) targetText.textContent = target || '尚未选择';
+}
+
+async function syncCloudflareEmailRecipients(force = false) {
+  const button = document.querySelector('#sync-cloudflare-email-addresses');
+  const resultEl = document.querySelector('#cloudflare-email-sync-result');
+  const select = document.querySelector('#cloudflare-admin-recipient');
+  if (button) button.disabled = true;
+  if (resultEl) resultEl.textContent = '正在同步…';
+  try {
+    const result = await api('/api/admin/email/cloudflare-addresses/sync', { method:'POST', body:{ force } });
+    const addresses = Array.isArray(result.addresses) ? result.addresses : [];
+    if (select) {
+      select.innerHTML = renderCloudflareRecipientOptions(addresses, result.selected);
+      select.value = result.selected || addresses[0] || '';
+    }
+    if (resultEl) resultEl.textContent = `${result.message || '同步完成'} · 通道 Cloudflare SEB`;
+    updateCloudflareEmailTestButton();
+    if (force) toast(result.message || '已同步 Cloudflare 已验证邮箱', 'success');
+    return result;
+  } catch (error) {
+    if (resultEl) resultEl.textContent = error.message || '同步失败';
+    if (force) toast(error.message || '同步失败', 'error');
+    throw error;
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+let managedWorkerVariablesState = null;
+
+function updateManagedWorkerVariableEditor() {
+  const select = document.querySelector('#managed-worker-variable-name');
+  const input = document.querySelector('#managed-worker-variable-value');
+  const current = document.querySelector('#managed-worker-variable-current');
+  if (!select || !input || !current) return;
+  const item = managedWorkerVariablesState?.variables?.find(variable => variable.name === select.value);
+  if (!item) {
+    current.textContent = '尚未读取 Worker 变量状态';
+    input.value = '';
+    return;
+  }
+  input.type = item.sensitive ? 'password' : 'text';
+  input.value = '';
+  input.placeholder = item.sensitive
+    ? (item.configured ? '已配置；输入新值将替换，原值不会显示' : '请输入新值')
+    : (item.value || '请输入新值');
+  current.textContent = item.sensitive
+    ? `${item.label}：${item.configured ? '已配置（密钥值不可读取）' : '未配置'}`
+    : `${item.label} 当前生效值：${item.value || '未配置'}`;
+}
+
+async function loadManagedWorkerVariables() {
+  const status = document.querySelector('#managed-worker-variable-status');
+  try {
+    const result = await api('/api/admin/worker-variables');
+    managedWorkerVariablesState = result;
+    if (status) status.textContent = result.enabled
+      ? `API 管理已启用 · Worker：${result.scriptName}`
+      : '未启用：请先在 Cloudflare 添加 CF_WORKERS_API_TOKEN Secret';
+    updateManagedWorkerVariableEditor();
+    return result;
+  } catch (error) {
+    if (status) status.textContent = error.message || '读取 Worker 变量失败';
+    throw error;
+  }
+}
+
+async function saveManagedWorkerVariable() {
+  const select = document.querySelector('#managed-worker-variable-name');
+  const input = document.querySelector('#managed-worker-variable-value');
+  const button = document.querySelector('#save-managed-worker-variable');
+  const status = document.querySelector('#managed-worker-variable-status');
+  const name = String(select?.value || '').trim();
+  const value = String(input?.value || '').trim();
+  const item = managedWorkerVariablesState?.variables?.find(variable => variable.name === name);
+  if (!name || !item) return toast('请选择要修改的 Worker 变量', 'error');
+  if (!value) return toast('请输入新的变量值', 'error');
+  if (!confirm(`确认更新 ${item.label}？
+
+该操作会直接修改 Cloudflare Worker Secret，并可能生成新的 Worker 版本。`)) return;
+  if (button) button.disabled = true;
+  if (status) status.textContent = '正在更新 Cloudflare Worker 变量…';
+  try {
+    const result = await api('/api/admin/worker-variables', { method:'POST', body:{ name, value } });
+    if (input) input.value = '';
+    if (status) status.textContent = result.message || '更新成功';
+    toast(result.message || 'Worker 变量已更新', 'success');
+    setTimeout(() => loadManagedWorkerVariables().catch(() => undefined), 5000);
+  } catch (error) {
+    if (status) status.textContent = error.message || '更新失败';
+    toast(error.message || '更新失败', 'error');
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
 async function renderAdminSettings() {
   shell('管理员设置', `<div class="loading-card">正在读取设置…</div>`);
   try {
@@ -4233,7 +4343,11 @@ async function renderAdminSettings() {
           <label class="check"><input name="emailVerificationEnabled" type="checkbox" ${yn(reg.emailVerificationEnabled)}> 注册邮箱验证开关 <em>开启后注册必须填写邮箱并通过邮件验证码。</em></label>
           <label class="check"><input name="blockVpnProxy" type="checkbox" ${yn(reg.blockVpnProxy)}> 拦截 VPN / 代理注册 <em>仅在 Worker 能读取可信代理风险字段时生效；未接入检测源时不会自动判断 VPN。</em></label>
           <div class="settings-section-heading wide"><span>05</span><div><h3>邮件发送分工</h3><p>注册验证码发送给任意用户邮箱，继续使用 Resend；只发给管理员的通知使用 Cloudflare 免费邮件绑定。</p></div></div>
-          <div class="readonly-box wide"><b>当前发送方式</b><p>注册验证码 → Resend。管理员测试、系统异常、用户帮助、域名待审核、DNS 异常 → Cloudflare 邮件绑定 SEB。</p><p><b>Cloudflare 绑定状态：</b>${reg.cloudflareAdminEmailConfigured ? '已配置' : '未配置'}　<b>固定管理员收件邮箱：</b>${esc(reg.cloudflareAdminEmail || 'admin@flore.top')}　<b>发件邮箱：</b>${esc(reg.cloudflareAdminEmailFrom || reg.emailFrom || 'admin@flore.top')}</p><p>Cloudflare 免费邮件只能发送到已验证的固定目标邮箱；这里不允许手动改成其他收件人。</p></div>
+          <div class="readonly-box wide"><b>当前发送方式</b><p><span class="badge">Resend</span> 注册验证码 → 任意用户邮箱。　<span class="badge">Cloudflare SEB</span> 管理员测试、系统异常、用户帮助、域名待审核、DNS 异常 → 已验证目标邮箱。</p><p><b>Cloudflare 绑定状态：</b>${reg.cloudflareAdminEmailConfigured ? '已配置' : '未配置'}　<b>当前管理员收件邮箱：</b>${esc(reg.cloudflareAdminEmail || reg.cloudflareAdminRecipient || '尚未选择')}　<b>发件邮箱：</b>${esc(reg.cloudflareAdminEmailFrom || reg.emailFrom || 'admin@flore.top')}</p><p>测试结果、操作日志和 Workers 日志都会明确记录发送通道：<code>cloudflare-seb</code> 或 <code>resend</code>。</p></div>
+          <label class="field"><span>Cloudflare Account ID</span><input name="cloudflareEmailAccountId" value="${fieldValue(reg.cloudflareEmailAccountId || '')}" placeholder="32 位 Account ID"><em>用于读取账户级已验证邮箱。也可配置 Worker 变量 CF_ACCOUNT_ID。</em></label>
+          <label class="field"><span>Email Routing API Token</span><input name="cloudflareEmailApiToken" type="password" autocomplete="new-password" placeholder="${reg.cloudflareEmailApiTokenConfigured ? '已配置，留空保持不变' : '请输入只读 API Token'}"><em>只授予 Email Routing Addresses Read。建议使用 Worker Secret：CF_EMAIL_ROUTING_API_TOKEN。</em></label>
+          <div class="field wide"><span>Cloudflare 已验证收件邮箱</span><div class="email-test-row"><select name="cloudflareAdminRecipient" id="cloudflare-admin-recipient">${renderCloudflareRecipientOptions(reg.cloudflareVerifiedRecipients, reg.cloudflareAdminEmail || reg.cloudflareAdminRecipient)}</select><button class="btn soft" id="sync-cloudflare-email-addresses" type="button">同步已验证邮箱</button><span id="cloudflare-email-sync-result" class="muted">${reg.cloudflareRecipientsSyncedAt ? `上次同步：${esc(fmtDate(reg.cloudflareRecipientsSyncedAt))}` : '尚未同步'}</span></div><em>所有 Cloudflare 管理员通知都会发送到这里选中的邮箱。绑定名称 SEB 允许发送到本账户任意已验证目标邮箱。</em></div>
+          <div class="readonly-box wide"><b>Worker 邮件变量快捷管理（安全白名单）</b><p>可以在网站内更新常用邮件、Cloudflare、Turnstile 变量。首次仍需在 Cloudflare 控制台添加 <code>CF_WORKERS_API_TOKEN</code> Secret，权限只授予 <code>Workers Scripts Write</code>；这个管理令牌本身不能在网站内修改。</p><div class="email-test-row"><select id="managed-worker-variable-name"><option value="EMAIL_FROM">发件邮箱 EMAIL_FROM</option><option value="EMAIL_FROM_NAME">发件名称 EMAIL_FROM_NAME</option><option value="CF_ADMIN_EMAIL">管理员收件邮箱 CF_ADMIN_EMAIL</option><option value="CF_ACCOUNT_ID">Cloudflare Account ID</option><option value="APP_ENVIRONMENT">运行环境 APP_ENVIRONMENT</option><option value="TURNSTILE_SITE_KEY">Turnstile Site Key</option><option value="RESEND_API_KEY">Resend API Key</option><option value="CF_EMAIL_ROUTING_API_TOKEN">Email Routing API Token</option><option value="CF_API_TOKEN">Cloudflare DNS API Token</option><option value="TURNSTILE_SECRET">Turnstile Secret</option></select><input id="managed-worker-variable-value" type="text" autocomplete="new-password" placeholder="请输入新值"><button class="btn soft" id="save-managed-worker-variable" type="button">更新 Worker 变量</button></div><p id="managed-worker-variable-current" class="muted">尚未读取 Worker 变量状态</p><p id="managed-worker-variable-status" class="muted">${reg.cloudflareWorkerApiConfigured ? `API 管理已配置 · Worker：${esc(reg.cloudflareWorkerScriptName || 'storage')}` : '未启用：请先添加 CF_WORKERS_API_TOKEN Secret'}</p></div>
           <label class="field"><span>Resend API Key（仅注册验证码）</span><input name="emailApiKey" type="password" autocomplete="new-password" placeholder="${reg.emailApiKeyConfigured ? '已配置，留空保持不变' : 're_...'}"><em>只用于把验证码发送到 QQ、Gmail、Outlook 等任意注册邮箱。建议使用 Worker Secret：RESEND_API_KEY。</em></label>
           <label class="field"><span>统一发件邮箱</span><input name="emailFrom" type="email" value="${fieldValue(reg.emailFrom || '')}" placeholder="admin@flore.top"><em>Resend 与 Cloudflare 管理员通知都会优先使用 EMAIL_FROM 环境变量。</em></label>
           <label class="field"><span>统一发件名称</span><input name="emailFromName" value="${fieldValue(reg.emailFromName || 'FLORE域名注册中心')}" placeholder="FLORE域名注册中心"><em>显示在收件箱中的发件人名称。</em></label>
@@ -4255,7 +4369,7 @@ async function renderAdminSettings() {
           <label class="field wide"><span>测试邮件主题</span><input name="emailTestSubjectTemplate" value="${fieldValue(reg.emailTestSubjectTemplate || '【{{siteName}}】邮件服务测试')}"></label>
           <label class="field wide"><span>测试邮件纯文本内容</span><textarea name="emailTestTextTemplate" rows="5">${esc(reg.emailTestTextTemplate || '')}</textarea></label>
           <label class="field wide"><span>测试邮件 HTML 内容</span><textarea name="emailTestHtmlTemplate" rows="7">${esc(reg.emailTestHtmlTemplate || '')}</textarea><em>可留空，系统会把纯文本自动转换成 HTML。</em></label>
-          <div class="readonly-box wide email-test-box"><b>发送 Cloudflare 测试邮件</b><p>先保存上方配置。邮件固定发送到 ${esc(reg.cloudflareAdminEmail || 'admin@flore.top')}，不使用 Resend 配额。</p><div class="email-test-row"><select id="email-test-scene"><option value="test">测试邮件模板</option><option value="registration">注册验证码模板（生成示例验证码）</option></select><button class="btn soft" id="test-email-delivery" type="button">发送到管理员邮箱</button><span id="email-test-result" class="muted"></span></div></div>
+          <div class="readonly-box wide email-test-box"><b>发送 Cloudflare SEB 测试邮件</b><p>先保存上方配置。当前目标：<strong id="cloudflare-test-recipient-text">${esc(reg.cloudflareAdminEmail || reg.cloudflareAdminRecipient || '尚未选择')}</strong>，不使用 Resend 配额。</p><div class="email-test-row"><select id="email-test-scene"><option value="test">测试邮件模板</option><option value="registration">注册验证码模板（生成示例验证码）</option></select><button class="btn soft" id="test-email-delivery" type="button">发送到所选邮箱</button><span id="email-test-result" class="muted"></span></div></div>
           <div class="settings-section-heading wide"><span>06</span><div><h3>邮箱规则与关闭提示</h3><p>管理邮箱后缀限制和注册关闭时的前台说明。</p></div></div>
           <label class="field wide"><span>邮箱后缀拦截黑名单</span><textarea name="emailDomainBlacklist" rows="4" placeholder="tempmail.com&#10;mailinator.com">${esc(reg.emailDomainBlacklist || '')}</textarea><em>一行一个邮箱后缀，不要带 @ 也可以。</em></label>
           <label class="field wide"><span>关闭注册时前台提示文案</span><textarea name="disabledMessage" rows="3">${esc(reg.disabledMessage || '')}</textarea><em>注册关闭时显示给用户。</em></label>
@@ -4417,18 +4531,26 @@ async function renderAdminSettings() {
     document.querySelector('#test-email-delivery')?.addEventListener('click', async event => {
       const button = event.currentTarget;
       const scene = String(document.querySelector('#email-test-scene')?.value || 'test');
+      const recipient = String(document.querySelector('#cloudflare-admin-recipient')?.value || '').trim();
       const resultEl = document.querySelector('#email-test-result');
       button.disabled = true;
       if (resultEl) resultEl.textContent = '发送中…';
       try {
-        const result = await api('/api/admin/email/test', { method:'POST', body:{ scene } });
-        if (resultEl) resultEl.textContent = result.message || '发送成功';
+        const result = await api('/api/admin/email/test', { method:'POST', body:{ scene, recipient } });
+        if (resultEl) resultEl.textContent = `${result.message || '发送成功'} · 通道 ${result.provider || 'cloudflare-seb'}`;
         toast('测试邮件发送成功', 'success');
       } catch (error) {
         if (resultEl) resultEl.textContent = error.message;
         toast(error.message, 'error');
       } finally { button.disabled = false; }
     });
+    document.querySelector('#sync-cloudflare-email-addresses')?.addEventListener('click', () => syncCloudflareEmailRecipients(true).catch(() => undefined));
+    document.querySelector('#cloudflare-admin-recipient')?.addEventListener('change', updateCloudflareEmailTestButton);
+    document.querySelector('#managed-worker-variable-name')?.addEventListener('change', updateManagedWorkerVariableEditor);
+    document.querySelector('#save-managed-worker-variable')?.addEventListener('click', saveManagedWorkerVariable);
+    updateCloudflareEmailTestButton();
+    loadManagedWorkerVariables().catch(() => undefined);
+    if (reg.cloudflareEmailAccountId && reg.cloudflareEmailApiTokenConfigured) syncCloudflareEmailRecipients(false).catch(() => undefined);
     loadSystemStatusPanel();
   } catch (error) { toast(error.message, 'error'); }
 }
@@ -4557,8 +4679,8 @@ function notificationTemplateFields(n={}) { const names={newUser:'新账号注�
 function collectNotificationPayload(f) { const events={newUser:f.get('newUser')==='on',newDomain:f.get('newDomain')==='on',domainExpiring:f.get('domainExpiring')==='on',domainExpiredDelete:f.get('domainExpiredDelete')==='on',abnormalRegister:f.get('abnormalRegister')==='on',systemErrorEmail:f.get('systemErrorEmail')==='on',helpSubmissionEmail:f.get('helpSubmissionEmail')==='on',domainReviewEmail:f.get('domainReviewEmail')==='on',dnsAnomalyEmail:f.get('dnsAnomalyEmail')==='on'}; const templates={}, userTargets={}, adminTargets={}; ['newUser','newDomain','domainExpiring','domainExpiredDelete','abnormalRegister'].forEach(k=>{ templates[k]=f.get('template_'+k)||''; userTargets[k]=f.get('userTarget_'+k)||''; adminTargets[k]=f.get('adminTarget_'+k)||''; }); return { events, templates, userTargets, adminTargets, rateLimitPerHour:f.get('rateLimitPerHour'), expiryTemplate:f.get('expiryTemplate') }; }
 function bindCronBuilder(){ document.querySelectorAll('[data-cron]').forEach(btn=>btn.addEventListener('click',()=>{ const input=document.querySelector('#cron-expression'); if(input) input.value=btn.dataset.cron; })); }
 function taskLogSummary(logs){ return Array.isArray(logs)&&logs.length ? logs.slice(-5).map(x=>`${x.time||''} ${x.status||''} ${x.message||''}`).join('；') : '暂无任务运行记录。'; }
-function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v90</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
-async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v90')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v90')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
+function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v92</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
+async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v92')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v92')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
 function bindSettingsTools() {
   const exportFn = async () => {
     try {
@@ -4678,6 +4800,9 @@ function buildRegistrationSettingsPayload(form) {
     emailFixedRecipients: formString(form, 'emailFixedRecipients'),
     emailRegistrationRecipientMode: formString(form, 'emailRegistrationRecipientMode'),
     emailTestRecipientMode: formString(form, 'emailTestRecipientMode'),
+    cloudflareEmailAccountId: formString(form, 'cloudflareEmailAccountId'),
+    cloudflareEmailApiToken: formString(form, 'cloudflareEmailApiToken'),
+    cloudflareAdminRecipient: formString(form, 'cloudflareAdminRecipient'),
     emailRegistrationSubjectTemplate: formString(form, 'emailRegistrationSubjectTemplate'),
     emailRegistrationTextTemplate: formString(form, 'emailRegistrationTextTemplate'),
     emailRegistrationHtmlTemplate: formString(form, 'emailRegistrationHtmlTemplate'),
@@ -4693,6 +4818,7 @@ function buildRegistrationSettingsPayload(form) {
   };
   if (!formString(form, 'turnstileSecret')) delete payload.turnstileSecret;
   if (!formString(form, 'emailApiKey')) delete payload.emailApiKey;
+  if (!formString(form, 'cloudflareEmailApiToken')) delete payload.cloudflareEmailApiToken;
   if (!formString(form, 'captchaBackgroundImage')) delete payload.captchaBackgroundImage;
   return payload;
 }
@@ -4767,6 +4893,8 @@ function validateSettingsPayload(group, data) {
     if (domains.some(d => /\s/.test(d) || !/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(d))) throw new Error('邮箱后缀黑名单中存在格式不正确的域名');
     if (data.emailVerificationEnabled && !String(data.emailFrom || '').trim()) throw new Error('启用邮箱验证前必须填写发件邮箱');
     if (String(data.emailFrom || '').trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(data.emailFrom).trim())) throw new Error('发件邮箱格式不正确');
+    if (String(data.cloudflareEmailAccountId || '').trim() && !/^[a-f0-9]{32}$/i.test(String(data.cloudflareEmailAccountId).trim())) throw new Error('Cloudflare Account ID 应为 32 位字符');
+    if (String(data.cloudflareAdminRecipient || '').trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(data.cloudflareAdminRecipient).trim())) throw new Error('Cloudflare 管理员收件邮箱格式不正确');
     const fixedEmails = String(data.emailFixedRecipients || '').split(/[\n,;]+/).map(x=>x.trim()).filter(Boolean);
     if (fixedEmails.some(email => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) throw new Error('固定收件邮箱中存在格式错误的地址');
     if (data.emailRegistrationRecipientMode === 'user_bcc_fixed' && !fixedEmails.length) throw new Error('注册验证码选择固定邮箱密送时，必须填写固定收件邮箱');
@@ -5024,4 +5152,41 @@ Object.assign(I18N_EN, {
   '失败':'Failed',
   '已配置':'Configured',
   '本次填写，将保存到 KV':'Entered now; it will be saved to KV'
+});
+
+Object.assign(I18N_EN, {
+  "Cloudflare 已验证收件邮箱":"Cloudflare Verified Recipient",
+  "同步已验证邮箱":"Sync Verified Addresses",
+  "尚未同步":"Not synced yet",
+  "正在同步…":"Syncing…",
+  "发送到所选邮箱":"Send to Selected Address",
+  "发送 Cloudflare SEB 测试邮件":"Send Cloudflare SEB Test Email",
+  "当前管理员收件邮箱：":"Current Admin Recipient:",
+  "Email Routing API Token":"Email Routing API Token",
+  "只授予 Email Routing Addresses Read。建议使用 Worker Secret：CF_EMAIL_ROUTING_API_TOKEN。":"Grant only Email Routing Addresses Read. Prefer the CF_EMAIL_ROUTING_API_TOKEN Worker Secret.",
+  "用于读取账户级已验证邮箱。也可配置 Worker 变量 CF_ACCOUNT_ID。":"Used to read account-level verified addresses. You can also configure the CF_ACCOUNT_ID Worker variable.",
+  "所有 Cloudflare 管理员通知都会发送到这里选中的邮箱。绑定名称 SEB 允许发送到本账户任意已验证目标邮箱。":"All Cloudflare admin notices are sent to the selected address. The SEB binding can send to any verified destination in this account.",
+  "测试结果、操作日志和 Workers 日志都会明确记录发送通道：":"Test results, operation logs, and Workers logs explicitly record the delivery provider:",
+  "通道":"Provider",
+  "上次同步：":"Last synced:",
+  "Worker 邮件变量快捷管理（安全白名单）":"Worker Email Variable Manager (Safe Allowlist)",
+  "可以在网站内更新常用邮件、Cloudflare、Turnstile 变量。首次仍需在 Cloudflare 控制台添加":"Update common email, Cloudflare, and Turnstile variables from the website. First add",
+  "权限只授予":"Grant only",
+  "这个管理令牌本身不能在网站内修改。":"The management token itself cannot be changed from the website.",
+  "发件邮箱 EMAIL_FROM":"Sender Email EMAIL_FROM",
+  "发件名称 EMAIL_FROM_NAME":"Sender Name EMAIL_FROM_NAME",
+  "管理员收件邮箱 CF_ADMIN_EMAIL":"Admin Recipient CF_ADMIN_EMAIL",
+  "运行环境 APP_ENVIRONMENT":"Runtime Environment APP_ENVIRONMENT",
+  "Cloudflare DNS API Token":"Cloudflare DNS API Token",
+  "Turnstile Secret":"Turnstile Secret",
+  "更新 Worker 变量":"Update Worker Variable",
+  "尚未读取 Worker 变量状态":"Worker variable status has not been loaded",
+  "未启用：请先添加 CF_WORKERS_API_TOKEN Secret":"Not enabled: add the CF_WORKERS_API_TOKEN Secret first",
+  "API 管理已启用":"API management enabled",
+  "请选择要修改的 Worker 变量":"Select a Worker variable to update",
+  "请输入新的变量值":"Enter the new variable value",
+  "正在更新 Cloudflare Worker 变量…":"Updating the Cloudflare Worker variable…",
+  "已配置（密钥值不可读取）":"Configured (secret value cannot be read)",
+  "未配置":"Not configured",
+  "当前生效值":"Current effective value"
 });
