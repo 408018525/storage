@@ -28,6 +28,10 @@ export interface Env {
   ASSETS: Fetcher;
   BOOTSTRAP_ADMIN_TOKEN?: string;
   CF_API_TOKEN?: string;
+  CF_ACCOUNT_ID?: string;
+  CF_EMAIL_ROUTING_API_TOKEN?: string;
+  CF_WORKERS_API_TOKEN?: string;
+  CF_WORKER_SCRIPT_NAME?: string;
   RESEND_API_KEY?: string;
   EMAIL_FROM?: string;
   EMAIL_FROM_NAME?: string;
@@ -220,6 +224,11 @@ interface AppSettings {
     emailFixedRecipients?: string;
     emailRegistrationRecipientMode?: 'user' | 'user_bcc_fixed';
     emailTestRecipientMode?: 'manual' | 'admin' | 'fixed';
+    cloudflareEmailAccountId?: string;
+    cloudflareEmailApiToken?: string;
+    cloudflareAdminRecipient?: string;
+    cloudflareVerifiedRecipients?: string[];
+    cloudflareRecipientsSyncedAt?: string;
     emailRegistrationSubjectTemplate?: string;
     emailRegistrationTextTemplate?: string;
     emailRegistrationHtmlTemplate?: string;
@@ -437,6 +446,9 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   if (method === 'POST' && pathname === '/api/admin/settings/import') return adminImportSettings(request, env);
   if (method === 'POST' && pathname === '/api/admin/dns/test') return adminTestCloudflareApi(request, env);
   if (method === 'POST' && pathname === '/api/admin/email/test') return adminTestEmailDelivery(request, env);
+  if (method === 'POST' && pathname === '/api/admin/email/cloudflare-addresses/sync') return adminSyncCloudflareEmailAddresses(request, env);
+  if (method === 'GET' && pathname === '/api/admin/worker-variables') return adminListManagedWorkerVariables(request, env);
+  if (method === 'POST' && pathname === '/api/admin/worker-variables') return adminUpdateManagedWorkerVariable(request, env);
 
   match = pathname.match(/^\/api\/admin\/registration-keys\/([^/]+)$/);
   if (match && method === 'DELETE') return adminDeleteRegistrationKey(request, env, decodeURIComponent(match[1]));
@@ -3298,6 +3310,13 @@ function adminSettingsView(settings: AppSettings, env: Env): any {
   safeSettings.registration.cloudflareAdminEmailConfigured = Boolean(env.SEB);
   safeSettings.registration.cloudflareAdminEmail = resolveCloudflareAdminEmail(env, settings);
   safeSettings.registration.cloudflareAdminEmailFrom = resolveCloudflareAdminSender(env, settings).fromEmail;
+  safeSettings.registration.cloudflareEmailApiTokenConfigured = Boolean(settings.registration.cloudflareEmailApiToken || env.CF_EMAIL_ROUTING_API_TOKEN);
+  safeSettings.registration.cloudflareEmailApiToken = '';
+  safeSettings.registration.cloudflareEmailAccountId = env.CF_ACCOUNT_ID || settings.registration.cloudflareEmailAccountId || '';
+  safeSettings.registration.cloudflareVerifiedRecipients = sanitizeEmailRecipientList(settings.registration.cloudflareVerifiedRecipients || []);
+  safeSettings.registration.cloudflareRecipientsSyncedAt = settings.registration.cloudflareRecipientsSyncedAt || '';
+  safeSettings.registration.cloudflareWorkerApiConfigured = Boolean(env.CF_WORKERS_API_TOKEN);
+  safeSettings.registration.cloudflareWorkerScriptName = cleanText(env.CF_WORKER_SCRIPT_NAME || 'storage', 80) || 'storage';
   safeSettings.dns.cfApiTokenConfigured = Boolean(settings.dns.cfApiToken || env.CF_API_TOKEN);
   safeSettings.dns.cfApiToken = '';
   safeSettings.dns.suffixes = (safeSettings.dns.suffixes || []).map((x: any) => ({
@@ -3391,6 +3410,13 @@ async function adminUpdateSettings(request: Request, env: Env, group: AdminSetti
       emailFixedRecipients: sanitizeEmailRecipientList(body.emailFixedRecipients).join('\n'),
       emailRegistrationRecipientMode: String(body.emailRegistrationRecipientMode || 'user') === 'user_bcc_fixed' ? 'user_bcc_fixed' : 'user',
       emailTestRecipientMode: ['manual','admin','fixed'].includes(String(body.emailTestRecipientMode || 'manual')) ? String(body.emailTestRecipientMode || 'manual') as any : 'manual',
+      cloudflareEmailAccountId: cleanText(body.cloudflareEmailAccountId, 64) || settings.registration.cloudflareEmailAccountId || '',
+      cloudflareEmailApiToken: asBoolean((body as any).clearCloudflareEmailApiToken, false)
+        ? ''
+        : (cleanText((body as any).cloudflareEmailApiToken, 2000) || settings.registration.cloudflareEmailApiToken || ''),
+      cloudflareAdminRecipient: normalizeOptionalEmailStrict(body.cloudflareAdminRecipient) || settings.registration.cloudflareAdminRecipient || '',
+      cloudflareVerifiedRecipients: sanitizeEmailRecipientList(settings.registration.cloudflareVerifiedRecipients || []),
+      cloudflareRecipientsSyncedAt: settings.registration.cloudflareRecipientsSyncedAt || '',
       emailRegistrationSubjectTemplate: cleanText(body.emailRegistrationSubjectTemplate, 300) || '【{{siteName}}】注册验证码',
       emailRegistrationTextTemplate: cleanText(body.emailRegistrationTextTemplate, 12000) || '您的注册验证码是 {{code}}，{{expiryMinutes}} 分钟内有效。若非本人操作，请忽略本邮件。',
       emailRegistrationHtmlTemplate: cleanHtmlText(body.emailRegistrationHtmlTemplate, 30000),
@@ -3649,6 +3675,11 @@ function defaultSettings(env: Env): AppSettings {
       emailFixedRecipients: '',
       emailRegistrationRecipientMode: 'user',
       emailTestRecipientMode: 'manual',
+      cloudflareEmailAccountId: env.CF_ACCOUNT_ID || '',
+      cloudflareEmailApiToken: '',
+      cloudflareAdminRecipient: env.CF_ADMIN_EMAIL || 'admin@flore.top',
+      cloudflareVerifiedRecipients: [],
+      cloudflareRecipientsSyncedAt: '',
       emailRegistrationSubjectTemplate: '【{{siteName}}】注册验证码',
       emailRegistrationTextTemplate: '您好！\n\n您正在注册 {{siteName}} 账户。\n本次验证码：{{code}}\n验证码将在 {{expiryMinutes}} 分钟后失效。\n\n收件邮箱：{{email}}\n发送环境：{{environment}}\n若非本人操作，请忽略本邮件。',
       emailRegistrationHtmlTemplate: '<div style="font-family:Arial,Microsoft YaHei,sans-serif;max-width:560px;margin:auto;padding:24px;color:#0f172a"><h2>{{siteName}}</h2><p>您正在注册账户，本次验证码为：</p><div style="font-size:32px;font-weight:800;letter-spacing:8px;padding:18px 22px;background:#f1f5f9;border-radius:12px;text-align:center">{{code}}</div><p style="color:#64748b">验证码将在 {{expiryMinutes}} 分钟后失效。</p><p style="color:#94a3b8;font-size:13px">收件邮箱：{{email}}<br>发送环境：{{environment}}<br>若非本人操作，请忽略本邮件。</p></div>',
@@ -3898,6 +3929,11 @@ function publicRegistrationSettings(registration: AppSettings['registration']): 
   delete safe.emailFixedRecipients;
   delete safe.emailRegistrationRecipientMode;
   delete safe.emailTestRecipientMode;
+  delete safe.cloudflareEmailAccountId;
+  delete safe.cloudflareEmailApiToken;
+  delete safe.cloudflareAdminRecipient;
+  delete safe.cloudflareVerifiedRecipients;
+  delete safe.cloudflareRecipientsSyncedAt;
   delete safe.emailRegistrationSubjectTemplate;
   delete safe.emailRegistrationTextTemplate;
   delete safe.emailRegistrationHtmlTemplate;
@@ -4081,9 +4117,195 @@ function plainTextToEmailHtml(text: string): string {
 
 type AdminCloudflareEmailScene = 'admin_test' | 'system_error' | 'help_submission' | 'domain_review' | 'dns_anomaly';
 
-function resolveCloudflareAdminEmail(env: Env, _settings: AppSettings): string {
-  const configured = String(env.CF_ADMIN_EMAIL || '').trim();
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(configured) ? configured : 'admin@flore.top';
+function resolveCloudflareEmailAccountId(env: Env, settings: AppSettings): string {
+  return cleanText(env.CF_ACCOUNT_ID || settings.registration.cloudflareEmailAccountId || '', 64);
+}
+
+function resolveCloudflareEmailRoutingToken(env: Env, settings: AppSettings): string {
+  return String(env.CF_EMAIL_ROUTING_API_TOKEN || settings.registration.cloudflareEmailApiToken || '').trim();
+}
+
+function resolveCloudflareAdminEmail(env: Env, settings: AppSettings): string {
+  const verified = sanitizeEmailRecipientList(settings.registration.cloudflareVerifiedRecipients || []);
+  const candidates = [
+    settings.registration.cloudflareAdminRecipient,
+    env.CF_ADMIN_EMAIL,
+    verified[0],
+    'admin@flore.top',
+  ];
+  for (const candidate of candidates) {
+    const email = String(candidate || '').trim().toLowerCase();
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && (!verified.length || verified.includes(email))) return email;
+  }
+  return 'admin@flore.top';
+}
+
+async function fetchCloudflareVerifiedDestinationAddresses(env: Env, settings: AppSettings): Promise<string[]> {
+  const accountId = resolveCloudflareEmailAccountId(env, settings);
+  const token = resolveCloudflareEmailRoutingToken(env, settings);
+  if (!accountId) throw new HttpError(409, 'CF_EMAIL_ACCOUNT_ID_MISSING', '请先填写 Cloudflare Account ID，或配置 Worker 变量 CF_ACCOUNT_ID');
+  if (!/^[a-f0-9]{32}$/i.test(accountId)) throw new HttpError(400, 'CF_EMAIL_ACCOUNT_ID_INVALID', 'Cloudflare Account ID 格式不正确，应为 32 位字符');
+  if (!token) throw new HttpError(409, 'CF_EMAIL_ROUTING_TOKEN_MISSING', '请配置只读的 Email Routing API Token，权限至少包含 Email Routing Addresses Read');
+  const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/email/routing/addresses?verified=true&per_page=50`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+  });
+  const payload: any = await response.json().catch(() => ({}));
+  if (!response.ok || payload?.success === false) {
+    const detail = payload?.errors?.[0]?.message || payload?.message || `HTTP ${response.status}`;
+    throw new HttpError(502, 'CF_EMAIL_ADDRESS_SYNC_FAILED', `同步 Cloudflare 已验证邮箱失败：${String(detail).slice(0, 500)}`);
+  }
+  return sanitizeEmailRecipientList((Array.isArray(payload?.result) ? payload.result : []).filter((item: any) => item?.verified).map((item: any) => item?.email));
+}
+
+async function adminSyncCloudflareEmailAddresses(request: Request, env: Env): Promise<Response> {
+  const admin = await requireAdmin(env, request);
+  const settings = await loadSettings(env);
+  const addresses = await fetchCloudflareVerifiedDestinationAddresses(env, settings);
+  if (!addresses.length) throw new HttpError(404, 'CF_EMAIL_NO_VERIFIED_ADDRESS', 'Cloudflare 账户中没有可用的已验证目标邮箱');
+  settings.registration.cloudflareVerifiedRecipients = addresses;
+  settings.registration.cloudflareRecipientsSyncedAt = new Date().toISOString();
+  if (!addresses.includes(String(settings.registration.cloudflareAdminRecipient || '').toLowerCase())) {
+    settings.registration.cloudflareAdminRecipient = addresses[0];
+  }
+  await env.APP_KV.put(SETTINGS_KEY, JSON.stringify(settings));
+  await audit(env, request, admin.id, 'admin.cloudflare_email_addresses_sync', 'setting', 'cloudflare_email', {
+    count: addresses.length,
+    selectedHash: await sha256(String(settings.registration.cloudflareAdminRecipient || '').toLowerCase()),
+  });
+  return ok({
+    addresses,
+    selected: resolveCloudflareAdminEmail(env, settings),
+    syncedAt: settings.registration.cloudflareRecipientsSyncedAt,
+    provider: 'cloudflare-seb',
+    message: `已同步 ${addresses.length} 个 Cloudflare 已验证邮箱`,
+  });
+}
+
+type ManagedWorkerVariableName =
+  | 'EMAIL_FROM'
+  | 'EMAIL_FROM_NAME'
+  | 'CF_ADMIN_EMAIL'
+  | 'CF_ACCOUNT_ID'
+  | 'APP_ENVIRONMENT'
+  | 'TURNSTILE_SITE_KEY'
+  | 'RESEND_API_KEY'
+  | 'CF_EMAIL_ROUTING_API_TOKEN'
+  | 'CF_API_TOKEN'
+  | 'TURNSTILE_SECRET';
+
+const MANAGED_WORKER_VARIABLES: Record<ManagedWorkerVariableName, { label: string; sensitive: boolean; maxLength: number }> = {
+  EMAIL_FROM: { label: '发件邮箱 EMAIL_FROM', sensitive: false, maxLength: 254 },
+  EMAIL_FROM_NAME: { label: '发件名称 EMAIL_FROM_NAME', sensitive: false, maxLength: 120 },
+  CF_ADMIN_EMAIL: { label: '管理员收件邮箱 CF_ADMIN_EMAIL', sensitive: false, maxLength: 254 },
+  CF_ACCOUNT_ID: { label: 'Cloudflare Account ID', sensitive: false, maxLength: 64 },
+  APP_ENVIRONMENT: { label: '运行环境 APP_ENVIRONMENT', sensitive: false, maxLength: 80 },
+  TURNSTILE_SITE_KEY: { label: 'Turnstile Site Key', sensitive: false, maxLength: 300 },
+  RESEND_API_KEY: { label: 'Resend API Key', sensitive: true, maxLength: 2000 },
+  CF_EMAIL_ROUTING_API_TOKEN: { label: 'Email Routing API Token', sensitive: true, maxLength: 2000 },
+  CF_API_TOKEN: { label: 'Cloudflare DNS API Token', sensitive: true, maxLength: 2000 },
+  TURNSTILE_SECRET: { label: 'Turnstile Secret', sensitive: true, maxLength: 2000 },
+};
+
+function managedWorkerScriptName(env: Env): string {
+  const value = cleanText(env.CF_WORKER_SCRIPT_NAME || 'storage', 80).replace(/[^a-zA-Z0-9_-]/g, '');
+  return value || 'storage';
+}
+
+function managedWorkerEffectiveValue(name: ManagedWorkerVariableName, env: Env, settings: AppSettings): string {
+  switch (name) {
+    case 'EMAIL_FROM': return String(env.EMAIL_FROM || settings.registration.emailFrom || '');
+    case 'EMAIL_FROM_NAME': return String(env.EMAIL_FROM_NAME || settings.registration.emailFromName || '');
+    case 'CF_ADMIN_EMAIL': return String(env.CF_ADMIN_EMAIL || settings.registration.cloudflareAdminRecipient || '');
+    case 'CF_ACCOUNT_ID': return String(env.CF_ACCOUNT_ID || settings.registration.cloudflareEmailAccountId || '');
+    case 'APP_ENVIRONMENT': return String(env.APP_ENVIRONMENT || env.ENVIRONMENT || 'production');
+    case 'TURNSTILE_SITE_KEY': return String(env.TURNSTILE_SITE_KEY || settings.registration.turnstileSiteKey || '');
+    case 'RESEND_API_KEY': return String(env.RESEND_API_KEY || settings.registration.emailApiKey || '');
+    case 'CF_EMAIL_ROUTING_API_TOKEN': return String(env.CF_EMAIL_ROUTING_API_TOKEN || settings.registration.cloudflareEmailApiToken || '');
+    case 'CF_API_TOKEN': return String(env.CF_API_TOKEN || settings.dns.cfApiToken || '');
+    case 'TURNSTILE_SECRET': return String(env.TURNSTILE_SECRET || settings.registration.turnstileSecret || '');
+  }
+}
+
+function validateManagedWorkerVariable(name: ManagedWorkerVariableName, rawValue: unknown): string {
+  const definition = MANAGED_WORKER_VARIABLES[name];
+  const value = String(rawValue ?? '').trim();
+  if (!value) throw new HttpError(400, 'WORKER_VARIABLE_VALUE_REQUIRED', '请输入新的变量值');
+  if (value.length > definition.maxLength) throw new HttpError(400, 'WORKER_VARIABLE_VALUE_TOO_LONG', `${definition.label} 内容过长`);
+  if (['EMAIL_FROM','CF_ADMIN_EMAIL'].includes(name) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+    throw new HttpError(400, 'WORKER_VARIABLE_EMAIL_INVALID', `${definition.label} 邮箱格式不正确`);
+  }
+  if (name === 'CF_ACCOUNT_ID' && !/^[a-f0-9]{32}$/i.test(value)) {
+    throw new HttpError(400, 'WORKER_VARIABLE_ACCOUNT_ID_INVALID', 'Cloudflare Account ID 应为 32 位字符');
+  }
+  if (name === 'APP_ENVIRONMENT' && !/^[a-zA-Z0-9._-]{1,80}$/.test(value)) {
+    throw new HttpError(400, 'WORKER_VARIABLE_ENV_INVALID', '运行环境只能使用字母、数字、点、下划线或短横线');
+  }
+  return value;
+}
+
+async function adminListManagedWorkerVariables(request: Request, env: Env): Promise<Response> {
+  await requireAdmin(env, request);
+  const settings = await loadSettings(env);
+  const variables = (Object.keys(MANAGED_WORKER_VARIABLES) as ManagedWorkerVariableName[]).map(name => {
+    const definition = MANAGED_WORKER_VARIABLES[name];
+    const current = managedWorkerEffectiveValue(name, env, settings);
+    return {
+      name,
+      label: definition.label,
+      sensitive: definition.sensitive,
+      configured: Boolean(current),
+      value: definition.sensitive ? '' : current,
+    };
+  });
+  return ok({
+    enabled: Boolean(env.CF_WORKERS_API_TOKEN),
+    accountIdConfigured: Boolean(resolveCloudflareEmailAccountId(env, settings)),
+    scriptName: managedWorkerScriptName(env),
+    variables,
+    note: 'CF_WORKERS_API_TOKEN 本身必须在 Cloudflare 控制台以 Secret 添加，不能在网站内修改。',
+  });
+}
+
+async function adminUpdateManagedWorkerVariable(request: Request, env: Env): Promise<Response> {
+  const admin = await requireAdmin(env, request);
+  const settings = await loadSettings(env);
+  const managementToken = String(env.CF_WORKERS_API_TOKEN || '').trim();
+  if (!managementToken) throw new HttpError(409, 'CF_WORKERS_API_TOKEN_MISSING', '请先在 Cloudflare Worker 中添加 Secret：CF_WORKERS_API_TOKEN，权限为 Workers Scripts Write');
+  const accountId = resolveCloudflareEmailAccountId(env, settings);
+  if (!/^[a-f0-9]{32}$/i.test(accountId)) throw new HttpError(409, 'CF_WORKERS_ACCOUNT_ID_MISSING', '请先配置有效的 CF_ACCOUNT_ID 或在邮件设置中填写 Cloudflare Account ID');
+  const body = await readJson<Record<string, unknown>>(request);
+  const name = String(body.name || '') as ManagedWorkerVariableName;
+  if (!Object.prototype.hasOwnProperty.call(MANAGED_WORKER_VARIABLES, name)) {
+    throw new HttpError(400, 'WORKER_VARIABLE_NOT_ALLOWED', '该变量不在网站允许修改的安全白名单中');
+  }
+  const value = validateManagedWorkerVariable(name, body.value);
+  const scriptName = managedWorkerScriptName(env);
+  const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/workers/scripts/${encodeURIComponent(scriptName)}/secrets`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${managementToken}`,
+      'content-type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify({ name, text: value, type: 'secret_text' }),
+  });
+  const payload: any = await response.json().catch(() => ({}));
+  if (!response.ok || payload?.success === false) {
+    const detail = payload?.errors?.[0]?.message || payload?.message || `HTTP ${response.status}`;
+    throw new HttpError(502, 'WORKER_VARIABLE_UPDATE_FAILED', `更新 Worker 变量失败：${String(detail).slice(0, 500)}`);
+  }
+  await audit(env, request, admin.id, 'admin.worker_variable_update', 'worker_variable', name, {
+    scriptName,
+    sensitive: MANAGED_WORKER_VARIABLES[name].sensitive,
+    valueHash: await sha256(value),
+  });
+  return ok({
+    updated: true,
+    name,
+    label: MANAGED_WORKER_VARIABLES[name].label,
+    scriptName,
+    message: `${MANAGED_WORKER_VARIABLES[name].label} 已提交到 Cloudflare；新值通常会在数秒内对后续请求生效`,
+  });
 }
 
 function resolveCloudflareAdminSender(env: Env, settings: AppSettings): { fromEmail: string; fromName: string } {
@@ -4135,6 +4357,7 @@ function buildCloudflareRawEmail(input: {
     `To: ${input.toEmail}`,
     `Subject: ${encodeEmailHeaderUtf8(subject)}`,
     `Date: ${new Date().toUTCString()}`,
+    'X-FLORE-Mail-Provider: Cloudflare-SEB',
     'MIME-Version: 1.0',
     `Content-Type: multipart/alternative; boundary="${boundary}"`,
     '',
@@ -4172,9 +4395,9 @@ async function sendAdminCloudflareEmail(
   env: Env,
   settings: AppSettings,
   scene: AdminCloudflareEmailScene,
-  message: { subject: string; text: string; html?: string; fingerprint?: string; cooldownSeconds?: number },
+  message: { subject: string; text: string; html?: string; fingerprint?: string; cooldownSeconds?: number; recipient?: string },
 ): Promise<{ sent: boolean; recipient: string; skipped?: string }> {
-  const recipient = resolveCloudflareAdminEmail(env, settings);
+  const recipient = normalizeOptionalEmailStrict(message.recipient) || resolveCloudflareAdminEmail(env, settings);
   if (!adminCloudflareEmailSceneEnabled(settings, scene)) return { sent: false, recipient, skipped: 'scene_disabled' };
   if (!env.SEB) throw new HttpError(503, 'CF_EMAIL_BINDING_MISSING', 'Cloudflare 邮件绑定未配置，请确认 wrangler.jsonc 中存在名为 SEB 的 send_email 绑定');
   const fingerprint = message.fingerprint || `${message.subject}|${message.text.slice(0, 500)}`;
@@ -4191,6 +4414,7 @@ async function sendAdminCloudflareEmail(
   });
   try {
     await env.SEB.send(new EmailMessage(sender.fromEmail, recipient, raw));
+    console.log('email delivery success', { provider: 'cloudflare-seb', scene, recipient });
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error || '未知错误');
     throw new HttpError(502, 'CF_ADMIN_EMAIL_FAILED', `Cloudflare 管理员邮件发送失败：${detail.slice(0, 500)}`);
@@ -4279,12 +4503,14 @@ async function sendEmailWithResend(env: Env, settings: AppSettings, message: Res
       subject: cleanText(message.subject, 300).replace(/[\r\n]+/g, ' ') || '系统邮件',
       text: String(message.text || ''),
       html: String(message.html || '') || plainTextToEmailHtml(String(message.text || '')),
+      headers: { 'X-FLORE-Mail-Provider': 'Resend' },
     }),
   });
   const payload: any = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new HttpError(502, 'EMAIL_SEND_FAILED', payload?.message || payload?.error?.message || `邮件发送失败 HTTP ${response.status}`);
   }
+  console.log('email delivery success', { provider: 'resend', recipients: to.length, bcc: bcc.length });
 }
 
 function buildEmailTemplateMessage(
@@ -4369,7 +4595,7 @@ async function sendRegistrationEmailCode(request: Request, env: Env): Promise<Re
     await env.DB.prepare(`DELETE FROM email_verification_codes WHERE email=? COLLATE NOCASE AND code_hash=?`).bind(email, codeHash).run().catch(() => undefined);
     throw error;
   }
-  await audit(env, request, null, 'auth.email_code_sent', 'email', await sha256(email.toLowerCase()), { expiresInMinutes: expiryMinutes });
+  await audit(env, request, null, 'auth.email_code_sent', 'email', await sha256(email.toLowerCase()), { expiresInMinutes: expiryMinutes, provider: 'resend' });
   return ok({ sent: true, expiresInSeconds: expiryMinutes * 60, cooldownSeconds: 60 });
 }
 
@@ -4415,7 +4641,12 @@ async function adminTestEmailDelivery(request: Request, env: Env): Promise<Respo
   if (requestedScene === 'registration' && settings.registration.emailRegistrationSceneEnabled === false) {
     throw new HttpError(409, 'EMAIL_REGISTRATION_SCENE_DISABLED', '注册验证码邮件场景已被管理员关闭');
   }
-  const recipient = resolveCloudflareAdminEmail(env, settings);
+  const syncedRecipients = sanitizeEmailRecipientList(settings.registration.cloudflareVerifiedRecipients || []);
+  const requestedRecipient = normalizeOptionalEmailStrict(body.recipient);
+  const recipient = requestedRecipient || resolveCloudflareAdminEmail(env, settings);
+  if (syncedRecipients.length && !syncedRecipients.includes(recipient.toLowerCase())) {
+    throw new HttpError(400, 'CF_EMAIL_RECIPIENT_NOT_VERIFIED', '所选邮箱不在已同步的 Cloudflare 已验证目标邮箱列表中');
+  }
   const context = {
     siteName: settings.site.title || '域名注册中心',
     code: randomCodeFromCharset(
@@ -4435,6 +4666,7 @@ async function adminTestEmailDelivery(request: Request, env: Env): Promise<Respo
     ...rendered,
     fingerprint: `manual-test|${admin.id}|${Date.now()}`,
     cooldownSeconds: 0,
+    recipient,
   });
   await audit(env, request, admin.id, 'admin.email_test', 'setting', 'cloudflare_email', {
     recipientHash: await sha256(recipient.toLowerCase()),
@@ -4447,8 +4679,8 @@ async function adminTestEmailDelivery(request: Request, env: Env): Promise<Respo
     recipients: [recipient],
     environment,
     scene: requestedScene,
-    provider: 'cloudflare',
-    message: `Cloudflare 测试邮件已发送至 ${recipient}`,
+    provider: 'cloudflare-seb',
+    message: `Cloudflare SEB 测试邮件已发送至 ${recipient}`, 
   });
 }
 
@@ -4710,20 +4942,20 @@ async function adminSystemStatus(request: Request, env: Env): Promise<Response> 
       (SELECT COUNT(*) FROM audit_logs WHERE datetime(created_at) >= datetime('now','-' || ? || ' days')) AS logsRetained
   `).bind(auditRetentionDays).first<any>();
   return ok({
-    version: 'v90',
+    version: 'v92',
     settingsKey: SETTINGS_KEY,
     kv: { storage: 'Workers KV', estimatedKeys: '由 Cloudflare 控制台查看实际占用' },
     cfApi: { configured: Boolean(resolveDnsToken(env, settings)), status: resolveDnsToken(env, settings) ? '已配置' : '未配置' },
     cron: { enabled: Boolean(settings.automation?.enabled), expression: settings.automation?.cronExpression || '' },
     counts: { ...counts, logs4d: Number(counts?.logsRetained || 0) },
     auditRetentionDays,
-    update: { current: 'v90', latest: '请以当前部署包为准' },
+    update: { current: 'v92', latest: '请以当前部署包为准' },
   });
 }
 
 async function adminExportSettings(request: Request, env: Env): Promise<Response> {
   await requireAdmin(env, request);
-  return ok({ exportedAt: new Date().toISOString(), version: 'v90', settings: await loadSettings(env) });
+  return ok({ exportedAt: new Date().toISOString(), version: 'v92', settings: await loadSettings(env) });
 }
 
 async function adminImportSettings(request: Request, env: Env): Promise<Response> {
