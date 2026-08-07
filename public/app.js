@@ -4279,6 +4279,7 @@ async function renderAdminSettings() {
         <button class="tab" data-tab="security">安全设置</button>
         <button class="tab" data-tab="automation">自动化任务</button>
         <button class="tab" data-tab="system">系统状态</button>
+        <button class="tab" data-tab="variables">变量设置</button>
       </div>
 
       <div class="tab-page active" data-page="site">
@@ -4347,29 +4348,6 @@ async function renderAdminSettings() {
           <label class="field"><span>Cloudflare Account ID</span><input name="cloudflareEmailAccountId" value="${fieldValue(reg.cloudflareEmailAccountId || '')}" placeholder="32 位 Account ID"><em>用于读取账户级已验证邮箱。也可配置 Worker 变量 CF_ACCOUNT_ID。</em></label>
           <label class="field"><span>Email Routing API Token</span><input name="cloudflareEmailApiToken" type="password" autocomplete="new-password" placeholder="${reg.cloudflareEmailApiTokenConfigured ? '已配置，留空保持不变' : '请输入只读 API Token'}"><em>只授予 Email Routing Addresses Read。建议使用 Worker Secret：CF_EMAIL_ROUTING_API_TOKEN。</em></label>
           <div class="field wide"><span>Cloudflare 已验证收件邮箱</span><div class="email-test-row"><select name="cloudflareAdminRecipient" id="cloudflare-admin-recipient">${renderCloudflareRecipientOptions(reg.cloudflareVerifiedRecipients, reg.cloudflareAdminEmail || reg.cloudflareAdminRecipient)}</select><button class="btn soft" id="sync-cloudflare-email-addresses" type="button">同步已验证邮箱</button><span id="cloudflare-email-sync-result" class="muted">${reg.cloudflareRecipientsSyncedAt ? `上次同步：${esc(fmtDate(reg.cloudflareRecipientsSyncedAt))}` : '尚未同步'}</span></div><em>所有 Cloudflare 管理员通知都会发送到这里选中的邮箱。绑定名称 SEB 允许发送到本账户任意已验证目标邮箱。</em></div>
-          <div class="readonly-box wide"><b>Worker 邮件变量快捷管理（安全白名单）</b><p>可以在网站内更新常用邮件、Cloudflare、Turnstile 变量。首次仍需在 Cloudflare 控制台添加 <code>CF_WORKERS_API_TOKEN</code> Secret，权限只授予 <code>Workers Scripts Write</code>；这个管理令牌本身不能在网站内修改。</p><div class="email-test-row"><select id="managed-worker-variable-name"><option value="EMAIL_FROM">发件邮箱 EMAIL_FROM</option><option value="EMAIL_FROM_NAME">发件名称 EMAIL_FROM_NAME</option><option value="CF_ADMIN_EMAIL">管理员收件邮箱 CF_ADMIN_EMAIL</option><option value="CF_ACCOUNT_ID">Cloudflare Account ID</option><option value="APP_ENVIRONMENT">运行环境 APP_ENVIRONMENT</option><option value="TURNSTILE_SITE_KEY">Turnstile Site Key</option><option value="RESEND_API_KEY">Resend API Key</option><option value="CF_EMAIL_ROUTING_API_TOKEN">Email Routing API Token</option><option value="CF_API_TOKEN">Cloudflare DNS API Token</option><option value="TURNSTILE_SECRET">Turnstile Secret</option></select><input id="managed-worker-variable-value" type="text" autocomplete="new-password" placeholder="请输入新值"><button class="btn soft" id="save-managed-worker-variable" type="button">更新 Worker 变量</button></div><p id="managed-worker-variable-current" class="muted">尚未读取 Worker 变量状态</p><p id="managed-worker-variable-status" class="muted">${reg.cloudflareWorkerApiConfigured ? `API 管理已配置 · Worker：${esc(reg.cloudflareWorkerScriptName || 'storage')}` : '未启用：请先添加 CF_WORKERS_API_TOKEN Secret'}</p></div>
-          <label class="field"><span>Resend API Key（仅注册验证码）</span><input name="emailApiKey" type="password" autocomplete="new-password" placeholder="${reg.emailApiKeyConfigured ? '已配置，留空保持不变' : 're_...'}"><em>只用于把验证码发送到 QQ、Gmail、Outlook 等任意注册邮箱。建议使用 Worker Secret：RESEND_API_KEY。</em></label>
-          <label class="field"><span>统一发件邮箱</span><input name="emailFrom" type="email" value="${fieldValue(reg.emailFrom || '')}" placeholder="admin@flore.top"><em>Resend 与 Cloudflare 管理员通知都会优先使用 EMAIL_FROM 环境变量。</em></label>
-          <label class="field"><span>统一发件名称</span><input name="emailFromName" value="${fieldValue(reg.emailFromName || 'FLORE域名注册中心')}" placeholder="FLORE域名注册中心"><em>显示在收件箱中的发件人名称。</em></label>
-          <label class="field"><span>验证码有效期/分钟</span><input name="emailCodeExpiryMinutes" type="number" min="2" max="60" value="${fieldValue(reg.emailCodeExpiryMinutes || 10)}"><em>建议 5-15 分钟。</em></label>
-          <label class="field"><span>邮件验证码位数</span><input name="emailCodeLength" type="number" min="4" max="12" step="1" value="${fieldValue(reg.emailCodeLength || 6)}"><em>允许 4-12 位。</em></label>
-          <label class="field wide"><span>邮件验证码可用字符</span><input name="emailCodeCharset" value="${fieldValue(reg.emailCodeCharset || '0123456789')}" placeholder="ABCDEFG1234567"><em>随机验证码只会从这里生成；系统会去重并移除空格。</em></label>
-          <label class="field"><span>允许发送的运行环境</span><input name="emailAllowedEnvironments" value="${fieldValue(reg.emailAllowedEnvironments || '*')}" placeholder="production,preview"><em>* 表示全部；当前环境：${esc(reg.emailRuntimeEnvironment || 'production')}。可用 Worker 变量 APP_ENVIRONMENT 指定环境名。</em></label>
-          <label class="check"><input name="emailRegistrationSceneEnabled" type="checkbox" ${yn(reg.emailRegistrationSceneEnabled !== false)}> 启用 Resend 注册验证码 <em>关闭后用户无法请求注册验证码邮件。</em></label>
-          <label class="check"><input name="emailTestSceneEnabled" type="checkbox" ${yn(reg.emailTestSceneEnabled !== false)}> 启用 Cloudflare 管理员测试邮件 <em>测试邮件固定发送到已验证的管理员邮箱。</em></label>
-          <label class="field"><span>注册验证码收件对象</span><select name="emailRegistrationRecipientMode"><option value="user" ${reg.emailRegistrationRecipientMode !== 'user_bcc_fixed' ? 'selected' : ''}>仅注册用户邮箱</option><option value="user_bcc_fixed" ${reg.emailRegistrationRecipientMode === 'user_bcc_fixed' ? 'selected' : ''}>注册用户 + 固定邮箱密送</option></select><em>此项仅作用于 Resend 注册验证码。</em></label>
-          <input name="emailTestRecipientMode" type="hidden" value="admin">
-          <label class="field wide"><span>注册验证码固定密送邮箱</span><textarea name="emailFixedRecipients" rows="3" placeholder="admin@example.com">${esc(reg.emailFixedRecipients || '')}</textarea><em>仅在上方选择“注册用户 + 固定邮箱密送”时生效；一行一个或逗号分隔。</em></label>
-          <div class="settings-section-heading wide"><span>05-A</span><div><h3>注册验证码邮件内容</h3><p>可以自定义主题、纯文本和 HTML 内容。</p></div></div>
-          <div class="template-variable-help wide"><b>模板变量说明</b><div><code>{{siteName}}</code><span>网站标题</span><code>{{code}}</code><span>本次生成的验证码</span><code>{{expiryMinutes}}</code><span>验证码有效分钟数</span><code>{{email}}</code><span>当前收件邮箱</span><code>{{adminEmail}}</code><span>当前管理员邮箱，注册用户邮件通常为空</span><code>{{environment}}</code><span>Worker 当前运行环境，例如 production</span><code>{{time}}</code><span>邮件生成时间（ISO 时间）</span></div></div>
-          <label class="field wide"><span>注册邮件主题</span><input name="emailRegistrationSubjectTemplate" value="${fieldValue(reg.emailRegistrationSubjectTemplate || '【{{siteName}}】注册验证码')}"></label>
-          <label class="field wide"><span>注册邮件纯文本内容</span><textarea name="emailRegistrationTextTemplate" rows="7">${esc(reg.emailRegistrationTextTemplate || '')}</textarea><em>用于不支持 HTML 的邮箱客户端。</em></label>
-          <label class="field wide"><span>注册邮件 HTML 内容</span><textarea name="emailRegistrationHtmlTemplate" rows="9">${esc(reg.emailRegistrationHtmlTemplate || '')}</textarea><em>可留空，系统会把纯文本自动转换成 HTML。</em></label>
-          <div class="settings-section-heading wide"><span>05-B</span><div><h3>Cloudflare 管理员测试邮件内容</h3><p>测试邮件固定发送到已验证的管理员邮箱；可预览测试模板或注册验证码模板。</p></div></div>
-          <label class="field wide"><span>测试邮件主题</span><input name="emailTestSubjectTemplate" value="${fieldValue(reg.emailTestSubjectTemplate || '【{{siteName}}】邮件服务测试')}"></label>
-          <label class="field wide"><span>测试邮件纯文本内容</span><textarea name="emailTestTextTemplate" rows="5">${esc(reg.emailTestTextTemplate || '')}</textarea></label>
-          <label class="field wide"><span>测试邮件 HTML 内容</span><textarea name="emailTestHtmlTemplate" rows="7">${esc(reg.emailTestHtmlTemplate || '')}</textarea><em>可留空，系统会把纯文本自动转换成 HTML。</em></label>
-          <div class="readonly-box wide email-test-box"><b>发送 Cloudflare SEB 测试邮件</b><p>先保存上方配置。当前目标：<strong id="cloudflare-test-recipient-text">${esc(reg.cloudflareAdminEmail || reg.cloudflareAdminRecipient || '尚未选择')}</strong>，不使用 Resend 配额。</p><div class="email-test-row"><select id="email-test-scene"><option value="test">测试邮件模板</option><option value="registration">注册验证码模板（生成示例验证码）</option></select><button class="btn soft" id="test-email-delivery" type="button">发送到所选邮箱</button><span id="email-test-result" class="muted"></span></div></div>
           <div class="settings-section-heading wide"><span>06</span><div><h3>邮箱规则与关闭提示</h3><p>管理邮箱后缀限制和注册关闭时的前台说明。</p></div></div>
           <label class="field wide"><span>邮箱后缀拦截黑名单</span><textarea name="emailDomainBlacklist" rows="4" placeholder="tempmail.com&#10;mailinator.com">${esc(reg.emailDomainBlacklist || '')}</textarea><em>一行一个邮箱后缀，不要带 @ 也可以。</em></label>
           <label class="field wide"><span>关闭注册时前台提示文案</span><textarea name="disabledMessage" rows="3">${esc(reg.disabledMessage || '')}</textarea><em>注册关闭时显示给用户。</em></label>
@@ -4492,6 +4470,17 @@ async function renderAdminSettings() {
         </form>
       </div>
 
+      <div class="tab-page" data-page="variables">
+        <section class="card settings-grid">
+          <div class="settings-section-heading wide"><span>01</span><div><h3>Worker 变量同步</h3><p>同步当前 Worker 环境变量状态，并通过安全白名单直接更新指定变量。</p></div></div>
+          <div class="readonly-box wide"><b>管理说明</b><p>这里对应 Cloudflare Workers 的“变量和机密”页面。网站不会开放任意脚本修改，只允许白名单变量。</p><p>需要先在 Cloudflare 手动添加 <code>CF_WORKERS_API_TOKEN</code>（Workers Scripts Write 权限），用于管理员页面更新变量。</p></div>
+          <div class="email-test-row wide"><select id="managed-worker-variable-name"><option value="EMAIL_FROM">发件邮箱 EMAIL_FROM</option><option value="EMAIL_FROM_NAME">发件名称 EMAIL_FROM_NAME</option><option value="CF_ADMIN_EMAIL">管理员收件邮箱 CF_ADMIN_EMAIL</option><option value="CF_ACCOUNT_ID">Cloudflare Account ID</option><option value="APP_ENVIRONMENT">运行环境 APP_ENVIRONMENT</option><option value="TURNSTILE_SITE_KEY">Turnstile Site Key</option><option value="RESEND_API_KEY">Resend API Key</option><option value="CF_EMAIL_ROUTING_API_TOKEN">Email Routing API Token</option><option value="CF_API_TOKEN">Cloudflare DNS API Token</option><option value="TURNSTILE_SECRET">Turnstile Secret</option></select><input id="managed-worker-variable-value" type="text" placeholder="请输入新的变量值"><button class="btn soft" id="save-managed-worker-variable" type="button">更新 Worker 变量</button></div>
+          <p id="managed-worker-variable-current" class="muted wide">尚未读取 Worker 变量状态</p>
+          <p id="managed-worker-variable-status" class="muted wide">正在读取变量状态…</p>
+          <div class="settings-section-heading wide"><span>02</span><div><h3>当前变量说明</h3><p>修改前建议先查看用途，避免误改导致邮件、DNS 或验证功能异常。</p></div></div>
+          <div class="readonly-box wide"><b>邮件相关</b><p><code>EMAIL_FROM</code>：邮件发件地址。<br><code>EMAIL_FROM_NAME</code>：邮件显示名称。<br><code>RESEND_API_KEY</code>：注册验证码邮件发送。<br><code>CF_EMAIL_ROUTING_API_TOKEN</code>：同步 Cloudflare 已验证邮箱。</p><b>Cloudflare 相关</b><p><code>CF_ACCOUNT_ID</code>：Cloudflare 账户 ID。<br><code>CF_API_TOKEN</code>：DNS 管理 API Token。<br><code>CF_ADMIN_EMAIL</code>：管理员通知目标邮箱。</p><b>安全相关</b><p><code>CF_WORKERS_API_TOKEN</code>：管理员变量修改权限令牌，只能在 Cloudflare 控制台修改，网站内禁止修改。</p></div>
+      </div>
+
       <div class="tab-page" data-page="system">
         <div class="system-status-grid" id="system-status-box">${renderSystemStatusSkeleton()}</div>
         <div class="readonly-box wide"><b>配置备份 / 导入恢复</b><p>导出会下载当前 Workers KV 中的完整设置。导入属于高危操作，会覆盖当前配置。</p><button class="btn soft" id="export-settings-2" type="button">导出配置</button><label class="btn soft file-btn">导入配置<input id="import-settings-file-2" type="file" accept="application/json,.json" hidden></label></div>
@@ -4593,6 +4582,7 @@ function bindAdminSettingsTabs() {
     document.querySelector(`[data-page="${target.dataset.tab}"]`)?.classList.add('active');
     sessionStorage.setItem('adminSettingsActiveTab', target.dataset.tab || 'site');
     if (target.dataset.tab === 'system') loadSystemStatusPanel();
+    if (target.dataset.tab === 'variables') loadManagedWorkerVariables().catch(() => undefined);
   };
   document.querySelectorAll('[data-tab]').forEach(btn => btn.addEventListener('click', () => activate(btn.dataset.tab || 'site')));
   activate(sessionStorage.getItem('adminSettingsActiveTab') || 'site');
@@ -4679,8 +4669,8 @@ function notificationTemplateFields(n={}) { const names={newUser:'新账号注�
 function collectNotificationPayload(f) { const events={newUser:f.get('newUser')==='on',newDomain:f.get('newDomain')==='on',domainExpiring:f.get('domainExpiring')==='on',domainExpiredDelete:f.get('domainExpiredDelete')==='on',abnormalRegister:f.get('abnormalRegister')==='on',systemErrorEmail:f.get('systemErrorEmail')==='on',helpSubmissionEmail:f.get('helpSubmissionEmail')==='on',domainReviewEmail:f.get('domainReviewEmail')==='on',dnsAnomalyEmail:f.get('dnsAnomalyEmail')==='on'}; const templates={}, userTargets={}, adminTargets={}; ['newUser','newDomain','domainExpiring','domainExpiredDelete','abnormalRegister'].forEach(k=>{ templates[k]=f.get('template_'+k)||''; userTargets[k]=f.get('userTarget_'+k)||''; adminTargets[k]=f.get('adminTarget_'+k)||''; }); return { events, templates, userTargets, adminTargets, rateLimitPerHour:f.get('rateLimitPerHour'), expiryTemplate:f.get('expiryTemplate') }; }
 function bindCronBuilder(){ document.querySelectorAll('[data-cron]').forEach(btn=>btn.addEventListener('click',()=>{ const input=document.querySelector('#cron-expression'); if(input) input.value=btn.dataset.cron; })); }
 function taskLogSummary(logs){ return Array.isArray(logs)&&logs.length ? logs.slice(-5).map(x=>`${x.time||''} ${x.status||''} ${x.message||''}`).join('；') : '暂无任务运行记录。'; }
-function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v92</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
-async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v92')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v92')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
+function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v93</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
+async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v93')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v93')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
 function bindSettingsTools() {
   const exportFn = async () => {
     try {
@@ -5189,4 +5179,14 @@ Object.assign(I18N_EN, {
   "已配置（密钥值不可读取）":"Configured (secret value cannot be read)",
   "未配置":"Not configured",
   "当前生效值":"Current effective value"
+});
+
+Object.assign(I18N_EN, {
+  "变量设置":"Variables",
+  "Worker 变量同步":"Worker Variable Sync",
+  "同步当前 Worker 环境变量状态，并通过安全白名单直接更新指定变量。":"Sync current Worker variable status and update approved variables through a safe allowlist.",
+  "Worker 变量快捷管理（安全白名单）":"Worker Variable Manager (Safe Allowlist)",
+  "当前变量说明":"Variable Reference",
+  "修改前建议先查看用途，避免误改导致邮件、DNS 或验证功能异常。":"Review the purpose before changing values to avoid breaking email, DNS, or verification features.",
+  "更新 Worker 变量":"Update Worker Variable"
 });
