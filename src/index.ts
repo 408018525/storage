@@ -225,7 +225,34 @@ interface AppSettings {
     publicHomepageHighlight?: string;
     publicHomepageDescription?: string;
     publicHomepagePrimaryText?: string;
+    publicHomepagePrimaryHref?: string;
     publicHomepageSecondaryText?: string;
+    publicHomepageSecondaryHref?: string;
+    publicHomepageSearchEyebrow?: string;
+    publicHomepageSearchTitle?: string;
+    publicHomepageSearchNote?: string;
+    publicHomepageStatsUsersLabel?: string;
+    publicHomepageStatsDomainsLabel?: string;
+    publicHomepageStatsDnsLabel?: string;
+    publicHomepageStatsSuffixesLabel?: string;
+    publicHomepageFeaturesTitle?: string;
+    publicHomepageFeaturesDescription?: string;
+    publicHomepageDomainsTitle?: string;
+    publicHomepageDomainsDescription?: string;
+    publicHomepageProcessTitle?: string;
+    publicHomepageProcessDescription?: string;
+    publicHomepageInfrastructureTitle?: string;
+    publicHomepageInfrastructureDescription?: string;
+    publicHomepageFaqTitle?: string;
+    publicHomepageFaqDescription?: string;
+    publicHomepageSectionOrder?: string;
+    publicHomepageCtaEyebrow?: string;
+    publicHomepageCtaTitle?: string;
+    publicHomepageCtaDescription?: string;
+    publicHomepageCtaPrimaryText?: string;
+    publicHomepageCtaPrimaryHref?: string;
+    publicHomepageCtaSecondaryText?: string;
+    publicHomepageCtaSecondaryHref?: string;
     publicHomepageShowSearch?: boolean;
     publicHomepageShowStats?: boolean;
     publicHomepageShowFeatures?: boolean;
@@ -4600,7 +4627,34 @@ async function adminUpdateSettings(request: Request, env: Env, group: AdminSetti
       publicHomepageHighlight: cleanText(body.publicHomepageHighlight, 80),
       publicHomepageDescription: cleanText(body.publicHomepageDescription, 500),
       publicHomepagePrimaryText: cleanText(body.publicHomepagePrimaryText, 40),
+      publicHomepagePrimaryHref: Object.prototype.hasOwnProperty.call(body, 'publicHomepagePrimaryHref') ? cleanText(body.publicHomepagePrimaryHref, 300) : (settings.site.publicHomepagePrimaryHref || ''),
       publicHomepageSecondaryText: cleanText(body.publicHomepageSecondaryText, 40),
+      publicHomepageSecondaryHref: Object.prototype.hasOwnProperty.call(body, 'publicHomepageSecondaryHref') ? cleanText(body.publicHomepageSecondaryHref, 300) : (settings.site.publicHomepageSecondaryHref || '#/available'),
+      publicHomepageSearchEyebrow: Object.prototype.hasOwnProperty.call(body, 'publicHomepageSearchEyebrow') ? cleanText(body.publicHomepageSearchEyebrow, 50) : (settings.site.publicHomepageSearchEyebrow || '实时查询'),
+      publicHomepageSearchTitle: Object.prototype.hasOwnProperty.call(body, 'publicHomepageSearchTitle') ? cleanText(body.publicHomepageSearchTitle, 80) : (settings.site.publicHomepageSearchTitle || '先确认，再申请'),
+      publicHomepageSearchNote: Object.prototype.hasOwnProperty.call(body, 'publicHomepageSearchNote') ? cleanText(body.publicHomepageSearchNote, 300) : (settings.site.publicHomepageSearchNote || '查询只返回当前可用状态，不公开域名归属或账户信息。'),
+      publicHomepageStatsUsersLabel: Object.prototype.hasOwnProperty.call(body, 'publicHomepageStatsUsersLabel') ? cleanText(body.publicHomepageStatsUsersLabel, 40) : (settings.site.publicHomepageStatsUsersLabel || '活跃用户'),
+      publicHomepageStatsDomainsLabel: Object.prototype.hasOwnProperty.call(body, 'publicHomepageStatsDomainsLabel') ? cleanText(body.publicHomepageStatsDomainsLabel, 40) : (settings.site.publicHomepageStatsDomainsLabel || '正常域名'),
+      publicHomepageStatsDnsLabel: Object.prototype.hasOwnProperty.call(body, 'publicHomepageStatsDnsLabel') ? cleanText(body.publicHomepageStatsDnsLabel, 40) : (settings.site.publicHomepageStatsDnsLabel || 'DNS 记录'),
+      publicHomepageStatsSuffixesLabel: Object.prototype.hasOwnProperty.call(body, 'publicHomepageStatsSuffixesLabel') ? cleanText(body.publicHomepageStatsSuffixesLabel, 40) : (settings.site.publicHomepageStatsSuffixesLabel || '开放根域名'),
+      publicHomepageFeaturesTitle: Object.prototype.hasOwnProperty.call(body, 'publicHomepageFeaturesTitle') ? cleanText(body.publicHomepageFeaturesTitle, 120) : (settings.site.publicHomepageFeaturesTitle || '一个入口，完成域名日常管理'),
+      publicHomepageFeaturesDescription: Object.prototype.hasOwnProperty.call(body, 'publicHomepageFeaturesDescription') ? cleanText(body.publicHomepageFeaturesDescription, 400) : (settings.site.publicHomepageFeaturesDescription || '首页负责查询与了解服务，登录后进入控制台处理申请、审核状态与 DNS。'),
+      publicHomepageDomainsTitle: Object.prototype.hasOwnProperty.call(body, 'publicHomepageDomainsTitle') ? cleanText(body.publicHomepageDomainsTitle, 120) : (settings.site.publicHomepageDomainsTitle || '现在可以申请的后缀'),
+      publicHomepageDomainsDescription: Object.prototype.hasOwnProperty.call(body, 'publicHomepageDomainsDescription') ? cleanText(body.publicHomepageDomainsDescription, 400) : (settings.site.publicHomepageDomainsDescription || '这里只展示开放入口，不用公开用户域名或账户数据。'),
+      publicHomepageProcessTitle: Object.prototype.hasOwnProperty.call(body, 'publicHomepageProcessTitle') ? cleanText(body.publicHomepageProcessTitle, 120) : (settings.site.publicHomepageProcessTitle || '操作路径一眼看懂'),
+      publicHomepageProcessDescription: Object.prototype.hasOwnProperty.call(body, 'publicHomepageProcessDescription') ? cleanText(body.publicHomepageProcessDescription, 400) : (settings.site.publicHomepageProcessDescription || '查询、申请、审核、解析各自独立，减少误操作。'),
+      publicHomepageInfrastructureTitle: Object.prototype.hasOwnProperty.call(body, 'publicHomepageInfrastructureTitle') ? cleanText(body.publicHomepageInfrastructureTitle, 120) : (settings.site.publicHomepageInfrastructureTitle || '系统怎么工作'),
+      publicHomepageInfrastructureDescription: Object.prototype.hasOwnProperty.call(body, 'publicHomepageInfrastructureDescription') ? cleanText(body.publicHomepageInfrastructureDescription, 400) : (settings.site.publicHomepageInfrastructureDescription || '公开页面、业务控制台和 Cloudflare DNS 分工明确，避免把内部配置暴露到前台。'),
+      publicHomepageFaqTitle: Object.prototype.hasOwnProperty.call(body, 'publicHomepageFaqTitle') ? cleanText(body.publicHomepageFaqTitle, 120) : (settings.site.publicHomepageFaqTitle || '第一次使用？先看这些'),
+      publicHomepageFaqDescription: Object.prototype.hasOwnProperty.call(body, 'publicHomepageFaqDescription') ? cleanText(body.publicHomepageFaqDescription, 400) : (settings.site.publicHomepageFaqDescription || '把最容易遇到的问题留在首页，详细内容放到独立知识库。'),
+      publicHomepageSectionOrder: Object.prototype.hasOwnProperty.call(body, 'publicHomepageSectionOrder') ? cleanText(body.publicHomepageSectionOrder, 120) : (settings.site.publicHomepageSectionOrder || 'features,domains,process,infrastructure,faq'),
+      publicHomepageCtaEyebrow: Object.prototype.hasOwnProperty.call(body, 'publicHomepageCtaEyebrow') ? cleanText(body.publicHomepageCtaEyebrow, 50) : (settings.site.publicHomepageCtaEyebrow || '下一步'),
+      publicHomepageCtaTitle: Object.prototype.hasOwnProperty.call(body, 'publicHomepageCtaTitle') ? cleanText(body.publicHomepageCtaTitle, 120) : (settings.site.publicHomepageCtaTitle || '从查询一个名称开始'),
+      publicHomepageCtaDescription: Object.prototype.hasOwnProperty.call(body, 'publicHomepageCtaDescription') ? cleanText(body.publicHomepageCtaDescription, 500) : (settings.site.publicHomepageCtaDescription || '不需要登录即可先确认可用性；需要申请时再进入账户流程。'),
+      publicHomepageCtaPrimaryText: Object.prototype.hasOwnProperty.call(body, 'publicHomepageCtaPrimaryText') ? cleanText(body.publicHomepageCtaPrimaryText, 40) : (settings.site.publicHomepageCtaPrimaryText || '查询域名'),
+      publicHomepageCtaPrimaryHref: Object.prototype.hasOwnProperty.call(body, 'publicHomepageCtaPrimaryHref') ? cleanText(body.publicHomepageCtaPrimaryHref, 300) : (settings.site.publicHomepageCtaPrimaryHref || '#/available'),
+      publicHomepageCtaSecondaryText: Object.prototype.hasOwnProperty.call(body, 'publicHomepageCtaSecondaryText') ? cleanText(body.publicHomepageCtaSecondaryText, 40) : (settings.site.publicHomepageCtaSecondaryText || '阅读知识库'),
+      publicHomepageCtaSecondaryHref: Object.prototype.hasOwnProperty.call(body, 'publicHomepageCtaSecondaryHref') ? cleanText(body.publicHomepageCtaSecondaryHref, 300) : (settings.site.publicHomepageCtaSecondaryHref || '#/knowledge'),
       publicHomepageShowSearch: asBoolean(body.publicHomepageShowSearch, true),
       publicHomepageShowStats: asBoolean(body.publicHomepageShowStats, true),
       publicHomepageShowFeatures: asBoolean(body.publicHomepageShowFeatures, true),
@@ -4918,7 +4972,34 @@ function defaultSettings(env: Env): AppSettings {
       publicHomepageHighlight: '从这里开始',
       publicHomepageDescription: '查询可用二级域名、提交申请并管理 DNS。公开官网负责信息与查询，控制台负责账户和域名管理。',
       publicHomepagePrimaryText: '开始申请',
+      publicHomepagePrimaryHref: '',
       publicHomepageSecondaryText: '先查域名',
+      publicHomepageSecondaryHref: '#/available',
+      publicHomepageSearchEyebrow: '实时查询',
+      publicHomepageSearchTitle: '先确认，再申请',
+      publicHomepageSearchNote: '查询只返回当前可用状态，不公开域名归属或账户信息。',
+      publicHomepageStatsUsersLabel: '活跃用户',
+      publicHomepageStatsDomainsLabel: '正常域名',
+      publicHomepageStatsDnsLabel: 'DNS 记录',
+      publicHomepageStatsSuffixesLabel: '开放根域名',
+      publicHomepageFeaturesTitle: '一个入口，完成域名日常管理',
+      publicHomepageFeaturesDescription: '首页负责查询与了解服务，登录后进入控制台处理申请、审核状态与 DNS。',
+      publicHomepageDomainsTitle: '现在可以申请的后缀',
+      publicHomepageDomainsDescription: '这里只展示开放入口，不用公开用户域名或账户数据。',
+      publicHomepageProcessTitle: '操作路径一眼看懂',
+      publicHomepageProcessDescription: '查询、申请、审核、解析各自独立，减少误操作。',
+      publicHomepageInfrastructureTitle: '系统怎么工作',
+      publicHomepageInfrastructureDescription: '公开页面、业务控制台和 Cloudflare DNS 分工明确，避免把内部配置暴露到前台。',
+      publicHomepageFaqTitle: '第一次使用？先看这些',
+      publicHomepageFaqDescription: '把最容易遇到的问题留在首页，详细内容放到独立知识库。',
+      publicHomepageSectionOrder: 'features,domains,process,infrastructure,faq',
+      publicHomepageCtaEyebrow: '下一步',
+      publicHomepageCtaTitle: '从查询一个名称开始',
+      publicHomepageCtaDescription: '不需要登录即可先确认可用性；需要申请时再进入账户流程。',
+      publicHomepageCtaPrimaryText: '查询域名',
+      publicHomepageCtaPrimaryHref: '#/available',
+      publicHomepageCtaSecondaryText: '阅读知识库',
+      publicHomepageCtaSecondaryHref: '#/knowledge',
       publicHomepageShowSearch: true,
       publicHomepageShowStats: true,
       publicHomepageShowFeatures: true,
@@ -6810,20 +6891,20 @@ async function adminSystemStatus(request: Request, env: Env): Promise<Response> 
       (SELECT COUNT(*) FROM audit_logs WHERE datetime(created_at) >= datetime('now','-' || ? || ' days')) AS logsRetained
   `).bind(auditRetentionDays).first<any>();
   return ok({
-    version: 'v115',
+    version: 'v116',
     settingsKey: SETTINGS_KEY,
     kv: { storage: 'Workers KV', estimatedKeys: '由 Cloudflare 控制台查看实际占用' },
     cfApi: { configured: Boolean(resolveDnsToken(env, settings)), status: resolveDnsToken(env, settings) ? '已配置' : '未配置' },
     cron: { enabled: Boolean(settings.automation?.enabled), expression: settings.automation?.cronExpression || '' },
     counts: { ...counts, logs4d: Number(counts?.logsRetained || 0) },
     auditRetentionDays,
-    update: { current: 'v115', latest: '请以当前部署包为准' },
+    update: { current: 'v116', latest: '请以当前部署包为准' },
   });
 }
 
 async function adminExportSettings(request: Request, env: Env): Promise<Response> {
   await requireAdmin(env, request);
-  return ok({ exportedAt: new Date().toISOString(), version: 'v115', settings: await loadSettings(env) });
+  return ok({ exportedAt: new Date().toISOString(), version: 'v116', settings: await loadSettings(env) });
 }
 
 async function adminImportSettings(request: Request, env: Env): Promise<Response> {
