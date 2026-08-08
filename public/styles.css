@@ -3726,3 +3726,22 @@ html[data-theme="dark"] .admin-settings-v79 .settings-section-heading{
   #dns-type-policy-table td{grid-template-columns:72px minmax(0,1fr)!important;}
   .analytics-global-tooltip,.analytics-global-tooltip.is-mobile-tip{max-width:min(200px,calc(100vw - 16px))!important;font-size:10px!important;}
 }
+
+
+/* v109 domain management search + admin direct-delete controls */
+.domain-pagination-toolbar{grid-template-columns:minmax(210px,.9fr) minmax(260px,1.15fr) auto auto;}
+.domain-search-filter{display:grid;gap:5px;min-width:0}
+.domain-search-filter>span{font-size:12px;color:var(--muted);font-weight:900}
+.domain-search-controls{display:flex;align-items:center;gap:6px;min-width:0}
+.domain-search-controls input{width:100%;min-width:0;min-height:38px;border:1px solid #d8e0ee;border-radius:11px;background:#fff;padding:7px 10px;font:inherit;color:#26334a;outline:0}
+.domain-search-controls input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,99,246,.10)}
+.admin-direct-delete-check{margin-top:-4px;padding:12px 14px;border:1px solid #fecaca;border-radius:14px;background:#fff7f7;color:#991b1b}
+.admin-direct-delete-check input{width:18px;height:18px}
+.admin-direct-delete-help{margin:-12px 0 0!important;font-size:13px;line-height:1.65}
+@media(max-width:768px){
+  .domain-pagination-toolbar{grid-template-columns:1fr!important}
+  .domain-search-controls{display:grid!important;grid-template-columns:minmax(0,1fr) auto auto!important}
+  .domain-search-controls input{min-height:34px!important;font-size:11px!important;padding:6px 8px!important}
+  .admin-direct-delete-check{padding:9px 10px!important;border-radius:10px!important;font-size:11px!important}
+  .admin-direct-delete-help{font-size:10px!important;line-height:1.5!important}
+}
