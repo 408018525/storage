@@ -159,6 +159,32 @@ interface MessageRow {
   read_at?: string | null;
 }
 
+interface SupportTicketRow {
+  id: string;
+  user_id: string;
+  username?: string | null;
+  category: string;
+  priority: string;
+  title: string;
+  description: string;
+  status: string;
+  client_context_json?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+  last_reply_at?: string | null;
+  closed_at?: string | null;
+}
+
+interface SupportTicketReplyRow {
+  id: string;
+  ticket_id: string;
+  user_id: string;
+  username?: string | null;
+  is_admin: number;
+  body: string;
+  created_at: string;
+}
+
 
 interface HelpItemSetting {
   id?: string;
@@ -448,6 +474,14 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
 
   if (method === 'GET' && pathname === '/api/messages') return listOwnMessages(request, env);
   if (method === 'POST' && pathname === '/api/messages/contact-admin') return contactAdminMessage(request, env);
+
+  if (method === 'GET' && pathname === '/api/support/tickets') return listSupportTickets(request, env, url);
+  if (method === 'POST' && pathname === '/api/support/tickets') return createSupportTicket(request, env);
+  match = pathname.match(/^\/api\/support\/tickets\/([^/]+)$/);
+  if (match && method === 'GET') return getSupportTicket(request, env, decodeURIComponent(match[1]));
+  if (match && method === 'PATCH') return updateSupportTicket(request, env, decodeURIComponent(match[1]));
+  match = pathname.match(/^\/api\/support\/tickets\/([^/]+)\/replies$/);
+  if (match && method === 'POST') return replySupportTicket(request, env, decodeURIComponent(match[1]));
   if (method === 'POST' && pathname === '/api/messages/read-batch') return markOwnMessagesReadBatch(request, env);
   if (method === 'POST' && pathname === '/api/messages/delete-batch') return deleteOwnMessagesBatch(request, env);
   match = pathname.match(/^\/api\/messages\/([^/]+)\/reply$/);
@@ -624,6 +658,35 @@ async function ensureSchema(env: Env): Promise<void> {
       )
     `),
     env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS support_tickets (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        category TEXT NOT NULL DEFAULT 'general',
+        priority TEXT NOT NULL DEFAULT 'normal',
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'open',
+        client_context_json TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        last_reply_at TEXT,
+        closed_at TEXT,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+      )
+    `),
+    env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS support_ticket_replies (
+        id TEXT PRIMARY KEY,
+        ticket_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        is_admin INTEGER NOT NULL DEFAULT 0,
+        body TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY(ticket_id) REFERENCES support_tickets(id),
+        FOREIGN KEY(user_id) REFERENCES users(id)
+      )
+    `),
+    env.DB.prepare(`
       CREATE TABLE IF NOT EXISTS message_reads (
         message_id TEXT NOT NULL,
         user_id TEXT NOT NULL,
@@ -700,6 +763,9 @@ async function ensureSchema(env: Env): Promise<void> {
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_messages_target_user ON system_messages(target_type, target_user_id, status)'),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_messages_target_role ON system_messages(target_type, target_role, status)'),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_user_message_deletions_user ON user_message_deletions(user_id, deleted_at)'),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_support_tickets_user ON support_tickets(user_id, updated_at)'),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets(status, updated_at)'),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_support_ticket_replies_ticket ON support_ticket_replies(ticket_id, created_at)'),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at)'),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_audit_logs_actor ON audit_logs(actor_user_id, created_at)'),
   ]);
@@ -2507,6 +2573,154 @@ async function contactAdminMessage(request: Request, env: Env): Promise<Response
   });
   const row = await env.DB.prepare(`SELECT m.*, sender.username AS sender_username FROM system_messages m LEFT JOIN users sender ON sender.id=m.sender_user_id WHERE m.id=?`).bind(id).first<MessageRow>();
   return ok({ sent: true, movedToMessageCenter: true, message: serializeMessage(row!) });
+}
+
+
+const SUPPORT_TICKET_CATEGORIES = new Set(['general','technical','application']);
+const SUPPORT_TICKET_PRIORITIES = new Set(['low','normal','high','urgent']);
+const SUPPORT_TICKET_STATUSES = new Set(['open','in_progress','waiting_user','resolved','closed']);
+function normalizeSupportCategory(value: unknown): string {
+  const v = cleanText(value, 30).toLowerCase();
+  if (!SUPPORT_TICKET_CATEGORIES.has(v)) throw new HttpError(400, 'INVALID_TICKET_CATEGORY', '请选择有效的问题板块');
+  return v;
+}
+function normalizeSupportPriority(value: unknown): string {
+  const v = cleanText(value, 30).toLowerCase();
+  if (!SUPPORT_TICKET_PRIORITIES.has(v)) throw new HttpError(400, 'INVALID_TICKET_PRIORITY', '请选择有效的优先级');
+  return v;
+}
+function normalizeSupportStatus(value: unknown): string {
+  const v = cleanText(value, 30).toLowerCase();
+  if (!SUPPORT_TICKET_STATUSES.has(v)) throw new HttpError(400, 'INVALID_TICKET_STATUS', '请选择有效的工单状态');
+  return v;
+}
+function supportTicketCategoryLabel(value: string): string {
+  return ({general:'综合板块', technical:'技术板块', application:'申请板块'} as Record<string,string>)[value] || value;
+}
+function supportTicketPriorityLabel(value: string): string {
+  return ({low:'低', normal:'普通', high:'高', urgent:'紧急'} as Record<string,string>)[value] || value;
+}
+function parseSupportClientContext(raw: string | null | undefined): Record<string, unknown> | null {
+  if (!raw) return null;
+  try { const parsed = JSON.parse(raw); return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null; } catch { return null; }
+}
+function serializeSupportTicket(row: SupportTicketRow): Record<string, unknown> {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    username: row.username || null,
+    category: row.category,
+    priority: row.priority,
+    title: row.title,
+    description: row.description,
+    status: row.status,
+    clientContext: parseSupportClientContext(row.client_context_json),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at || row.created_at,
+    lastReplyAt: row.last_reply_at || null,
+    closedAt: row.closed_at || null,
+  };
+}
+function serializeSupportReply(row: SupportTicketReplyRow): Record<string, unknown> {
+  return { id:row.id, ticketId:row.ticket_id, userId:row.user_id, username:row.username || null, isAdmin:Boolean(row.is_admin), body:row.body, createdAt:row.created_at };
+}
+async function getSupportTicketRow(env: Env, id: string): Promise<SupportTicketRow | null> {
+  return env.DB.prepare(`SELECT t.*, u.username FROM support_tickets t LEFT JOIN users u ON u.id=t.user_id WHERE t.id=? LIMIT 1`).bind(id).first<SupportTicketRow>();
+}
+async function requireSupportUser(env: Env, request: Request): Promise<UserRow> {
+  const user = await getAuthUser(env, request);
+  if (!user) throw new HttpError(401, 'UNAUTHORIZED', '请先登录');
+  // 支持中心对“已禁用但仍有有效会话”的用户开放，方便联系管理员；deleted 用户不会被 getAuthUser 返回。
+  return user;
+}
+async function assertSupportTicketAccess(env: Env, request: Request, id: string): Promise<{ user: UserRow; ticket: SupportTicketRow }> {
+  const user = await requireSupportUser(env, request);
+  const ticket = await getSupportTicketRow(env, id);
+  if (!ticket) throw new HttpError(404, 'TICKET_NOT_FOUND', '工单不存在');
+  if (user.role !== 'admin' && ticket.user_id !== user.id) throw new HttpError(403, 'TICKET_FORBIDDEN', '无权访问该工单');
+  return { user, ticket };
+}
+async function listSupportTickets(request: Request, env: Env, url: URL): Promise<Response> {
+  const user = await requireSupportUser(env, request);
+  const status = cleanText(url.searchParams.get('status'), 30).toLowerCase();
+  const category = cleanText(url.searchParams.get('category'), 30).toLowerCase();
+  const priority = cleanText(url.searchParams.get('priority'), 30).toLowerCase();
+  const q = cleanText(url.searchParams.get('q'), 120).toLowerCase();
+  const rows = await (user.role === 'admin'
+    ? env.DB.prepare(`SELECT t.*, u.username FROM support_tickets t LEFT JOIN users u ON u.id=t.user_id ORDER BY datetime(COALESCE(t.updated_at,t.created_at)) DESC LIMIT 1000`).all<SupportTicketRow>()
+    : env.DB.prepare(`SELECT t.*, u.username FROM support_tickets t LEFT JOIN users u ON u.id=t.user_id WHERE t.user_id=? ORDER BY datetime(COALESCE(t.updated_at,t.created_at)) DESC LIMIT 500`).bind(user.id).all<SupportTicketRow>());
+  let tickets = (rows.results || []).filter(t => (!status || t.status === status) && (!category || t.category === category) && (!priority || t.priority === priority));
+  if (q) tickets = tickets.filter(t => `${t.id} ${t.title} ${t.username || ''}`.toLowerCase().includes(q));
+  return ok({ tickets: tickets.map(serializeSupportTicket), scope:user.role === 'admin' ? 'all' : 'own' });
+}
+async function createSupportTicket(request: Request, env: Env): Promise<Response> {
+  const user = await requireSupportUser(env, request);
+  await rateLimit(env, request, `support-ticket:${user.id}`, 10, 3600);
+  const body = await readJson<Record<string, unknown>>(request, 64 * 1024);
+  const category = normalizeSupportCategory(body.category || 'general');
+  const priority = normalizeSupportPriority(body.priority || 'normal');
+  const title = cleanText(body.title, 120);
+  const description = cleanText(body.description, 5000);
+  if (title.length < 4) throw new HttpError(400, 'TICKET_TITLE_TOO_SHORT', '工单标题至少填写 4 个字符');
+  if (description.length < 10) throw new HttpError(400, 'TICKET_DESCRIPTION_TOO_SHORT', '问题描述至少填写 10 个字符');
+  let contextJson: string | null = null;
+  if (body.clientContext && typeof body.clientContext === 'object' && !Array.isArray(body.clientContext)) {
+    const c = body.clientContext as Record<string, unknown>;
+    contextJson = JSON.stringify({ page:cleanText(c.page,120), userAgent:cleanText(c.userAgent,500), language:cleanText(c.language,40), screen:cleanText(c.screen,40), viewport:cleanText(c.viewport,40), generatedAt:cleanText(c.generatedAt,80) });
+  }
+  const id = crypto.randomUUID();
+  await env.DB.prepare(`INSERT INTO support_tickets (id,user_id,category,priority,title,description,status,client_context_json) VALUES (?,?,?,?,?,?,'open',?)`).bind(id,user.id,category,priority,title,description,contextJson).run();
+  await audit(env, request, user.id, 'support.ticket_create', 'support_ticket', id, {category,priority,title});
+  await sendAdminCloudflareEmailSafe(env, 'help_submission', {
+    subject:`【新工单 / ${supportTicketPriorityLabel(priority)}】${title}`,
+    text:[`工单编号：${id}`,`用户：${user.username} (${user.id})`,`板块：${supportTicketCategoryLabel(category)}`,`优先级：${supportTicketPriorityLabel(priority)}`,`提交时间：${new Date().toISOString()}`,'',description,'',`后台查看：${new URL(request.url).origin}/#/support/ticket/${id}`].join('\n'),
+    fingerprint:`ticket-create|${id}`, cooldownSeconds:30,
+  });
+  const row = await getSupportTicketRow(env,id);
+  return ok({ ticket:serializeSupportTicket(row!) });
+}
+async function getSupportTicket(request: Request, env: Env, id: string): Promise<Response> {
+  const { ticket } = await assertSupportTicketAccess(env, request, id);
+  const replies = await env.DB.prepare(`SELECT r.*, u.username FROM support_ticket_replies r LEFT JOIN users u ON u.id=r.user_id WHERE r.ticket_id=? ORDER BY datetime(r.created_at) ASC`).bind(id).all<SupportTicketReplyRow>();
+  return ok({ ticket:serializeSupportTicket(ticket), replies:(replies.results || []).map(serializeSupportReply) });
+}
+async function updateSupportTicket(request: Request, env: Env, id: string): Promise<Response> {
+  const { user, ticket } = await assertSupportTicketAccess(env, request, id);
+  const body = await readJson<Record<string, unknown>>(request, 32 * 1024);
+  if (ticket.status === 'closed' && user.role !== 'admin') throw new HttpError(409,'TICKET_CLOSED','已关闭工单不能再修改');
+  const category = body.category !== undefined ? normalizeSupportCategory(body.category) : ticket.category;
+  const priority = body.priority !== undefined ? normalizeSupportPriority(body.priority) : ticket.priority;
+  let status = ticket.status;
+  if (body.status !== undefined) {
+    if (user.role !== 'admin') throw new HttpError(403,'ADMIN_REQUIRED','只有管理员可以修改工单处理状态');
+    status = normalizeSupportStatus(body.status);
+  }
+  const closedAt = status === 'closed' ? new Date().toISOString() : null;
+  await env.DB.prepare(`UPDATE support_tickets SET category=?, priority=?, status=?, updated_at=datetime('now'), closed_at=? WHERE id=?`).bind(category,priority,status,closedAt,id).run();
+  await audit(env, request, user.id, 'support.ticket_update', 'support_ticket', id, {category,priority,status});
+  const row = await getSupportTicketRow(env,id);
+  return ok({ ticket:serializeSupportTicket(row!) });
+}
+async function replySupportTicket(request: Request, env: Env, id: string): Promise<Response> {
+  const { user, ticket } = await assertSupportTicketAccess(env, request, id);
+  if (ticket.status === 'closed') throw new HttpError(409,'TICKET_CLOSED','工单已关闭，不能继续回复');
+  await rateLimit(env, request, `support-reply:${user.id}`, 40, 3600);
+  const body = await readJson<Record<string, unknown>>(request, 32 * 1024);
+  const text = cleanText(body.body, 5000);
+  if (text.length < 2) throw new HttpError(400,'TICKET_REPLY_REQUIRED','请填写回复内容');
+  const replyId = crypto.randomUUID();
+  const isAdmin = user.role === 'admin' ? 1 : 0;
+  await env.DB.prepare(`INSERT INTO support_ticket_replies (id,ticket_id,user_id,is_admin,body) VALUES (?,?,?,?,?)`).bind(replyId,id,user.id,isAdmin,text).run();
+  const nextStatus = isAdmin ? 'waiting_user' : (ticket.status === 'resolved' || ticket.status === 'waiting_user' ? 'open' : ticket.status);
+  await env.DB.prepare(`UPDATE support_tickets SET status=?, last_reply_at=datetime('now'), updated_at=datetime('now') WHERE id=?`).bind(nextStatus,id).run();
+  await audit(env, request, user.id, 'support.ticket_reply', 'support_ticket', id, {isAdmin:Boolean(isAdmin)});
+  if (isAdmin) {
+    await env.DB.prepare(`INSERT INTO system_messages (id,sender_user_id,target_type,target_user_id,title,body,level,status,sent_at) VALUES (?,?, 'user', ?, ?, ?, 'support_reply', 'sent', datetime('now'))`).bind(crypto.randomUUID(),user.id,ticket.user_id,`工单 ${id.replace(/-/g,'').slice(0,8).toUpperCase()} 有新回复`,text).run();
+  } else {
+    await sendAdminCloudflareEmailSafe(env,'help_submission',{subject:`【工单回复】${ticket.title}`,text:[`工单：${id}`,`用户：${user.username}`,'',text,'',`后台查看：${new URL(request.url).origin}/#/support/ticket/${id}`].join('\n'),fingerprint:`ticket-reply|${replyId}`,cooldownSeconds:15});
+  }
+  const row = await env.DB.prepare(`SELECT r.*, u.username FROM support_ticket_replies r LEFT JOIN users u ON u.id=r.user_id WHERE r.id=?`).bind(replyId).first<SupportTicketReplyRow>();
+  return ok({ reply:serializeSupportReply(row!), status:nextStatus });
 }
 
 async function listOwnMessages(request: Request, env: Env): Promise<Response> {
@@ -6596,20 +6810,20 @@ async function adminSystemStatus(request: Request, env: Env): Promise<Response> 
       (SELECT COUNT(*) FROM audit_logs WHERE datetime(created_at) >= datetime('now','-' || ? || ' days')) AS logsRetained
   `).bind(auditRetentionDays).first<any>();
   return ok({
-    version: 'v113',
+    version: 'v114',
     settingsKey: SETTINGS_KEY,
     kv: { storage: 'Workers KV', estimatedKeys: '由 Cloudflare 控制台查看实际占用' },
     cfApi: { configured: Boolean(resolveDnsToken(env, settings)), status: resolveDnsToken(env, settings) ? '已配置' : '未配置' },
     cron: { enabled: Boolean(settings.automation?.enabled), expression: settings.automation?.cronExpression || '' },
     counts: { ...counts, logs4d: Number(counts?.logsRetained || 0) },
     auditRetentionDays,
-    update: { current: 'v113', latest: '请以当前部署包为准' },
+    update: { current: 'v114', latest: '请以当前部署包为准' },
   });
 }
 
 async function adminExportSettings(request: Request, env: Env): Promise<Response> {
   await requireAdmin(env, request);
-  return ok({ exportedAt: new Date().toISOString(), version: 'v113', settings: await loadSettings(env) });
+  return ok({ exportedAt: new Date().toISOString(), version: 'v114', settings: await loadSettings(env) });
 }
 
 async function adminImportSettings(request: Request, env: Env): Promise<Response> {
