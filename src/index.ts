@@ -465,6 +465,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   if (method === 'POST' && pathname === '/api/admin/dns/sync-allowed-types') return adminSyncDnsAllowedTypesFromWorker(request, env);
   if (method === 'POST' && pathname === '/api/admin/dns/discover-existing') return adminDiscoverExistingDns(request, env);
   if (method === 'POST' && pathname === '/api/admin/dns/import-existing') return adminImportExistingDns(request, env);
+  if (method === 'POST' && pathname === '/api/admin/dns/unlink-domains') return adminUnlinkDomains(request, env);
 
   match = pathname.match(/^\/api\/admin\/registration-keys\/([^/]+)$/);
   if (match && method === 'DELETE') return adminDeleteRegistrationKey(request, env, decodeURIComponent(match[1]));
@@ -2839,7 +2840,9 @@ async function adminDiscoverExistingDns(request: Request, env: Env): Promise<Res
   const localIds = new Set<string>();
   const localCfRecordIds = new Set<string>();
   const localSignatures = new Set<string>();
+  const localDnsCountByApp = new Map<string, number>();
   for (const row of localResult.results || []) {
+    if (row.application_id) localDnsCountByApp.set(String(row.application_id), (localDnsCountByApp.get(String(row.application_id)) || 0) + 1);
     if (row.cf_record_id) {
       localIds.add(`${row.application_id}|${row.cf_record_id}`);
       localCfRecordIds.add(String(row.cf_record_id));
@@ -2857,6 +2860,7 @@ async function adminDiscoverExistingDns(request: Request, env: Env): Promise<Res
   let unsupportedCount = 0;
   let unmatchedCount = 0;
   let scannedZones = 0;
+  const remoteDnsCountByApp = new Map<string, number>();
 
   const configuredSuffixes = (settings.dns.suffixes || [])
     .map(item => ({ ...item, __root: normalizeCloudflareDnsName(item.suffixAscii || item.suffix || '') }))
@@ -2959,6 +2963,7 @@ async function adminDiscoverExistingDns(request: Request, env: Env): Promise<Res
 
       matchedRemoteRecords += 1;
       stat.matched += 1;
+      remoteDnsCountByApp.set(String(app.id), (remoteDnsCountByApp.get(String(app.id)) || 0) + 1);
       const local = cloudflareDnsRecordToLocal(remote, app.__fqdn);
       if (!local) {
         unsupportedCount += 1;
@@ -3017,8 +3022,25 @@ async function adminDiscoverExistingDns(request: Request, env: Env): Promise<Res
 
   if (!configuredSuffixes.length) warnings.push('没有找到已配置 Zone ID 的根域名');
 
+  const domains = applications.map(app => {
+    const rootConfig = configuredSuffixes.find(suffix => app.__fqdn === suffix.__root || app.__fqdn.endsWith(`.${suffix.__root}`));
+    const reviewNote = String(app.review_note || '');
+    return {
+      applicationId: app.id,
+      domain: app.fqdn_unicode || app.__fqdn,
+      domainAscii: app.__fqdn,
+      root: rootConfig?.__root || normalizeCloudflareDnsName(app.suffix_ascii || app.suffix_unicode || ''),
+      username: app.username || '',
+      status: app.status || '',
+      source: reviewNote.includes('从 Cloudflare 已有 DNS 同步到管理员名下') ? 'cloudflare' : 'system',
+      systemDnsCount: localDnsCountByApp.get(String(app.id)) || 0,
+      cloudflareDnsCount: remoteDnsCountByApp.get(String(app.id)) || 0,
+    };
+  }).sort((a, b) => a.root.localeCompare(b.root) || a.domainAscii.localeCompare(b.domainAscii));
+
   return ok({
     records: discovered,
+    domains,
     skippedRecords,
     warnings: Array.from(new Set(warnings)).slice(0, 50),
     scannedDomains: applications.length,
@@ -3225,6 +3247,67 @@ async function adminImportExistingDns(request: Request, env: Env): Promise<Respo
     errors: errors.slice(0, 10),
   });
   return ok({ imported, skipped, applications: touchedApps.size, createdAdminDomains, errors: errors.slice(0, 20) });
+}
+
+
+async function adminUnlinkDomains(request: Request, env: Env): Promise<Response> {
+  const admin = await requireAdmin(env, request);
+  const body = await readJson<Record<string, unknown>>(request, 128 * 1024);
+  const ids = Array.from(new Set((Array.isArray(body.applicationIds) ? body.applicationIds : [])
+    .map(value => cleanText(value, 80))
+    .filter(Boolean))).slice(0, 500);
+  if (!ids.length) throw new HttpError(400, 'DOMAIN_UNLINK_SELECTION_REQUIRED', '请选择要取消同步的域名');
+
+  const placeholders = ids.map(() => '?').join(',');
+  const appsResult = await env.DB.prepare(`
+    SELECT id,fqdn_unicode,fqdn_ascii,user_id,status
+    FROM domain_applications
+    WHERE id IN (${placeholders})
+      AND (deleted_at IS NULL OR deleted_at='')
+  `).bind(...ids).all<any>();
+  const apps = appsResult.results || [];
+  if (!apps.length) throw new HttpError(404, 'DOMAIN_UNLINK_NOT_FOUND', '所选域名已经不在域名系统中');
+
+  const actualIds = apps.map(app => String(app.id));
+  const actualPlaceholders = actualIds.map(() => '?').join(',');
+  const dnsCountRow = await env.DB.prepare(`
+    SELECT COUNT(*) AS count FROM dns_records
+    WHERE application_id IN (${actualPlaceholders})
+      AND (deleted_at IS NULL OR deleted_at='')
+  `).bind(...actualIds).first<any>();
+  const removedDnsRecords = Number(dnsCountRow?.count || 0);
+  const now = new Date().toISOString();
+
+  // Important: this action only removes the system-side representation. It must never call
+  // Cloudflare DNS delete/update APIs, so the remote records remain untouched.
+  await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE dns_records
+      SET deleted_at=?, status='deleted', updated_at=?
+      WHERE application_id IN (${actualPlaceholders})
+        AND (deleted_at IS NULL OR deleted_at='')
+    `).bind(now, now, ...actualIds),
+    env.DB.prepare(`
+      UPDATE domain_applications
+      SET deleted_at=?, updated_at=?, delete_requested_at=NULL, delete_requested_by=NULL
+      WHERE id IN (${actualPlaceholders})
+        AND (deleted_at IS NULL OR deleted_at='')
+    `).bind(now, now, ...actualIds),
+  ]);
+
+  await audit(env, request, admin.id, 'admin.domain_unlink_from_system', 'domain_application', null, {
+    applicationIds: actualIds,
+    domains: apps.map(app => app.fqdn_unicode || app.fqdn_ascii || app.id).slice(0, 100),
+    removedDomains: apps.length,
+    removedLocalDnsRecords: removedDnsRecords,
+    cloudflareDnsUntouched: true,
+  });
+
+  return ok({
+    removedDomains: apps.length,
+    removedLocalDnsRecords: removedDnsRecords,
+    cloudflareDnsUntouched: true,
+  });
 }
 
 async function adminApplications(request: Request, env: Env, url: URL): Promise<Response> {
@@ -6382,20 +6465,20 @@ async function adminSystemStatus(request: Request, env: Env): Promise<Response> 
       (SELECT COUNT(*) FROM audit_logs WHERE datetime(created_at) >= datetime('now','-' || ? || ' days')) AS logsRetained
   `).bind(auditRetentionDays).first<any>();
   return ok({
-    version: 'v109',
+    version: 'v110',
     settingsKey: SETTINGS_KEY,
     kv: { storage: 'Workers KV', estimatedKeys: '由 Cloudflare 控制台查看实际占用' },
     cfApi: { configured: Boolean(resolveDnsToken(env, settings)), status: resolveDnsToken(env, settings) ? '已配置' : '未配置' },
     cron: { enabled: Boolean(settings.automation?.enabled), expression: settings.automation?.cronExpression || '' },
     counts: { ...counts, logs4d: Number(counts?.logsRetained || 0) },
     auditRetentionDays,
-    update: { current: 'v109', latest: '请以当前部署包为准' },
+    update: { current: 'v110', latest: '请以当前部署包为准' },
   });
 }
 
 async function adminExportSettings(request: Request, env: Env): Promise<Response> {
   await requireAdmin(env, request);
-  return ok({ exportedAt: new Date().toISOString(), version: 'v109', settings: await loadSettings(env) });
+  return ok({ exportedAt: new Date().toISOString(), version: 'v110', settings: await loadSettings(env) });
 }
 
 async function adminImportSettings(request: Request, env: Env): Promise<Response> {
