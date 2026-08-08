@@ -1456,6 +1456,19 @@ function publicFaqHtml(limit = PUBLIC_FAQ.length) {
   return `<div class="public-faq-list">${PUBLIC_FAQ.slice(0,limit).map(([q,a]) => `<details><summary>${esc(q)}</summary><p>${esc(a)}</p></details>`).join('')}</div>`;
 }
 
+function safePublicHomepageHref(value, fallback) {
+  const v = String(value || '').trim();
+  if (/^#\/[a-z0-9_\-/?.=&%]+$/i.test(v)) return v;
+  if (/^https:\/\/[a-z0-9.-]+(?:\/[^\s<>"']*)?$/i.test(v)) return v;
+  return fallback;
+}
+
+function homepageSectionOrder(value) {
+  const valid = ['features','domains','process','infrastructure','faq'];
+  const requested = String(value || '').split(',').map(x => x.trim()).filter(x => valid.includes(x));
+  return [...new Set([...requested, ...valid])];
+}
+
 function renderPublicHome() {
   const site = state.config?.site || {};
   if (site.publicHomepageEnabled === false) return go(state.me ? '#/apply' : '#/login');
@@ -1468,14 +1481,28 @@ function renderPublicHome() {
   const description = String(site.publicHomepageDescription || pub('查询可用二级域名、提交申请并管理 DNS。公开官网负责信息与查询，控制台负责账户和域名管理。','Check available subdomains, submit applications, and manage DNS. The public site handles discovery while the dashboard handles accounts and domains.')).trim();
   const primaryText = String(site.publicHomepagePrimaryText || pub('开始申请','Start applying')).trim();
   const secondaryText = String(site.publicHomepageSecondaryText || pub('先查域名','Check a domain first')).trim();
+  const primaryHref = safePublicHomepageHref(site.publicHomepagePrimaryHref, state.me ? '#/apply' : '#/register');
+  const secondaryHref = safePublicHomepageHref(site.publicHomepageSecondaryHref, '#/available');
+  const searchEyebrow = String(site.publicHomepageSearchEyebrow || pub('实时查询','LIVE CHECK')).trim();
+  const searchTitle = String(site.publicHomepageSearchTitle || pub('先确认，再申请','Check first, apply second')).trim();
+  const searchNote = String(site.publicHomepageSearchNote || pub('查询只返回当前可用状态，不公开域名归属或账户信息。','The check returns availability only and does not expose ownership or account information.')).trim();
   const suffixCards = suffixes.slice(0,6).map((item,index) => `<article class="public-suffix-card"><div><span>${String(index+1).padStart(2,'0')}</span><h3>*.${esc(item.suffix)}</h3></div><p>${item.label?esc(item.label):pub('当前开放申请','Currently open for applications')}</p><small>${pub('可直接查询是否可注册','Check availability instantly')}</small><a href="#/available">${pub('立即查询','Check now')} →</a></article>`).join('');
-  const heroSearch = site.publicHomepageShowSearch === false ? '' : `<div class="public-home-v114-tool"><div class="public-home-v114-tool-head"><span>${pub('实时查询','LIVE CHECK')}</span><b>${pub('先确认，再申请','Check first, apply second')}</b></div>${publicDomainSearchHtml('home-domain-search', true)}<p>${pub('查询只返回当前可用状态，不公开域名归属或账户信息。','The check returns availability only and does not expose ownership or account information.')}</p></div>`;
-  const stats = site.publicHomepageShowStats === false ? '' : `<section class="public-stats public-home-v114-stats" data-public-stats><div><strong data-stat="users">—</strong><span>${pub('活跃用户','Active Users')}</span></div><div><strong data-stat="domains">—</strong><span>${pub('正常域名','Active Domains')}</span></div><div><strong data-stat="dns">—</strong><span>${pub('DNS 记录','DNS Records')}</span></div><div><strong data-stat="suffixes">—</strong><span>${pub('开放根域名','Open Roots')}</span></div></section>`;
-  const features = site.publicHomepageShowFeatures === false ? '' : `<section class="public-section public-home-v114-section"><header><span>01</span><div><h2>${pub('一个入口，完成域名日常管理','One place for daily domain management')}</h2><p>${pub('首页负责查询与了解服务，登录后进入控制台处理申请、审核状态与 DNS。','Use the public site for discovery and the dashboard for applications, review status, and DNS.')}</p></div></header>${publicFeatureCards()}</section>`;
-  const domains = site.publicHomepageShowDomains === false ? '' : `<section class="public-section public-soft-section public-home-v114-section"><header><span>02</span><div><h2>${pub('现在可以申请的后缀','Root domains open now')}</h2><p>${pub('这里只展示开放入口，不用公开用户域名或账户数据。','Only open root domains are shown here; user domains and account data stay private.')}</p></div><a href="#/featured">${pub('查看全部','View all')} →</a></header><div class="public-suffix-grid">${suffixCards || `<div class="public-empty">${pub('当前暂无开放根域名。','No root domains are currently open.')}</div>`}</div></section>`;
-  const process = site.publicHomepageShowProcess === false ? '' : `<section class="public-section public-home-v114-section"><header><span>03</span><div><h2>${pub('操作路径一眼看懂','A workflow you can understand at a glance')}</h2><p>${pub('查询、申请、审核、解析各自独立，减少误操作。','Availability, application, review, and DNS are separate steps to reduce mistakes.')}</p></div></header><div class="public-steps"><article><b>1</b><h3>${pub('查询','Check')}</h3><p>${pub('先确认名称当前可用。','Confirm the name is currently available.')}</p></article><article><b>2</b><h3>${pub('申请','Apply')}</h3><p>${pub('登录后选择根域名并提交。','Log in, select a root domain, and submit.')}</p></article><article><b>3</b><h3>${pub('审核','Review')}</h3><p>${pub('按当前规则完成审核。','Review follows the current site policy.')}</p></article><article><b>4</b><h3>${pub('解析','DNS')}</h3><p>${pub('通过后配置授权的 DNS 类型。','Configure allowed DNS types after approval.')}</p></article><article><b>5</b><h3>${pub('维护','Maintain')}</h3><p>${pub('后续在控制台管理状态与记录。','Manage status and records from the dashboard.')}</p></article></div></section>`;
-  const infra = site.publicHomepageShowInfrastructure === false ? '' : `<section class="public-section public-infra public-home-v114-section"><header><span>04</span><div><h2>${pub('系统怎么工作','How the system works')}</h2><p>${pub('公开页面、业务控制台和 Cloudflare DNS 分工明确，避免把内部配置暴露到前台。','Public pages, the dashboard, and Cloudflare DNS have separate responsibilities, keeping internal configuration private.')}</p></div></header><div class="public-infra-grid"><article><b>⌕</b><div><h3>${pub('公开查询层','Public lookup')}</h3><p>${pub('只提供可用性和公开说明。','Availability and public documentation only.')}</p></div></article><article><b>⌘</b><div><h3>${pub('业务控制台','Service dashboard')}</h3><p>${pub('账户、申请、审核、DNS 与日志。','Accounts, applications, review, DNS, and logs.')}</p></div></article><article><b>☁</b><div><h3>Cloudflare</h3><p>Workers · D1 · KV · DNS API</p></div></article></div></section>`;
-  const faq = site.publicHomepageShowFaq === false ? '' : `<section class="public-section public-home-v114-section"><header><span>05</span><div><h2>${pub('第一次使用？先看这些','New here? Start with these answers')}</h2><p>${pub('把最容易遇到的问题留在首页，详细内容放到独立知识库。','Keep common questions on the homepage and detailed guidance in the standalone Knowledge Base.')}</p></div><a href="#/faq">${pub('查看全部','View all')} →</a></header>${publicFaqHtml(4)}</section>`;
+  const heroSearch = site.publicHomepageShowSearch === false ? '' : `<div class="public-home-v114-tool"><div class="public-home-v114-tool-head"><span>${esc(searchEyebrow)}</span><b>${esc(searchTitle)}</b></div>${publicDomainSearchHtml('home-domain-search', true)}<p>${esc(searchNote)}</p></div>`;
+  const stats = site.publicHomepageShowStats === false ? '' : `<section class="public-stats public-home-v114-stats" data-public-stats><div><strong data-stat="users">—</strong><span>${esc(site.publicHomepageStatsUsersLabel || pub('活跃用户','Active Users'))}</span></div><div><strong data-stat="domains">—</strong><span>${esc(site.publicHomepageStatsDomainsLabel || pub('正常域名','Active Domains'))}</span></div><div><strong data-stat="dns">—</strong><span>${esc(site.publicHomepageStatsDnsLabel || pub('DNS 记录','DNS Records'))}</span></div><div><strong data-stat="suffixes">—</strong><span>${esc(site.publicHomepageStatsSuffixesLabel || pub('开放根域名','Open Roots'))}</span></div></section>`;
+  const features = site.publicHomepageShowFeatures === false ? '' : `<section class="public-section public-home-v114-section"><header><span>01</span><div><h2>${esc(site.publicHomepageFeaturesTitle || pub('一个入口，完成域名日常管理','One place for daily domain management'))}</h2><p>${esc(site.publicHomepageFeaturesDescription || pub('首页负责查询与了解服务，登录后进入控制台处理申请、审核状态与 DNS。','Use the public site for discovery and the dashboard for applications, review status, and DNS.'))}</p></div></header>${publicFeatureCards()}</section>`;
+  const domains = site.publicHomepageShowDomains === false ? '' : `<section class="public-section public-soft-section public-home-v114-section"><header><span>02</span><div><h2>${esc(site.publicHomepageDomainsTitle || pub('现在可以申请的后缀','Root domains open now'))}</h2><p>${esc(site.publicHomepageDomainsDescription || pub('这里只展示开放入口，不用公开用户域名或账户数据。','Only open root domains are shown here; user domains and account data stay private.'))}</p></div><a href="#/featured">${pub('查看全部','View all')} →</a></header><div class="public-suffix-grid">${suffixCards || `<div class="public-empty">${pub('当前暂无开放根域名。','No root domains are currently open.')}</div>`}</div></section>`;
+  const process = site.publicHomepageShowProcess === false ? '' : `<section class="public-section public-home-v114-section"><header><span>03</span><div><h2>${esc(site.publicHomepageProcessTitle || pub('操作路径一眼看懂','A workflow you can understand at a glance'))}</h2><p>${esc(site.publicHomepageProcessDescription || pub('查询、申请、审核、解析各自独立，减少误操作。','Availability, application, review, and DNS are separate steps to reduce mistakes.'))}</p></div></header><div class="public-steps"><article><b>1</b><h3>${pub('查询','Check')}</h3><p>${pub('先确认名称当前可用。','Confirm the name is currently available.')}</p></article><article><b>2</b><h3>${pub('申请','Apply')}</h3><p>${pub('登录后选择根域名并提交。','Log in, select a root domain, and submit.')}</p></article><article><b>3</b><h3>${pub('审核','Review')}</h3><p>${pub('按当前规则完成审核。','Review follows the current site policy.')}</p></article><article><b>4</b><h3>${pub('解析','DNS')}</h3><p>${pub('通过后配置授权的 DNS 类型。','Configure allowed DNS types after approval.')}</p></article><article><b>5</b><h3>${pub('维护','Maintain')}</h3><p>${pub('后续在控制台管理状态与记录。','Manage status and records from the dashboard.')}</p></article></div></section>`;
+  const infra = site.publicHomepageShowInfrastructure === false ? '' : `<section class="public-section public-infra public-home-v114-section"><header><span>04</span><div><h2>${esc(site.publicHomepageInfrastructureTitle || pub('系统怎么工作','How the system works'))}</h2><p>${esc(site.publicHomepageInfrastructureDescription || pub('公开页面、业务控制台和 Cloudflare DNS 分工明确，避免把内部配置暴露到前台。','Public pages, the dashboard, and Cloudflare DNS have separate responsibilities, keeping internal configuration private.'))}</p></div></header><div class="public-infra-grid"><article><b>⌕</b><div><h3>${pub('公开查询层','Public lookup')}</h3><p>${pub('只提供可用性和公开说明。','Availability and public documentation only.')}</p></div></article><article><b>⌘</b><div><h3>${pub('业务控制台','Service dashboard')}</h3><p>${pub('账户、申请、审核、DNS 与日志。','Accounts, applications, review, DNS, and logs.')}</p></div></article><article><b>☁</b><div><h3>Cloudflare</h3><p>Workers · D1 · KV · DNS API</p></div></article></div></section>`;
+  const faq = site.publicHomepageShowFaq === false ? '' : `<section class="public-section public-home-v114-section"><header><span>05</span><div><h2>${esc(site.publicHomepageFaqTitle || pub('第一次使用？先看这些','New here? Start with these answers'))}</h2><p>${esc(site.publicHomepageFaqDescription || pub('把最容易遇到的问题留在首页，详细内容放到独立知识库。','Keep common questions on the homepage and detailed guidance in the standalone Knowledge Base.'))}</p></div><a href="#/faq">${pub('查看全部','View all')} →</a></header>${publicFaqHtml(4)}</section>`;
+  const sectionMap = { features, domains, process, infrastructure: infra, faq };
+  const orderedSections = homepageSectionOrder(site.publicHomepageSectionOrder).map(key => sectionMap[key] || '').join('');
+  const ctaEyebrow = String(site.publicHomepageCtaEyebrow || pub('下一步','NEXT')).trim();
+  const ctaTitle = String(site.publicHomepageCtaTitle || pub('从查询一个名称开始','Start by checking one name')).trim();
+  const ctaDescription = String(site.publicHomepageCtaDescription || pub('不需要登录即可先确认可用性；需要申请时再进入账户流程。','Check availability without logging in, then enter the account flow when you are ready to apply.')).trim();
+  const ctaPrimaryText = String(site.publicHomepageCtaPrimaryText || pub('查询域名','Check Domain')).trim();
+  const ctaSecondaryText = String(site.publicHomepageCtaSecondaryText || pub('阅读知识库','Read Knowledge Base')).trim();
+  const ctaPrimaryHref = safePublicHomepageHref(site.publicHomepageCtaPrimaryHref, '#/available');
+  const ctaSecondaryHref = safePublicHomepageHref(site.publicHomepageCtaSecondaryHref, '#/knowledge');
   app.innerHTML = publicShell('home', `
     ${notice}
     <section class="public-home-v114-hero layout-${attr(layout)}">
@@ -1483,12 +1510,12 @@ function renderPublicHome() {
         <div class="public-home-v114-badge">${esc(badge)}</div>
         <h1>${esc(title)} <em>${esc(highlight)}</em></h1>
         <p>${esc(description)}</p>
-        <div class="public-home-v114-actions"><a class="btn primary" href="${state.me?'#/apply':'#/register'}">${esc(primaryText)}</a><a class="btn secondary" href="#/available">${esc(secondaryText)}</a></div>
+        <div class="public-home-v114-actions"><a class="btn primary" href="${attr(primaryHref)}">${esc(primaryText)}</a><a class="btn secondary" href="${attr(secondaryHref)}">${esc(secondaryText)}</a></div>
       </div>
       ${heroSearch}
     </section>
-    ${stats}${features}${domains}${process}${infra}${faq}
-    <section class="public-cta public-home-v114-cta"><div><span>${pub('下一步','NEXT')}</span><h2>${pub('从查询一个名称开始','Start by checking one name')}</h2><p>${pub('不需要登录即可先确认可用性；需要申请时再进入账户流程。','Check availability without logging in, then enter the account flow when you are ready to apply.')}</p></div><div><a class="btn primary" href="#/available">${pub('查询域名','Check Domain')}</a><a class="btn secondary" href="#/knowledge">${pub('阅读知识库','Read Knowledge Base')}</a></div></section>
+    ${stats}${orderedSections}
+    <section class="public-cta public-home-v114-cta"><div><span>${esc(ctaEyebrow)}</span><h2>${esc(ctaTitle)}</h2><p>${esc(ctaDescription)}</p></div><div><a class="btn primary" href="${attr(ctaPrimaryHref)}">${esc(ctaPrimaryText)}</a><a class="btn secondary" href="${attr(ctaSecondaryHref)}">${esc(ctaSecondaryText)}</a></div></section>
   `, `public-home public-home-v114 layout-${layout}`);
   if (site.publicHomepageShowSearch !== false) bindPublicDomainSearch('home-domain-search');
   if (site.publicHomepageShowStats !== false) loadPublicStats();
@@ -1782,6 +1809,7 @@ async function route() {
   if (hash === '#/admin/settings') return renderAdminSettings();
   if (hash === '#/admin/help-settings') return renderAdminHelpSettings();
   if (hash === '#/admin/help') return renderAdminHelpCenter();
+  if (hash === '#/admin/home-settings') return renderAdminHomepageSettings();
 
   return renderNotFound();
 }
@@ -2195,7 +2223,7 @@ function shell(title, content) {
             <a class="support-subnav-link ${location.hash === '#/support/contact' ? 'active' : ''}" href="#/support/contact"><span>✉</span><b>联系客服</b></a>
           </div>
         </div>
-        ${isAdmin ? `<hr>${nav('#/admin','▦','管理概览')}${nav('#/admin/analytics','◌','分析页')}${nav('#/admin/applications','✓','域名审核')}${nav('#/admin/users','♟','用户管理')}${nav('#/admin/registration-keys','⌘','注册密钥')}${nav('#/admin/settings','⚙','管理员设置')}${nav('#/messages','✉','消息中心')}${nav('#/admin/help-settings','☸','帮助中心设置')}${nav('#/admin/help','🛠','管理员帮助中心')}` : ''}
+        ${isAdmin ? `<hr>${nav('#/admin','▦','管理概览')}${nav('#/admin/analytics','◌','分析页')}${nav('#/admin/applications','✓','域名审核')}${nav('#/admin/users','♟','用户管理')}${nav('#/admin/registration-keys','⌘','注册密钥')}${nav('#/admin/settings','⚙','管理员设置')}${nav('#/messages','✉','消息中心')}${nav('#/admin/help-settings','☸','帮助中心设置')}${nav('#/admin/help','🛠','管理员帮助中心')}${nav('#/admin/home-settings','⌂','首页设置')}` : ''}
       </nav>
       <div class="side-user"><strong>${esc(state.me.username)}</strong><small>${isAdmin ? '管理员' : '普通用户'}</small><button id="logout" class="btn ghost">退出登录</button></div>
     </aside>
@@ -5678,6 +5706,142 @@ async function loadManagedWorkerVariables(showToast = false) {
   }
 }
 
+function homepageSettingField(name, label, value, opts = {}) {
+  const wide = opts.wide ? ' wide' : '';
+  const hint = opts.hint ? `<em>${esc(opts.hint)}</em>` : '';
+  if (opts.type === 'textarea') return `<label class="field${wide}"><span>${esc(label)}</span><textarea name="${attr(name)}" rows="${Number(opts.rows || 3)}">${esc(value || '')}</textarea>${hint}</label>`;
+  return `<label class="field${wide}"><span>${esc(label)}</span><input name="${attr(name)}" maxlength="${Number(opts.max || 200)}" value="${fieldValue(value)}"${opts.placeholder ? ` placeholder="${attr(opts.placeholder)}"` : ''}>${hint}</label>`;
+}
+
+async function renderAdminHomepageSettings() {
+  shell('首页设置', `<div class="loading-card">正在读取首页设置…</div>`);
+  try {
+    const { settings } = await api('/api/admin/settings');
+    const site = settings.site || {};
+    const order = homepageSectionOrder(site.publicHomepageSectionOrder);
+    const orderLabels = { features:'功能介绍', domains:'开放根域名', process:'使用流程', infrastructure:'系统结构', faq:'常见问题' };
+    const orderHtml = order.map((key,index) => `<div class="home-order-row" data-home-order="${attr(key)}"><span>${String(index+1).padStart(2,'0')}</span><b>${esc(orderLabels[key] || key)}</b><div><button class="btn soft small" type="button" data-home-order-up>↑</button><button class="btn soft small" type="button" data-home-order-down>↓</button></div></div>`).join('');
+    shell('首页设置', `<section class="card admin-home-settings-v116">
+      <div class="settings-toolbar home-settings-toolbar"><div><h2>首页设置</h2><p>单独控制公开首页的首屏、查询、统计、模块内容、显示顺序和底部行动区。保存后刷新公开首页即可生效。</p></div><div class="toolbar-actions"><span class="settings-save-status">首页设置读取完成</span><button class="btn soft" id="home-preview" type="button">预览首页</button></div></div>
+      <form id="homepage-settings-form" class="form-grid settings-grid">
+        <div class="settings-section-heading wide"><span>01</span><div><h3>首页基础</h3><p>控制公开首页是否启用，以及整体布局方式。</p></div></div>
+        <label class="check"><input name="publicHomepageEnabled" type="checkbox" ${yn(site.publicHomepageEnabled !== false)}> 启用公开官网首页 <em>关闭后未登录访问首页会进入登录页。</em></label>
+        <label class="field"><span>首页布局</span><select name="publicHomepageLayout"><option value="brand" ${!site.publicHomepageLayout || site.publicHomepageLayout === 'brand' ? 'selected' : ''}>品牌展示型</option><option value="compact" ${site.publicHomepageLayout === 'compact' ? 'selected' : ''}>简洁工具型</option><option value="data" ${site.publicHomepageLayout === 'data' ? 'selected' : ''}>数据门户型</option></select><em>修改后只影响公开首页，不改变控制台。</em></label>
+
+        <div class="settings-section-heading wide"><span>02</span><div><h3>首屏 Hero</h3><p>设置首页最上方主标题、说明和两个主要按钮。</p></div></div>
+        ${homepageSettingField('publicHomepageBadge','首页顶部短标签',site.publicHomepageBadge || 'FLORE · FREE SUBDOMAIN SERVICE',{max:120})}
+        ${homepageSettingField('publicHomepageTitle','首页主标题',site.publicHomepageTitle || '给你的项目一个清晰地址',{max:120})}
+        ${homepageSettingField('publicHomepageHighlight','首页强调文字',site.publicHomepageHighlight || '从这里开始',{max:80})}
+        ${homepageSettingField('publicHomepageDescription','首页说明文字',site.publicHomepageDescription || '查询可用二级域名、提交申请并管理 DNS。公开官网负责信息与查询，控制台负责账户和域名管理。',{type:'textarea',wide:true,rows:3,max:500})}
+        ${homepageSettingField('publicHomepagePrimaryText','主按钮文字',site.publicHomepagePrimaryText || '开始申请',{max:40})}
+        ${homepageSettingField('publicHomepagePrimaryHref','主按钮链接',site.publicHomepagePrimaryHref || '',{max:300,hint:'支持 #/register、#/apply 等站内地址，或 https:// 开头的外部地址；留空时未登录自动去注册、已登录自动去申请。'})}
+        ${homepageSettingField('publicHomepageSecondaryText','次按钮文字',site.publicHomepageSecondaryText || '先查域名',{max:40})}
+        ${homepageSettingField('publicHomepageSecondaryHref','次按钮链接',site.publicHomepageSecondaryHref || '#/available',{max:300})}
+
+        <div class="settings-section-heading wide"><span>03</span><div><h3>实时查询与统计</h3><p>控制首页查询框和四项实时统计的显示及文案。</p></div></div>
+        <label class="check"><input name="publicHomepageShowSearch" type="checkbox" ${yn(site.publicHomepageShowSearch !== false)}> 显示首页域名查询</label>
+        <label class="check"><input name="publicHomepageShowStats" type="checkbox" ${yn(site.publicHomepageShowStats !== false)}> 显示首页实时统计</label>
+        ${homepageSettingField('publicHomepageSearchEyebrow','查询区短标签',site.publicHomepageSearchEyebrow || '实时查询',{max:50})}
+        ${homepageSettingField('publicHomepageSearchTitle','查询区标题',site.publicHomepageSearchTitle || '先确认，再申请',{max:80})}
+        ${homepageSettingField('publicHomepageSearchNote','查询区说明',site.publicHomepageSearchNote || '查询只返回当前可用状态，不公开域名归属或账户信息。',{type:'textarea',wide:true,rows:2,max:300})}
+        ${homepageSettingField('publicHomepageStatsUsersLabel','统计 1 名称',site.publicHomepageStatsUsersLabel || '活跃用户',{max:40})}
+        ${homepageSettingField('publicHomepageStatsDomainsLabel','统计 2 名称',site.publicHomepageStatsDomainsLabel || '正常域名',{max:40})}
+        ${homepageSettingField('publicHomepageStatsDnsLabel','统计 3 名称',site.publicHomepageStatsDnsLabel || 'DNS 记录',{max:40})}
+        ${homepageSettingField('publicHomepageStatsSuffixesLabel','统计 4 名称',site.publicHomepageStatsSuffixesLabel || '开放根域名',{max:40})}
+
+        <div class="settings-section-heading wide"><span>04</span><div><h3>首页内容模块</h3><p>每个模块可以单独显示/隐藏，并修改标题和说明。</p></div></div>
+        <label class="check"><input name="publicHomepageShowFeatures" type="checkbox" ${yn(site.publicHomepageShowFeatures !== false)}> 显示功能介绍</label>
+        <label class="check"><input name="publicHomepageShowDomains" type="checkbox" ${yn(site.publicHomepageShowDomains !== false)}> 显示开放根域名</label>
+        <label class="check"><input name="publicHomepageShowProcess" type="checkbox" ${yn(site.publicHomepageShowProcess !== false)}> 显示使用流程</label>
+        <label class="check"><input name="publicHomepageShowInfrastructure" type="checkbox" ${yn(site.publicHomepageShowInfrastructure !== false)}> 显示系统结构</label>
+        <label class="check"><input name="publicHomepageShowFaq" type="checkbox" ${yn(site.publicHomepageShowFaq !== false)}> 显示常见问题</label>
+        ${homepageSettingField('publicHomepageFeaturesTitle','功能介绍标题',site.publicHomepageFeaturesTitle || '一个入口，完成域名日常管理',{max:120})}
+        ${homepageSettingField('publicHomepageFeaturesDescription','功能介绍说明',site.publicHomepageFeaturesDescription || '首页负责查询与了解服务，登录后进入控制台处理申请、审核状态与 DNS。',{type:'textarea',wide:true,rows:2,max:400})}
+        ${homepageSettingField('publicHomepageDomainsTitle','开放根域名标题',site.publicHomepageDomainsTitle || '现在可以申请的后缀',{max:120})}
+        ${homepageSettingField('publicHomepageDomainsDescription','开放根域名说明',site.publicHomepageDomainsDescription || '这里只展示开放入口，不用公开用户域名或账户数据。',{type:'textarea',wide:true,rows:2,max:400})}
+        ${homepageSettingField('publicHomepageProcessTitle','使用流程标题',site.publicHomepageProcessTitle || '操作路径一眼看懂',{max:120})}
+        ${homepageSettingField('publicHomepageProcessDescription','使用流程说明',site.publicHomepageProcessDescription || '查询、申请、审核、解析各自独立，减少误操作。',{type:'textarea',wide:true,rows:2,max:400})}
+        ${homepageSettingField('publicHomepageInfrastructureTitle','系统结构标题',site.publicHomepageInfrastructureTitle || '系统怎么工作',{max:120})}
+        ${homepageSettingField('publicHomepageInfrastructureDescription','系统结构说明',site.publicHomepageInfrastructureDescription || '公开页面、业务控制台和 Cloudflare DNS 分工明确，避免把内部配置暴露到前台。',{type:'textarea',wide:true,rows:2,max:400})}
+        ${homepageSettingField('publicHomepageFaqTitle','常见问题标题',site.publicHomepageFaqTitle || '第一次使用？先看这些',{max:120})}
+        ${homepageSettingField('publicHomepageFaqDescription','常见问题说明',site.publicHomepageFaqDescription || '把最容易遇到的问题留在首页，详细内容放到独立知识库。',{type:'textarea',wide:true,rows:2,max:400})}
+
+        <div class="settings-section-heading wide"><span>05</span><div><h3>模块显示顺序</h3><p>使用上下按钮调整首页五个内容模块的前后顺序；隐藏模块仍会保留顺序设置。</p></div></div>
+        <div class="home-order-editor wide" id="home-order-editor">${orderHtml}</div>
+        <input type="hidden" name="publicHomepageSectionOrder" id="home-section-order-value" value="${attr(order.join(','))}">
+
+        <div class="settings-section-heading wide"><span>06</span><div><h3>底部行动区 CTA</h3><p>控制首页最下方的提示、说明和两个按钮。</p></div></div>
+        ${homepageSettingField('publicHomepageCtaEyebrow','CTA 短标签',site.publicHomepageCtaEyebrow || '下一步',{max:50})}
+        ${homepageSettingField('publicHomepageCtaTitle','CTA 标题',site.publicHomepageCtaTitle || '从查询一个名称开始',{max:120})}
+        ${homepageSettingField('publicHomepageCtaDescription','CTA 说明',site.publicHomepageCtaDescription || '不需要登录即可先确认可用性；需要申请时再进入账户流程。',{type:'textarea',wide:true,rows:3,max:500})}
+        ${homepageSettingField('publicHomepageCtaPrimaryText','CTA 主按钮文字',site.publicHomepageCtaPrimaryText || '查询域名',{max:40})}
+        ${homepageSettingField('publicHomepageCtaPrimaryHref','CTA 主按钮链接',site.publicHomepageCtaPrimaryHref || '#/available',{max:300})}
+        ${homepageSettingField('publicHomepageCtaSecondaryText','CTA 次按钮文字',site.publicHomepageCtaSecondaryText || '阅读知识库',{max:40})}
+        ${homepageSettingField('publicHomepageCtaSecondaryHref','CTA 次按钮链接',site.publicHomepageCtaSecondaryHref || '#/knowledge',{max:300})}
+
+        <div class="home-settings-actions wide"><button class="btn primary" type="submit">保存首页设置</button><button class="btn soft" id="home-reset-defaults" type="button">恢复首页默认文案</button></div>
+      </form>
+    </section>`);
+
+    const form = document.querySelector('#homepage-settings-form');
+    const syncOrder = () => {
+      const value = Array.from(document.querySelectorAll('[data-home-order]')).map(el => el.dataset.homeOrder).join(',');
+      const input = document.querySelector('#home-section-order-value');
+      if (input) input.value = value;
+      document.querySelectorAll('[data-home-order]').forEach((row,index) => { const n = row.querySelector('span'); if (n) n.textContent = String(index+1).padStart(2,'0'); });
+    };
+    document.querySelectorAll('[data-home-order-up]').forEach(btn => btn.addEventListener('click', () => { const row=btn.closest('[data-home-order]'); const prev=row?.previousElementSibling; if (row && prev) row.parentElement.insertBefore(row, prev); syncOrder(); }));
+    document.querySelectorAll('[data-home-order-down]').forEach(btn => btn.addEventListener('click', () => { const row=btn.closest('[data-home-order]'); const next=row?.nextElementSibling; if (row && next) row.parentElement.insertBefore(next, row); syncOrder(); }));
+    document.querySelector('#home-preview')?.addEventListener('click', () => window.open(`${location.origin}${location.pathname}#/home`, '_blank', 'noopener'));
+    document.querySelector('#home-reset-defaults')?.addEventListener('click', () => {
+      if (!confirm('确认把首页文案和模块顺序恢复为默认值？显示开关不会被关闭。')) return;
+      const defaults = {
+        publicHomepageBadge:'FLORE · FREE SUBDOMAIN SERVICE', publicHomepageTitle:'给你的项目一个清晰地址', publicHomepageHighlight:'从这里开始', publicHomepageDescription:'查询可用二级域名、提交申请并管理 DNS。公开官网负责信息与查询，控制台负责账户和域名管理。', publicHomepagePrimaryText:'开始申请', publicHomepagePrimaryHref:'', publicHomepageSecondaryText:'先查域名', publicHomepageSecondaryHref:'#/available', publicHomepageSearchEyebrow:'实时查询', publicHomepageSearchTitle:'先确认，再申请', publicHomepageSearchNote:'查询只返回当前可用状态，不公开域名归属或账户信息。', publicHomepageStatsUsersLabel:'活跃用户', publicHomepageStatsDomainsLabel:'正常域名', publicHomepageStatsDnsLabel:'DNS 记录', publicHomepageStatsSuffixesLabel:'开放根域名', publicHomepageFeaturesTitle:'一个入口，完成域名日常管理', publicHomepageFeaturesDescription:'首页负责查询与了解服务，登录后进入控制台处理申请、审核状态与 DNS。', publicHomepageDomainsTitle:'现在可以申请的后缀', publicHomepageDomainsDescription:'这里只展示开放入口，不用公开用户域名或账户数据。', publicHomepageProcessTitle:'操作路径一眼看懂', publicHomepageProcessDescription:'查询、申请、审核、解析各自独立，减少误操作。', publicHomepageInfrastructureTitle:'系统怎么工作', publicHomepageInfrastructureDescription:'公开页面、业务控制台和 Cloudflare DNS 分工明确，避免把内部配置暴露到前台。', publicHomepageFaqTitle:'第一次使用？先看这些', publicHomepageFaqDescription:'把最容易遇到的问题留在首页，详细内容放到独立知识库。', publicHomepageCtaEyebrow:'下一步', publicHomepageCtaTitle:'从查询一个名称开始', publicHomepageCtaDescription:'不需要登录即可先确认可用性；需要申请时再进入账户流程。', publicHomepageCtaPrimaryText:'查询域名', publicHomepageCtaPrimaryHref:'#/available', publicHomepageCtaSecondaryText:'阅读知识库', publicHomepageCtaSecondaryHref:'#/knowledge'
+      };
+      Object.entries(defaults).forEach(([name,value]) => { const el=form?.elements?.namedItem(name); if (el) el.value=value; });
+      const editor=document.querySelector('#home-order-editor');
+      ['features','domains','process','infrastructure','faq'].forEach(key => { const row=editor?.querySelector(`[data-home-order="${key}"]`); if (row) editor.appendChild(row); });
+      syncOrder();
+      toast('已恢复默认文案，点击保存后生效','success');
+    });
+    form?.addEventListener('submit', async event => {
+      event.preventDefault();
+      syncOrder();
+      const data = new FormData(form);
+      const payload = {
+        ...site,
+        ...Object.fromEntries(data),
+        publicHomepageEnabled: formBoolean(data, 'publicHomepageEnabled'),
+        publicHomepageShowSearch: formBoolean(data, 'publicHomepageShowSearch'),
+        publicHomepageShowStats: formBoolean(data, 'publicHomepageShowStats'),
+        publicHomepageShowFeatures: formBoolean(data, 'publicHomepageShowFeatures'),
+        publicHomepageShowDomains: formBoolean(data, 'publicHomepageShowDomains'),
+        publicHomepageShowProcess: formBoolean(data, 'publicHomepageShowProcess'),
+        publicHomepageShowInfrastructure: formBoolean(data, 'publicHomepageShowInfrastructure'),
+        publicHomepageShowFaq: formBoolean(data, 'publicHomepageShowFaq'),
+      };
+      const links = ['publicHomepagePrimaryHref','publicHomepageSecondaryHref','publicHomepageCtaPrimaryHref','publicHomepageCtaSecondaryHref'];
+      for (const name of links) {
+        const value = String(payload[name] || '').trim();
+        if (value && !/^#\/[a-z0-9_\-/?.=&%]+$/i.test(value) && !/^https:\/\//i.test(value)) return toast(`${name} 链接格式不正确，只支持 #/ 站内地址或 https:// 外部地址`,'error');
+      }
+      const button = event.submitter;
+      if (button) button.disabled = true;
+      try {
+        const result = await api('/api/admin/settings/site', { method:'PUT', body:payload });
+        state.config.site = result.settings.site;
+        applyTheme();
+        toast('首页设置已保存','success');
+        const stamp = document.querySelector('.settings-save-status');
+        if (stamp) stamp.textContent = `最近保存：${new Date().toLocaleString(lang() === 'en' ? 'en-US' : 'zh-CN', { hour12:false })}`;
+      } catch(error) { toast(error.message || '保存首页设置失败','error'); }
+      finally { if (button) button.disabled = false; }
+    });
+  } catch(error) {
+    toast(error.message || '读取首页设置失败','error');
+  }
+}
+
 async function renderAdminSettings() {
   shell('管理员设置', `<div class="loading-card">正在读取设置…</div>`);
   try {
@@ -6308,8 +6472,8 @@ Object.assign(I18N_EN, {
   '未匹配':'Unmatched',
 });
 
-function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v115</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
-async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v115')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v115')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
+function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v116</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
+async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v116')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v116')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
 function bindSettingsTools() {
   const exportFn = async () => {
     try {
@@ -6947,3 +7111,15 @@ Object.assign(I18N_EN, {
   '查看服务要求':'View Service Requirements'
 });
 
+
+
+// v116: public homepage layout repair + standalone homepage settings.
+Object.assign(I18N_EN, {
+  '首页设置':'Homepage Settings','正在读取首页设置…':'Loading homepage settings…','首页设置读取完成':'Homepage settings loaded','单独控制公开首页的首屏、查询、统计、模块内容、显示顺序和底部行动区。保存后刷新公开首页即可生效。':'Control the public homepage hero, lookup, statistics, content modules, module order, and bottom CTA. Refresh the public homepage after saving.',
+  '预览首页':'Preview Homepage','首页基础':'Homepage Basics','控制公开首页是否启用，以及整体布局方式。':'Control whether the public homepage is enabled and choose its overall layout.','修改后只影响公开首页，不改变控制台。':'Only the public homepage is affected; the dashboard is unchanged.',
+  '首屏 Hero':'Hero Section','设置首页最上方主标题、说明和两个主要按钮。':'Configure the homepage headline, description, and two primary buttons.','主按钮文字':'Primary Button Text','主按钮链接':'Primary Button Link','次按钮文字':'Secondary Button Text','次按钮链接':'Secondary Button Link',
+  '实时查询与统计':'Live Lookup & Statistics','控制首页查询框和四项实时统计的显示及文案。':'Control the homepage lookup box and labels for the four live statistics.','显示首页域名查询':'Show Homepage Domain Lookup','显示首页实时统计':'Show Homepage Live Statistics','查询区短标签':'Lookup Eyebrow','查询区标题':'Lookup Title','查询区说明':'Lookup Description','统计 1 名称':'Statistic 1 Label','统计 2 名称':'Statistic 2 Label','统计 3 名称':'Statistic 3 Label','统计 4 名称':'Statistic 4 Label',
+  '首页内容模块':'Homepage Content Modules','每个模块可以单独显示/隐藏，并修改标题和说明。':'Each module can be shown or hidden independently, with editable titles and descriptions.','显示功能介绍':'Show Feature Overview','显示开放根域名':'Show Open Root Domains','显示使用流程':'Show Workflow','显示系统结构':'Show System Structure','显示常见问题':'Show FAQ','功能介绍标题':'Feature Section Title','功能介绍说明':'Feature Section Description','开放根域名标题':'Root Domain Section Title','开放根域名说明':'Root Domain Section Description','使用流程标题':'Workflow Section Title','使用流程说明':'Workflow Section Description','系统结构标题':'Infrastructure Section Title','系统结构说明':'Infrastructure Section Description','常见问题标题':'FAQ Section Title','常见问题说明':'FAQ Section Description',
+  '模块显示顺序':'Module Display Order','使用上下按钮调整首页五个内容模块的前后顺序；隐藏模块仍会保留顺序设置。':'Use the up/down buttons to reorder the five homepage modules. Hidden modules retain their saved position.','功能介绍':'Feature Overview','开放根域名':'Open Root Domains','使用流程':'Workflow','系统结构':'System Structure','常见问题':'FAQ',
+  '底部行动区 CTA':'Bottom CTA','控制首页最下方的提示、说明和两个按钮。':'Configure the message, description, and two buttons at the bottom of the homepage.','CTA 短标签':'CTA Eyebrow','CTA 标题':'CTA Title','CTA 说明':'CTA Description','CTA 主按钮文字':'CTA Primary Button Text','CTA 主按钮链接':'CTA Primary Button Link','CTA 次按钮文字':'CTA Secondary Button Text','CTA 次按钮链接':'CTA Secondary Button Link','保存首页设置':'Save Homepage Settings','恢复首页默认文案':'Restore Default Homepage Copy','首页设置已保存':'Homepage settings saved','已恢复默认文案，点击保存后生效':'Default copy restored. Save to apply changes.'
+});
