@@ -192,6 +192,21 @@ interface AppSettings {
     logoImageUrl?: string;
     icp?: string;
     homepageNotice?: string;
+    publicHomepageEnabled?: boolean;
+    publicHomepageLayout?: 'brand' | 'compact' | 'data';
+    publicHomepageBadge?: string;
+    publicHomepageTitle?: string;
+    publicHomepageHighlight?: string;
+    publicHomepageDescription?: string;
+    publicHomepagePrimaryText?: string;
+    publicHomepageSecondaryText?: string;
+    publicHomepageShowSearch?: boolean;
+    publicHomepageShowStats?: boolean;
+    publicHomepageShowFeatures?: boolean;
+    publicHomepageShowDomains?: boolean;
+    publicHomepageShowProcess?: boolean;
+    publicHomepageShowInfrastructure?: boolean;
+    publicHomepageShowFaq?: boolean;
     notFoundText?: string;
     defaultLanguage?: string;
     showQuota?: boolean;
@@ -4364,6 +4379,21 @@ async function adminUpdateSettings(request: Request, env: Env, group: AdminSetti
       logoImageUrl: cleanText(body.logoImageUrl, 500),
       icp: cleanText(body.icp, 200),
       homepageNotice: cleanText(body.homepageNotice, 5000),
+      publicHomepageEnabled: asBoolean(body.publicHomepageEnabled, true),
+      publicHomepageLayout: ['brand','compact','data'].includes(String(body.publicHomepageLayout || 'brand')) ? String(body.publicHomepageLayout || 'brand') as any : 'brand',
+      publicHomepageBadge: cleanText(body.publicHomepageBadge, 120),
+      publicHomepageTitle: cleanText(body.publicHomepageTitle, 120),
+      publicHomepageHighlight: cleanText(body.publicHomepageHighlight, 80),
+      publicHomepageDescription: cleanText(body.publicHomepageDescription, 500),
+      publicHomepagePrimaryText: cleanText(body.publicHomepagePrimaryText, 40),
+      publicHomepageSecondaryText: cleanText(body.publicHomepageSecondaryText, 40),
+      publicHomepageShowSearch: asBoolean(body.publicHomepageShowSearch, true),
+      publicHomepageShowStats: asBoolean(body.publicHomepageShowStats, true),
+      publicHomepageShowFeatures: asBoolean(body.publicHomepageShowFeatures, true),
+      publicHomepageShowDomains: asBoolean(body.publicHomepageShowDomains, true),
+      publicHomepageShowProcess: asBoolean(body.publicHomepageShowProcess, true),
+      publicHomepageShowInfrastructure: asBoolean(body.publicHomepageShowInfrastructure, true),
+      publicHomepageShowFaq: asBoolean(body.publicHomepageShowFaq, true),
       notFoundText: cleanText(body.notFoundText, 500) || '页面不存在或已移动',
       defaultLanguage: String(body.defaultLanguage || 'zh') === 'en' ? 'en' : 'zh',
       showQuota: asBoolean(body.showQuota, true),
@@ -4667,6 +4697,21 @@ function defaultSettings(env: Env): AppSettings {
       logoImageUrl: '',
       icp: '',
       homepageNotice: '',
+      publicHomepageEnabled: true,
+      publicHomepageLayout: 'brand',
+      publicHomepageBadge: 'FLORE · FREE SUBDOMAIN SERVICE',
+      publicHomepageTitle: '给你的项目一个清晰地址',
+      publicHomepageHighlight: '从这里开始',
+      publicHomepageDescription: '查询可用二级域名、提交申请并管理 DNS。公开官网负责信息与查询，控制台负责账户和域名管理。',
+      publicHomepagePrimaryText: '开始申请',
+      publicHomepageSecondaryText: '先查域名',
+      publicHomepageShowSearch: true,
+      publicHomepageShowStats: true,
+      publicHomepageShowFeatures: true,
+      publicHomepageShowDomains: true,
+      publicHomepageShowProcess: true,
+      publicHomepageShowInfrastructure: true,
+      publicHomepageShowFaq: true,
       notFoundText: '页面不存在或已移动',
       defaultLanguage: 'zh',
       showQuota: true,
@@ -5142,7 +5187,8 @@ async function createImageCaptchaChallenge(request: Request, env: Env): Promise<
   const code = randomCodeFromCharset(charset, length, 3, 8);
   const id = crypto.randomUUID();
   const expiresAt = Date.now() + 5 * 60 * 1000;
-  const answerHash = await sha256(`${id}|${scene}|${clientIp(request)}|${code.toUpperCase()}`);
+  // Image captcha answers are intentionally case-sensitive. A and a are different characters.
+  const answerHash = await sha256(`${id}|${scene}|${clientIp(request)}|${code}`);
   await env.APP_KV.put(`captcha:${id}`, JSON.stringify({ answerHash, scene, expiresAt }), { expirationTtl: 360 });
   return ok({ challengeId: id, imageSvg: buildCaptchaSvg(settings, code), expiresInSeconds: 300, length });
 }
@@ -5158,7 +5204,7 @@ async function verifyImageCaptcha(env: Env, request: Request, rawId: unknown, ra
   let record: { answerHash?: string; scene?: string; expiresAt?: number } = {};
   try { record = JSON.parse(raw); } catch {}
   if (record.scene !== scene || Number(record.expiresAt || 0) < Date.now()) throw new HttpError(403, 'CAPTCHA_EXPIRED', '图形验证码已过期，请刷新后重试');
-  const candidate = await sha256(`${id}|${scene}|${clientIp(request)}|${answer.toUpperCase()}`);
+  const candidate = await sha256(`${id}|${scene}|${clientIp(request)}|${answer}`);
   if (candidate !== record.answerHash) throw new HttpError(403, 'CAPTCHA_INVALID', '图形验证码不正确，请重新输入');
 }
 
@@ -6550,20 +6596,20 @@ async function adminSystemStatus(request: Request, env: Env): Promise<Response> 
       (SELECT COUNT(*) FROM audit_logs WHERE datetime(created_at) >= datetime('now','-' || ? || ' days')) AS logsRetained
   `).bind(auditRetentionDays).first<any>();
   return ok({
-    version: 'v112',
+    version: 'v113',
     settingsKey: SETTINGS_KEY,
     kv: { storage: 'Workers KV', estimatedKeys: '由 Cloudflare 控制台查看实际占用' },
     cfApi: { configured: Boolean(resolveDnsToken(env, settings)), status: resolveDnsToken(env, settings) ? '已配置' : '未配置' },
     cron: { enabled: Boolean(settings.automation?.enabled), expression: settings.automation?.cronExpression || '' },
     counts: { ...counts, logs4d: Number(counts?.logsRetained || 0) },
     auditRetentionDays,
-    update: { current: 'v112', latest: '请以当前部署包为准' },
+    update: { current: 'v113', latest: '请以当前部署包为准' },
   });
 }
 
 async function adminExportSettings(request: Request, env: Env): Promise<Response> {
   await requireAdmin(env, request);
-  return ok({ exportedAt: new Date().toISOString(), version: 'v112', settings: await loadSettings(env) });
+  return ok({ exportedAt: new Date().toISOString(), version: 'v113', settings: await loadSettings(env) });
 }
 
 async function adminImportSettings(request: Request, env: Env): Promise<Response> {
