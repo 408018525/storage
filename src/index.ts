@@ -2025,11 +2025,26 @@ async function requestDeleteOwnApplication(request: Request, env: Env, id: strin
   `).bind(id, user.id).first<ApplicationRow>();
 
   if (!app) throw new HttpError(404, 'NOT_FOUND', '只有正常域名可以申请删除');
-  if (settings.domain.allowUserDeleteActive === false) throw new HttpError(403, 'DELETE_ACTIVE_DISABLED', '管理员未开放用户删除已生效域名');
+  if (settings.domain.allowUserDeleteActive === false && user.role !== 'admin') throw new HttpError(403, 'DELETE_ACTIVE_DISABLED', '管理员未开放用户删除已生效域名');
   const confirmDomain = String(body.confirmDomain || '').trim();
   if (confirmDomain !== app.fqdn_unicode && confirmDomain !== app.fqdn_ascii) {
     throw new HttpError(400, 'CONFIRM_DOMAIN_MISMATCH', '请输入完整域名确认删除');
   }
+
+  const directDelete = body.directDelete === true || String(body.directDelete || '').toLowerCase() === 'true';
+  if (directDelete) {
+    if (user.role !== 'admin') throw new HttpError(403, 'ADMIN_ONLY_DIRECT_DELETE', '只有管理员可以直接删除域名');
+    const suffix = settings.dns.suffixes.find(x => x.suffixAscii === app.suffix_ascii);
+    if (!suffix) throw new HttpError(409, 'SUFFIX_MISSING', '该后缀配置不存在，无法安全清理 Cloudflare DNS');
+    const deleteResult = await deleteAllDnsRecordsForApp(env, app, suffix);
+    await hardDeleteDomainApplication(env, id);
+    await audit(env, request, user.id, 'admin.application_direct_delete', 'domain_application', id, {
+      fqdn: app.fqdn_ascii,
+      warnings: deleteResult.warnings,
+    });
+    return ok({ deleted: true, purged: true, directDelete: true, warnings: deleteResult.warnings });
+  }
+
   if (app.delete_requested_at) throw new HttpError(409, 'DELETE_ALREADY_REQUESTED', '该域名已提交删除申请，等待管理员审核');
 
   await env.DB.prepare(`
@@ -6367,20 +6382,20 @@ async function adminSystemStatus(request: Request, env: Env): Promise<Response> 
       (SELECT COUNT(*) FROM audit_logs WHERE datetime(created_at) >= datetime('now','-' || ? || ' days')) AS logsRetained
   `).bind(auditRetentionDays).first<any>();
   return ok({
-    version: 'v108',
+    version: 'v109',
     settingsKey: SETTINGS_KEY,
     kv: { storage: 'Workers KV', estimatedKeys: '由 Cloudflare 控制台查看实际占用' },
     cfApi: { configured: Boolean(resolveDnsToken(env, settings)), status: resolveDnsToken(env, settings) ? '已配置' : '未配置' },
     cron: { enabled: Boolean(settings.automation?.enabled), expression: settings.automation?.cronExpression || '' },
     counts: { ...counts, logs4d: Number(counts?.logsRetained || 0) },
     auditRetentionDays,
-    update: { current: 'v108', latest: '请以当前部署包为准' },
+    update: { current: 'v109', latest: '请以当前部署包为准' },
   });
 }
 
 async function adminExportSettings(request: Request, env: Env): Promise<Response> {
   await requireAdmin(env, request);
-  return ok({ exportedAt: new Date().toISOString(), version: 'v108', settings: await loadSettings(env) });
+  return ok({ exportedAt: new Date().toISOString(), version: 'v109', settings: await loadSettings(env) });
 }
 
 async function adminImportSettings(request: Request, env: Env): Promise<Response> {
