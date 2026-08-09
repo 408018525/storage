@@ -4141,3 +4141,33 @@ html[data-theme="dark"] .admin-settings-v79 .settings-section-heading{
     white-space:nowrap;
   }
 }
+
+/* v118 detailed public homepage/settings control panel. */
+.admin-home-settings-v118{padding:0;overflow:hidden}
+.admin-home-settings-v118 .home-settings-toolbar{padding:24px 26px 18px;border-bottom:1px solid var(--line);margin:0}
+.admin-home-settings-v118 #homepage-settings-form{padding:18px 26px 30px}
+.admin-home-settings-v118 .settings-section-heading{scroll-margin-top:92px;margin-top:14px}
+.home-settings-previewbar{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:12px 26px;border-bottom:1px solid var(--line);background:#fbfcff}
+.home-settings-previewbar>b{font-size:12px;color:#506079;margin-right:4px}
+.home-settings-detailed-form>.check{min-height:48px;align-items:flex-start;padding-top:13px}
+.home-settings-subsection{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px;padding:13px 15px;margin-top:8px;border:1px solid #e4e9f2;border-left:3px solid var(--accent);border-radius:13px;background:#fbfcff}
+.home-settings-subsection>b{font-size:13px;color:#182235}
+.home-settings-subsection>span{font-size:11px;line-height:1.6;color:#7a8799}
+.home-feature-editor{border:1px solid #e4e9f2;border-radius:16px;padding:14px;background:#fff}
+.home-feature-editor-head{display:flex;justify-content:space-between;gap:12px;align-items:center;padding-bottom:10px;border-bottom:1px dashed #e7ebf2}
+.home-feature-editor-head>b{font-size:13px}
+.home-feature-editor-head .check.compact{padding:0;min-height:0;border:0;background:transparent}
+.home-feature-editor-grid{display:grid;grid-template-columns:minmax(120px,.35fr) minmax(180px,.65fr);gap:12px;margin-top:12px}
+.home-feature-editor-grid>.wide{grid-column:1/-1}
+.home-settings-detailed-form .field textarea{resize:vertical;min-height:78px}
+.home-settings-detailed-form .field>em{line-height:1.5}
+
+@media(max-width:760px){
+  .admin-home-settings-v118 .home-settings-toolbar{padding:18px 14px 14px}
+  .admin-home-settings-v118 #homepage-settings-form{padding:14px 12px 22px}
+  .home-settings-previewbar{flex-wrap:nowrap;overflow-x:auto;padding:10px 12px;-webkit-overflow-scrolling:touch}
+  .home-settings-previewbar>*{flex:0 0 auto}
+  .home-feature-editor-grid{grid-template-columns:1fr}
+  .home-feature-editor-grid>.wide{grid-column:auto}
+  .home-settings-subsection{padding:11px 12px}
+}
