@@ -997,7 +997,7 @@ function humanVerificationHtml(scene, extraClass = '') {
 }
 
 function humanSceneState(scene) {
-  if (!state.humanChallenges[scene]) state.humanChallenges[scene] = { method:'', challengeId:'', root:null, action:'' };
+  if (!state.humanChallenges[scene]) state.humanChallenges[scene] = { method:'', challengeId:'', root:null, action:'', turnstileMounted:false, turnstileErrors:0 };
   return state.humanChallenges[scene];
 }
 
@@ -1013,6 +1013,8 @@ async function loadImageCaptcha(root, scene) {
   record.method = 'image';
   record.root = root;
   record.challengeId = '';
+  record.turnstileMounted = false;
+  record.turnstileErrors = 0;
   const turnstileSlot = root.querySelector('.human-turnstile-slot');
   const imageSlot = root.querySelector('.human-image-slot');
   if (turnstileSlot) turnstileSlot.innerHTML = '';
@@ -1095,10 +1097,18 @@ async function resetHumanVerification(scene) {
 async function recoverHumanVerification(scene, error) {
   const record = humanSceneState(scene);
   const code = String(error?.code || '');
-  const turnstileFailure = code.startsWith('TURNSTILE_') || /Turnstile|人机验证接口|验证组件/i.test(String(error?.message || ''));
-  if (humanVerificationMode() === 'turnstile_fallback' && record.root && record.method !== 'image' && turnstileFailure) {
+  const message = String(error?.message || '');
+  const mode = humanVerificationMode();
+  // Only fall back when Turnstile itself is genuinely unavailable. A rejected,
+  // expired, duplicate or not-yet-ready token should stay on Turnstile and reset.
+  const unavailable = code === 'TURNSTILE_UNAVAILABLE' || /Turnstile 服务连接超时|Turnstile 验证接口异常|Secret 未配置/i.test(message);
+  if (mode === 'turnstile_fallback' && record.root && record.method !== 'image' && unavailable) {
     await switchHumanToImage(record.root, scene);
     return true;
+  }
+  if (code.startsWith('TURNSTILE_') || /Turnstile|人机验证/i.test(message)) {
+    resetTurnstile();
+    return false;
   }
   await resetHumanVerification(scene);
   return false;
@@ -6874,8 +6884,8 @@ Object.assign(I18N_EN, {
   '未匹配':'Unmatched',
 });
 
-function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v124</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
-async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v124')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v124')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
+function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v125</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
+async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v125')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v125')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
 function bindSettingsTools() {
   const exportFn = async () => {
     try {
@@ -7214,28 +7224,56 @@ async function mountTurnstile(selector, action, options = {}) {
       'refresh-timeout': 'auto',
       appearance: 'always',
       size: 'flexible',
-      callback: token => { state.turnstileTokenValue = token || ''; },
-      'expired-callback': () => { state.turnstileTokenValue = ''; },
+      callback: token => {
+        state.turnstileTokenValue = token || '';
+        if (options.scene) {
+          const active = humanSceneState(options.scene);
+          active.turnstileMounted = true;
+          active.turnstileErrors = 0;
+        }
+      },
+      'expired-callback': () => {
+        state.turnstileTokenValue = '';
+        // refresh-expired:auto lets Turnstile renew itself; do not replace a healthy widget.
+      },
       'timeout-callback': () => {
         state.turnstileTokenValue = '';
-        if (options.allowFallback && root && options.scene) switchHumanToImage(root, options.scene).catch(error => toast(error.message, 'error'));
-        else toast('Turnstile 接口加载超时，请重新验证', 'error');
+        // refresh-timeout:auto refreshes an interactive challenge automatically.
+        // A visible/mounted widget timing out is not evidence that Turnstile is unavailable.
       },
       'error-callback': errorCode => {
         state.turnstileTokenValue = '';
-        if (options.allowFallback && root && options.scene) switchHumanToImage(root, options.scene).catch(error => toast(error.message, 'error'));
-        else toast(`Turnstile 验证组件不可用${errorCode ? `（${errorCode}）` : ''}`, 'error');
+        const code = String(errorCode || '');
+        const active = options.scene ? humanSceneState(options.scene) : null;
+        if (active) active.turnstileErrors = Number(active.turnstileErrors || 0) + 1;
+        // Cloudflare marks these as non-retryable configuration/client errors.
+        // In fallback mode there is no value in keeping a broken widget on screen.
+        const hardFailure = /^(110100|110110|110200|200100|400020|400070)$/.test(code);
+        if (hardFailure && options.allowFallback && root && options.scene) {
+          switchHumanToImage(root, options.scene).catch(error => toast(error.message, 'error'));
+          return true;
+        }
+        // Retryable families (110600/110620/200500/300*/600*) are intentionally
+        // left to retry:auto. Returning true prevents duplicate console noise only.
+        if (!options.allowFallback && hardFailure) toast(`Turnstile 验证组件不可用${code ? `（${code}）` : ''}`, 'error');
         return true;
       }
     });
+    if (options.scene) {
+      const active = humanSceneState(options.scene);
+      active.turnstileMounted = state.widgetId !== null && state.widgetId !== undefined;
+      active.turnstileErrors = 0;
+    }
     if (options.allowFallback && root && options.scene) {
       const watchdogScene = options.scene;
+      // This watchdog only detects a render that never mounted an iframe. It does
+      // not use token state, because a healthy interactive widget may not have a token yet.
       setTimeout(() => {
         const active = humanSceneState(watchdogScene);
-        if (active.root !== root || active.method !== 'turnstile' || turnstileToken()) return;
+        if (active.root !== root || active.method !== 'turnstile') return;
         const frame = el.querySelector('iframe');
-        if (!frame) switchHumanToImage(root, watchdogScene).catch(error => toast(error.message, 'error'));
-      }, 4500);
+        if (!frame && !active.turnstileMounted) switchHumanToImage(root, watchdogScene).catch(error => toast(error.message, 'error'));
+      }, 7000);
     }
     return true;
   };
