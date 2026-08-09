@@ -3993,20 +3993,30 @@ html[data-theme="dark"] .admin-settings-v79 .settings-section-heading{
   margin-left:auto!important;
 }
 
-/* Root-domain cards keep the full suffix on one line instead of breaking after dots/characters. */
+/* Root-domain cards: allow long suffixes to wrap cleanly inside the card. */
 .public-suffix-card>div{
   min-width:0!important;
+  align-items:flex-start!important;
+}
+.public-suffix-card>div span{
+  flex:0 0 auto!important;
+  padding-top:3px!important;
 }
 .public-suffix-card h3{
   min-width:0!important;
   max-width:100%!important;
-  font-size:clamp(14px,1.15vw,19px)!important;
+  font-size:clamp(14px,1.08vw,18px)!important;
+  line-height:1.18!important;
   letter-spacing:-.25px!important;
-  white-space:nowrap!important;
+  white-space:normal!important;
   word-break:normal!important;
-  overflow-wrap:normal!important;
+  overflow-wrap:break-word!important;
   overflow:visible!important;
   text-overflow:clip!important;
+  min-height:2.36em!important;
+}
+.public-suffix-card h3 wbr{
+  display:inline!important;
 }
 
 /* Force the site-directory page into its intended card layout even when old cached rules are present. */
