@@ -592,6 +592,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   const pathname = url.pathname;
 
   if (method === 'GET' && pathname === '/api/public/config') return publicConfigHandler(env);
+  if (method === 'GET' && pathname === '/api/public/help') return publicHelpHandler(env);
   if (method === 'GET' && pathname === '/api/public/stats') return publicStatsHandler(env);
   if (method === 'POST' && pathname === '/api/public/domain-check') return publicDomainCheckHandler(request, env);
   if (method === 'POST' && pathname === '/api/public/visit') return publicTrackVisitHandler(request, env);
@@ -1115,17 +1116,18 @@ async function hardDeleteUser(env: Env, userId: string): Promise<void> {
 }
 
 async function publicConfigHandler(env: Env): Promise<Response> {
-  const settings = await loadSettings(env);
-  const adminCount = await env.DB.prepare(`
-    SELECT COUNT(*) AS count FROM users WHERE role='admin' AND status!='deleted'
-  `).first<{ count: number }>();
+  // Keep the boot payload deliberately small. The large help library is loaded only
+  // when the user opens the support knowledge page, so login/Turnstile is not blocked by it.
+  const [settings, adminCount] = await Promise.all([
+    loadSettings(env),
+    env.DB.prepare(`SELECT COUNT(*) AS count FROM users WHERE role='admin' AND status!='deleted'`).first<{ count: number }>(),
+  ]);
 
   return ok({
     config: {
       site: settings.site,
       registration: publicRegistrationSettings(settings.registration),
       domain: settings.domain,
-      help: settings.help,
       dnsRecordTypes: settings.dns.recordTypePolicies.map(policy => ({
         type: policy.type,
         displayName: policy.displayName,
@@ -1149,6 +1151,11 @@ async function publicConfigHandler(env: Env): Promise<Response> {
       needsBootstrap: Number(adminCount?.count || 0) === 0,
     },
   });
+}
+
+async function publicHelpHandler(env: Env): Promise<Response> {
+  const settings = await loadSettings(env);
+  return ok({ help: settings.help });
 }
 
 
@@ -5936,7 +5943,13 @@ function captchaScene(value: unknown): 'login' | 'register' | 'apply' | 'admin_c
 async function createImageCaptchaChallenge(request: Request, env: Env): Promise<Response> {
   await rateLimit(env, request, 'captcha-challenge', 80, 600);
   const body = await readJson<Record<string, unknown>>(request).catch(() => ({} as Record<string, unknown>));
-  const settings = await loadSettings(env);
+  // Image CAPTCHA is the emergency path when Turnstile or the network is unstable.
+  // If KV-backed settings are temporarily slow, use safe defaults instead of leaving
+  // the login form stuck on “正在生成…”.
+  const settings = await Promise.race<AppSettings>([
+    loadSettings(env),
+    new Promise<AppSettings>(resolve => setTimeout(() => resolve(defaultSettings(env)), 1500)),
+  ]);
   const scene = captchaScene(body.scene);
   const charset = sanitizeCaptchaCharset(settings.registration.captchaCharset);
   const length = clamp(Number(settings.registration.captchaLength || 4), 3, 8);
@@ -7352,20 +7365,20 @@ async function adminSystemStatus(request: Request, env: Env): Promise<Response> 
       (SELECT COUNT(*) FROM audit_logs WHERE datetime(created_at) >= datetime('now','-' || ? || ' days')) AS logsRetained
   `).bind(auditRetentionDays).first<any>();
   return ok({
-    version: 'v123',
+    version: 'v124',
     settingsKey: SETTINGS_KEY,
     kv: { storage: 'Workers KV', estimatedKeys: '由 Cloudflare 控制台查看实际占用' },
     cfApi: { configured: Boolean(resolveDnsToken(env, settings)), status: resolveDnsToken(env, settings) ? '已配置' : '未配置' },
     cron: { enabled: Boolean(settings.automation?.enabled), expression: settings.automation?.cronExpression || '' },
     counts: { ...counts, logs4d: Number(counts?.logsRetained || 0) },
     auditRetentionDays,
-    update: { current: 'v123', latest: '请以当前部署包为准' },
+    update: { current: 'v124', latest: '请以当前部署包为准' },
   });
 }
 
 async function adminExportSettings(request: Request, env: Env): Promise<Response> {
   await requireAdmin(env, request);
-  return ok({ exportedAt: new Date().toISOString(), version: 'v123', settings: await loadSettings(env) });
+  return ok({ exportedAt: new Date().toISOString(), version: 'v124', settings: await loadSettings(env) });
 }
 
 async function adminImportSettings(request: Request, env: Env): Promise<Response> {
