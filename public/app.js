@@ -997,7 +997,7 @@ function humanVerificationHtml(scene, extraClass = '') {
 }
 
 function humanSceneState(scene) {
-  if (!state.humanChallenges[scene]) state.humanChallenges[scene] = { method:'', challengeId:'', root:null, action:'', turnstileMounted:false, turnstileErrors:0, mountId:0, turnstileSiteKey:'' };
+  if (!state.humanChallenges[scene]) state.humanChallenges[scene] = { method:'', challengeId:'', root:null, action:'', turnstileMounted:false, turnstileErrors:0, turnstileEverVisible:false, turnstileLocked:false, turnstileObserver:null, mountId:0, turnstileSiteKey:'' };
   return state.humanChallenges[scene];
 }
 
@@ -1015,6 +1015,9 @@ async function loadImageCaptcha(root, scene) {
   record.challengeId = '';
   record.turnstileMounted = false;
   record.turnstileErrors = 0;
+  record.turnstileEverVisible = false;
+  record.turnstileLocked = false;
+  if (record.turnstileObserver) { try { record.turnstileObserver.disconnect(); } catch {} record.turnstileObserver = null; }
   const turnstileSlot = root.querySelector('.human-turnstile-slot');
   const imageSlot = root.querySelector('.human-image-slot');
   if (turnstileSlot) turnstileSlot.innerHTML = '';
@@ -1058,6 +1061,9 @@ async function mountHumanVerification(selector, scene, action) {
   record.root = root;
   record.action = action || scene;
   record.turnstileSiteKey = String(state.config?.turnstile?.siteKey || '');
+  record.turnstileEverVisible = false;
+  record.turnstileLocked = false;
+  if (record.turnstileObserver) { try { record.turnstileObserver.disconnect(); } catch {} record.turnstileObserver = null; }
   const picture = root.querySelector('.image-captcha-picture');
   if (picture && picture.dataset.captchaRefreshBound !== '1') {
     picture.dataset.captchaRefreshBound = '1';
@@ -6903,8 +6909,8 @@ Object.assign(I18N_EN, {
   '未匹配':'Unmatched',
 });
 
-function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v126</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
-async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v126')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v126')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
+function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v127</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
+async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v127')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v127')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
 function bindSettingsTools() {
   const exportFn = async () => {
     try {
@@ -7237,6 +7243,29 @@ async function mountTurnstile(selector, action, options = {}) {
       record.challengeId = '';
       record.turnstileSiteKey = String(config.siteKey || '');
     }
+    const markTurnstileVisible = () => {
+      if (!options.scene) return Boolean(el.querySelector('iframe'));
+      const active = humanSceneState(options.scene);
+      if (active.mountId !== mountId || active.root !== root || active.method !== 'turnstile') return false;
+      const frame = el.querySelector('iframe');
+      if (!frame) return false;
+      active.turnstileMounted = true;
+      active.turnstileEverVisible = true;
+      active.turnstileLocked = true;
+      return true;
+    };
+    if (options.scene) {
+      const active = humanSceneState(options.scene);
+      if (active.turnstileObserver) { try { active.turnstileObserver.disconnect(); } catch {} }
+      const observer = new MutationObserver(() => {
+        if (markTurnstileVisible()) {
+          const current = humanSceneState(options.scene);
+          if (current.turnstileObserver === observer) { try { observer.disconnect(); } catch {} current.turnstileObserver = null; }
+        }
+      });
+      observer.observe(el, { childList:true, subtree:true });
+      active.turnstileObserver = observer;
+    }
     state.widgetId = window.turnstile.render(el, {
       sitekey: config.siteKey,
       action: action || 'login',
@@ -7253,7 +7282,10 @@ async function mountTurnstile(selector, action, options = {}) {
         if (options.scene) {
           const active = humanSceneState(options.scene);
           active.turnstileMounted = true;
+          active.turnstileEverVisible = true;
+          active.turnstileLocked = true;
           active.turnstileErrors = 0;
+          if (active.turnstileObserver) { try { active.turnstileObserver.disconnect(); } catch {} active.turnstileObserver = null; }
         }
       },
       'expired-callback': () => {
@@ -7275,20 +7307,21 @@ async function mountTurnstile(selector, action, options = {}) {
         if (active) active.turnstileErrors = Number(active.turnstileErrors || 0) + 1;
         const hardFailure = /^(110100|110110|110200|200100|400020|400070)$/.test(code);
         if (hardFailure && options.allowFallback && root && options.scene) {
-          // Do not replace a widget the instant it appears. A stale/duplicate render may
-          // emit an error while a newer widget is already healthy. Re-check after a grace
-          // period and fall back only if this exact mount is still current and has not
-          // produced a token or been replaced.
           const scene = options.scene;
+          const current = humanSceneState(scene);
+          // v127: once the browser has ever rendered a Turnstile iframe for this mount,
+          // frontend auto-fallback is permanently locked for that mount. Transient
+          // error callbacks must never replace a visible widget with the image captcha.
+          if (current.turnstileLocked || current.turnstileEverVisible || el.querySelector('iframe')) {
+            markTurnstileVisible();
+            return true;
+          }
           setTimeout(() => {
-            const current = humanSceneState(scene);
-            if (current.mountId !== mountId || current.root !== root || current.method !== 'turnstile') return;
-            const frame = el.querySelector('iframe');
-            const token = turnstileToken();
-            if (token) return;
-            if (!frame || current.turnstileErrors >= 2) {
-              switchHumanToImage(root, scene).catch(error => toast(error.message, 'error'));
-            }
+            const latest = humanSceneState(scene);
+            if (latest.mountId !== mountId || latest.root !== root || latest.method !== 'turnstile') return;
+            if (latest.turnstileLocked || latest.turnstileEverVisible || markTurnstileVisible()) return;
+            // Only a widget that never produced an iframe is allowed to fall back.
+            switchHumanToImage(root, scene).catch(error => toast(error.message, 'error'));
           }, 12000);
           return true;
         }
@@ -7302,6 +7335,11 @@ async function mountTurnstile(selector, action, options = {}) {
       if (active.mountId !== mountId) return false;
       active.turnstileMounted = state.widgetId !== null && state.widgetId !== undefined;
       active.turnstileErrors = 0;
+      // The iframe is appended asynchronously on some browsers. Check immediately
+      // and again shortly after render; either observation locks Turnstile mode.
+      markTurnstileVisible();
+      setTimeout(() => markTurnstileVisible(), 250);
+      setTimeout(() => markTurnstileVisible(), 900);
     }
     if (options.allowFallback && root && options.scene) {
       const watchdogScene = options.scene;
@@ -7310,9 +7348,10 @@ async function mountTurnstile(selector, action, options = {}) {
       setTimeout(() => {
         const active = humanSceneState(watchdogScene);
         if (active.mountId !== mountId || active.root !== root || active.method !== 'turnstile') return;
-        const frame = el.querySelector('iframe');
-        if (!frame) switchHumanToImage(root, watchdogScene).catch(error => toast(error.message, 'error'));
-      }, 9000);
+        if (active.turnstileLocked || active.turnstileEverVisible || markTurnstileVisible()) return;
+        // Never auto-switch after a Turnstile iframe has appeared even once.
+        switchHumanToImage(root, watchdogScene).catch(error => toast(error.message, 'error'));
+      }, 12000);
     }
     return true;
   };
