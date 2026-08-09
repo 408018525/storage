@@ -997,7 +997,7 @@ function humanVerificationHtml(scene, extraClass = '') {
 }
 
 function humanSceneState(scene) {
-  if (!state.humanChallenges[scene]) state.humanChallenges[scene] = { method:'', challengeId:'', root:null, action:'', turnstileMounted:false, turnstileErrors:0, turnstileEverVisible:false, turnstileLocked:false, turnstileObserver:null, mountId:0, turnstileSiteKey:'' };
+  if (!state.humanChallenges[scene]) state.humanChallenges[scene] = { method:'', challengeId:'', root:null, action:'', turnstileMounted:false, turnstileErrors:0, turnstileEverVisible:false, turnstileLocked:false, turnstileObserver:null, turnstileFailureTimer:null, turnstileFailureSince:0, turnstileLastError:'', turnstileSucceeded:false, mountId:0, turnstileSiteKey:'' };
   return state.humanChallenges[scene];
 }
 
@@ -1017,6 +1017,10 @@ async function loadImageCaptcha(root, scene) {
   record.turnstileErrors = 0;
   record.turnstileEverVisible = false;
   record.turnstileLocked = false;
+  record.turnstileSucceeded = false;
+  record.turnstileFailureSince = 0;
+  record.turnstileLastError = '';
+  if (record.turnstileFailureTimer) { clearTimeout(record.turnstileFailureTimer); record.turnstileFailureTimer = null; }
   if (record.turnstileObserver) { try { record.turnstileObserver.disconnect(); } catch {} record.turnstileObserver = null; }
   const turnstileSlot = root.querySelector('.human-turnstile-slot');
   const imageSlot = root.querySelector('.human-image-slot');
@@ -1048,6 +1052,13 @@ async function loadImageCaptcha(root, scene) {
 }
 
 async function switchHumanToImage(root, scene) {
+  const record = humanSceneState(scene);
+  if (record.turnstileFailureTimer) { clearTimeout(record.turnstileFailureTimer); record.turnstileFailureTimer = null; }
+  // Invalidate every callback/watchdog owned by the Turnstile instance being replaced.
+  if (record.method === 'turnstile') record.mountId = Number(record.mountId || 0) + 1;
+  record.turnstileLocked = false;
+  record.turnstileEverVisible = false;
+  record.turnstileSucceeded = false;
   await loadImageCaptcha(root, scene);
 }
 
@@ -1063,6 +1074,10 @@ async function mountHumanVerification(selector, scene, action) {
   record.turnstileSiteKey = String(state.config?.turnstile?.siteKey || '');
   record.turnstileEverVisible = false;
   record.turnstileLocked = false;
+  record.turnstileSucceeded = false;
+  record.turnstileFailureSince = 0;
+  record.turnstileLastError = '';
+  if (record.turnstileFailureTimer) { clearTimeout(record.turnstileFailureTimer); record.turnstileFailureTimer = null; }
   if (record.turnstileObserver) { try { record.turnstileObserver.disconnect(); } catch {} record.turnstileObserver = null; }
   const picture = root.querySelector('.image-captcha-picture');
   if (picture && picture.dataset.captchaRefreshBound !== '1') {
@@ -6909,8 +6924,8 @@ Object.assign(I18N_EN, {
   '未匹配':'Unmatched',
 });
 
-function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v127</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
-async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v127')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v127')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
+function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v128</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
+async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v128')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v128')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
 function bindSettingsTools() {
   const exportFn = async () => {
     try {
@@ -7254,6 +7269,31 @@ async function mountTurnstile(selector, action, options = {}) {
       active.turnstileLocked = true;
       return true;
     };
+    const clearFailureFallback = () => {
+      if (!options.scene) return;
+      const current = humanSceneState(options.scene);
+      if (current.turnstileFailureTimer) { clearTimeout(current.turnstileFailureTimer); current.turnstileFailureTimer = null; }
+      current.turnstileFailureSince = 0;
+      current.turnstileLastError = '';
+    };
+    const scheduleFailureFallback = (errorCode, delayMs) => {
+      if (!options.allowFallback || !root || !options.scene) return;
+      const scene = options.scene;
+      const current = humanSceneState(scene);
+      if (current.mountId !== mountId || current.root !== root || current.method !== 'turnstile') return;
+      current.turnstileLastError = String(errorCode || '');
+      if (!current.turnstileFailureSince) current.turnstileFailureSince = Date.now();
+      if (current.turnstileFailureTimer) clearTimeout(current.turnstileFailureTimer);
+      current.turnstileFailureTimer = setTimeout(() => {
+        const latest = humanSceneState(scene);
+        latest.turnstileFailureTimer = null;
+        if (latest.mountId !== mountId || latest.root !== root || latest.method !== 'turnstile') return;
+        if (latest.turnstileSucceeded || state.turnstileTokenValue || turnstileToken()) return;
+        // A visible iframe can itself be in Cloudflare's "unable to connect" error state.
+        // Persistent error-callbacks therefore override the visibility lock after a grace period.
+        switchHumanToImage(root, scene).catch(error => toast(error.message || '图形验证码加载失败', 'error'));
+      }, Math.max(800, Number(delayMs || 10000)));
+    };
     if (options.scene) {
       const active = humanSceneState(options.scene);
       if (active.turnstileObserver) { try { active.turnstileObserver.disconnect(); } catch {} }
@@ -7284,7 +7324,9 @@ async function mountTurnstile(selector, action, options = {}) {
           active.turnstileMounted = true;
           active.turnstileEverVisible = true;
           active.turnstileLocked = true;
+          active.turnstileSucceeded = true;
           active.turnstileErrors = 0;
+          clearFailureFallback();
           if (active.turnstileObserver) { try { active.turnstileObserver.disconnect(); } catch {} active.turnstileObserver = null; }
         }
       },
@@ -7304,29 +7346,31 @@ async function mountTurnstile(selector, action, options = {}) {
         state.turnstileTokenValue = '';
         const code = String(errorCode || '');
         const active = options.scene ? humanSceneState(options.scene) : null;
-        if (active) active.turnstileErrors = Number(active.turnstileErrors || 0) + 1;
+        if (active) {
+          active.turnstileSucceeded = false;
+          active.turnstileErrors = Number(active.turnstileErrors || 0) + 1;
+          active.turnstileLastError = code;
+          if (!active.turnstileFailureSince) active.turnstileFailureSince = Date.now();
+        }
+        // Configuration errors cannot heal through retry. Switch quickly in fallback mode.
         const hardFailure = /^(110100|110110|110200|200100|400020|400070)$/.test(code);
-        if (hardFailure && options.allowFallback && root && options.scene) {
-          const scene = options.scene;
-          const current = humanSceneState(scene);
-          // v127: once the browser has ever rendered a Turnstile iframe for this mount,
-          // frontend auto-fallback is permanently locked for that mount. Transient
-          // error callbacks must never replace a visible widget with the image captcha.
-          if (current.turnstileLocked || current.turnstileEverVisible || el.querySelector('iframe')) {
-            markTurnstileVisible();
+        // Network/iframe/challenge execution failures are usually recoverable. Give Cloudflare
+        // several retry:auto attempts first; if the error state persists, use image captcha.
+        const retryableConnectionFailure = /^(200500|300\d{3}|600\d{3})$/.test(code) || !code;
+        if (options.allowFallback && root && options.scene) {
+          if (hardFailure) {
+            scheduleFailureFallback(code, 1200);
             return true;
           }
-          setTimeout(() => {
-            const latest = humanSceneState(scene);
-            if (latest.mountId !== mountId || latest.root !== root || latest.method !== 'turnstile') return;
-            if (latest.turnstileLocked || latest.turnstileEverVisible || markTurnstileVisible()) return;
-            // Only a widget that never produced an iframe is allowed to fall back.
-            switchHumanToImage(root, scene).catch(error => toast(error.message, 'error'));
-          }, 12000);
-          return true;
+          if (retryableConnectionFailure) {
+            scheduleFailureFallback(code, 10000);
+            return false;
+          }
+          // Unknown errors get a longer grace period instead of leaving a broken widget forever.
+          scheduleFailureFallback(code, 12000);
+          return false;
         }
         if (!options.allowFallback && hardFailure) toast(`Turnstile 验证组件不可用${code ? `（${code}）` : ''}`, 'error');
-        // Retryable errors must remain falsy so Turnstile's retry:auto can recover.
         return hardFailure ? true : false;
       }
     });
