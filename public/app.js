@@ -1,4 +1,5 @@
 window.__storageScriptLoaded = true;
+try { localStorage.removeItem('ui_lang'); } catch (_) {}
 window.__storageBootStarted = false;
 window.__storageBootCompleted = false;
 window.addEventListener('error', function(event) {
@@ -570,20 +571,13 @@ Object.assign(I18N_EN, {
   '帮助中心':'Help Center','返回网站首页':'Back to website home'
 });
 
-function lang() { return localStorage.getItem('ui_lang') || state.config?.site?.defaultLanguage || 'zh'; }
-function setLang(value) {
-  localStorage.setItem('ui_lang', value === 'en' ? 'en' : 'zh');
-  renderRoute();
-}
-function tr(text) {
-  if (lang() !== 'en') return text;
-  return I18N_EN[text] || text;
-}
-function langButton() {
-  return `<button class="btn ghost lang-toggle" data-lang-toggle type="button">${lang() === 'en' ? '中文' : 'EN'}</button>`;
-}
-function translateTextValue(value) {
-  if (lang() !== 'en') return value;
+function lang() { return 'zh'; }
+function setLang() { try { localStorage.removeItem('ui_lang'); } catch (_) {} }
+function tr(text) { return text; }
+function langButton() { return ''; }
+function translateTextValue(value) { return value; }
+function translateTextValueLegacy(value) {
+  if (true) return value;
   const raw = String(value ?? '');
   const trimmed = raw.trim();
   if (!trimmed) return value;
@@ -685,92 +679,19 @@ function translateTextValue(value) {
   return value;
 }
 function applyI18n(root = app) {
-  document.documentElement.lang = lang() === 'en' ? 'en' : 'zh-CN';
+  document.documentElement.lang = 'zh-CN';
   const site = state.config?.site || {};
-  document.title = lang() === 'en' ? 'Domain Registration Center' : (site.title || '免费二级域名注册中心');
-  if (lang() !== 'en' || !root) return;
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-    acceptNode(node) {
-      const parent = node.parentElement;
-      if (!parent || ['SCRIPT','STYLE','CODE','TEXTAREA'].includes(parent.tagName)) return NodeFilter.FILTER_REJECT;
-      if (!node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
-      return NodeFilter.FILTER_ACCEPT;
-    }
-  });
-  const nodes = [];
-  while (walker.nextNode()) nodes.push(walker.currentNode);
-  nodes.forEach(node => { node.nodeValue = translateTextValue(node.nodeValue); });
-  root.querySelectorAll?.('input[placeholder], textarea[placeholder]').forEach(el => {
-    el.placeholder = translateTextValue(el.placeholder);
-  });
-  root.querySelectorAll?.('[title], [aria-label], [alt], optgroup[label]').forEach(el => {
-    if (el.title) el.title = translateTextValue(el.title);
-    const aria = el.getAttribute('aria-label');
-    if (aria) el.setAttribute('aria-label', translateTextValue(aria));
-    const alt = el.getAttribute('alt');
-    if (alt) el.setAttribute('alt', translateTextValue(alt));
-    const label = el.getAttribute('label');
-    if (label) el.setAttribute('label', translateTextValue(label));
-  });
-  root.querySelectorAll?.('input[type=button][value], input[type=submit][value], input[type=reset][value]').forEach(el => {
-    el.value = translateTextValue(el.value);
-  });
-  root.querySelectorAll?.('option').forEach(el => {
-    el.textContent = translateTextValue(el.textContent);
-  });
-  if (root === document.body || root === app) reportMissingI18n(root);
+  document.title = site.title || '免费二级域名注册中心';
 }
-function reportMissingI18n(root = document.body) {
-  if (lang() !== 'en' || !root) return;
-  const missing = new Set();
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-    acceptNode(node) {
-      const parent = node.parentElement;
-      if (!parent || ['SCRIPT','STYLE','CODE','TEXTAREA'].includes(parent.tagName) || !/[\u4e00-\u9fff]/.test(node.nodeValue || '')) return NodeFilter.FILTER_REJECT;
-      return NodeFilter.FILTER_ACCEPT;
-    }
-  });
-  while (walker.nextNode()) {
-    const value = String(walker.currentNode.nodeValue || '').trim();
-    if (value) missing.add(value);
-  }
-  const values = [...missing].sort();
-  const signature = values.join('\n');
-  window.__storageMissingI18n = values;
-  if (window.__storageMissingI18nSignature !== signature) {
-    window.__storageMissingI18nSignature = signature;
-    if (missing.size) console.warn('[i18n] Untranslated visible strings:', values);
-  }
-}
-let i18nMutationObserver = null;
-function ensureI18nObserver() {
-  if (i18nMutationObserver || !document.body) return;
-  i18nMutationObserver = new MutationObserver(mutations => {
-    if (lang() !== 'en') return;
-    const roots = new Set();
-    mutations.forEach(mutation => mutation.addedNodes.forEach(node => {
-      if (node.nodeType === Node.ELEMENT_NODE) roots.add(node);
-      else if (node.nodeType === Node.TEXT_NODE && node.parentElement) roots.add(node.parentElement);
-    }));
-    roots.forEach(root => applyI18n(root));
-  });
-  i18nMutationObserver.observe(document.body, { childList:true, subtree:true });
-}
-function bindLanguageControls() {
-  document.querySelectorAll('[data-lang-toggle]').forEach(btn => {
-    btn.onclick = () => setLang(lang() === 'en' ? 'zh' : 'en');
-  });
-}
+function reportMissingI18n() {}
+function ensureI18nObserver() {}
+function bindLanguageControls() {}
 Object.assign(I18N_EN, {
   '按根域名分页显示；注册时间、到期时间和剩余时间进入域名详情后查看。':'Grouped and paginated by root domain. Open a domain to view registration and expiry details.',
   '上一页':'Previous','下一页':'Next','根域名':'Root Domain'
 });
 
-function afterRender() {
-  bindLanguageControls();
-  ensureI18nObserver();
-  applyI18n();
-}
+function afterRender() { applyI18n(); }
 function analyticsVisitorId() {
   const key = 'storage_analytics_visitor_id';
   try {
@@ -1226,8 +1147,7 @@ const DEFAULT_BOOT_CONFIG = {
     logoText: 'free',
     footer: '',
     icp: '',
-    copyright: '',
-    defaultLanguage: 'zh'
+    copyright: ''
   },
   turnstile: {
     siteKey: '0x4AAAAAAD1yD8g5IE44JADq',
@@ -1352,7 +1272,7 @@ const PUBLIC_ROUTES = new Set([
   '#/about', '#/contact', '#/abuse', '#/faq', '#/terms', '#/privacy'
 ]);
 
-function pub(zh, en) { return lang() === 'en' ? en : zh; }
+function pub(zh, en) { return zh; }
 
 function publicSuffixes() {
   return suffixList().filter(item => item && item.suffix && item.enabled !== false && item.allowRegister !== false);
@@ -1383,7 +1303,7 @@ function publicHeader(active = 'home') {
   const accountAction = site.publicHeaderShowAccountActions === false ? '' : (state.me
     ? `<a class="btn primary public-account-btn" href="#/apply">${esc(dashboardText)}</a>`
     : `<a class="btn secondary public-login-btn" href="#/login">${esc(loginText)}</a><a class="btn primary public-register-btn" href="#/register">${esc(registerText)}</a>`);
-  const languageAction = site.publicHeaderShowLanguage === false ? '' : langButton();
+  const languageAction = '';
   const mobileAccount = site.publicHeaderShowAccountActions === false ? '' : (state.me ? `<a href="#/apply">${esc(dashboardText)}</a>` : `<a href="#/login">${esc(loginText)}</a><a href="#/register">${esc(registerText)}</a>`);
   return `<header class="public-header">
     <div class="public-header-inner">
@@ -3880,7 +3800,7 @@ async function renderDomains() {
     const pagination = groups.length ? `
       <div class="domain-pagination-toolbar">
         <label class="domain-root-filter"><span>${lang()==='en'?'Root domain':'根域名'}</span><select id="domain-root-filter">${rootOptions}</select></label>
-        <label class="domain-search-filter"><span>${lang()==='en'?'Search domains':'搜索域名'}</span><div class="domain-search-controls"><input id="domain-search-input" value="${attr(domainManagementView.search || '')}" placeholder="${lang()==='en'?'Full domain or prefix':'输入完整域名或前缀'}"><button type="button" class="btn soft small" id="domain-search-submit">${lang()==='en'?'Search':'搜索'}</button>${searchTerm ? `<button type="button" class="btn ghost small" id="domain-search-clear">${lang()==='en'?'Clear':'清除'}</button>` : ''}</div></label>
+        <label class="domain-search-filter"><span>搜索域名</span><div class="domain-search-controls"><input id="domain-search-input" value="${attr(domainManagementView.search || '')}" placeholder="输入完整域名或前缀"><button type="button" class="btn soft small" id="domain-search-submit">搜索</button>${searchTerm ? `<button type="button" class="btn ghost small" id="domain-search-clear">清除</button>` : ''}</div></label>
         <div class="domain-page-summary"><strong>${lang()==='en' ? `Page ${domainManagementView.page} / ${pageCount}` : `第 ${domainManagementView.page} / ${pageCount} 页`}</strong><span>${resultSummary}</span></div>
         <div class="domain-page-actions">
           <button type="button" class="btn soft small" id="domain-page-prev" ${domainManagementView.page <= 1 ? 'disabled' : ''}>${lang()==='en'?'Previous':'上一页'}</button>
@@ -5201,6 +5121,7 @@ function analyticsToolbar(rangeState) {
 function formatAnalyticsLabel(value, bucket) {
 
   const raw = String(value || '');
+  if (bucket === 'period') return raw;
   if (bucket === 'hour') return raw.slice(5, 13).replace('-', '/');
   return raw.slice(5).replace('-', '/');
 }
@@ -5493,6 +5414,18 @@ function downloadAnalyticsFile(name,content,type) {
   const blob=new Blob([content],{type}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 
+function analyticsVisitorTable(visitors) {
+  const rows = [
+    ['首页访问人数', Number(visitors?.home?.current || 0), Number(visitors?.home?.previous || 0)],
+    ['控制台访问人数', Number(visitors?.console?.current || 0), Number(visitors?.console?.previous || 0)]
+  ];
+  return `<div class="table-wrap analytics-table"><table><thead><tr><th>访问区域</th><th>本期人数</th><th>上期人数</th><th>变化人数</th><th>变化比例</th></tr></thead><tbody>${rows.map(([label,current,previous]) => {
+    const diff = current - previous;
+    const pct = previous ? Math.round(diff / previous * 1000) / 10 : (current ? 100 : 0);
+    return `<tr><td><b>${esc(label)}</b></td><td><b>${analyticsNumber(current)}</b></td><td>${analyticsNumber(previous)}</td><td><span class="trend ${diff>0?'up':diff<0?'down':'flat'}">${diff>0?'+':''}${analyticsNumber(diff)}</span></td><td><span class="trend ${pct>0?'up':pct<0?'down':'flat'}">${pct>0?'+':''}${pct}%</span></td></tr>`;
+  }).join('')}</tbody></table></div>`;
+}
+
 async function renderAdminAnalytics() {
   shell('分析页', `<div class="loading-card">正在读取完整分析数据…</div>`);
   try {
@@ -5527,10 +5460,10 @@ async function renderAdminAnalytics() {
       ${analyticsViewTabs()}
 
       <div data-analytics-panel="overview" class="analytics-panel active">
-        <div class="analytics-kpi-grid analytics-visitor-kpis">
-          ${analyticsVisitCard('首页访问人数',visitors.home,'⌂')}
-          ${analyticsVisitCard('控制台访问人数',visitors.console,'▦')}
-        </div>
+        <section class="chart-card analytics-wide"><div class="chart-titlebar"><div><h3>首页与控制台访问人数</h3><p>按当前时间范围统计独立访客，管理员访问不计入。图表对比本期与上期，表格展示人数变化和变化比例。</p></div></div>${groupedColumnChart([
+          {bucket:'上期',home:Number(visitors.home?.previous||0),console:Number(visitors.console?.previous||0)},
+          {bucket:'本期',home:Number(visitors.home?.current||0),console:Number(visitors.console?.current||0)}
+        ],[{key:'home',label:'首页访问人数'},{key:'console',label:'控制台访问人数'}],'period')}${analyticsVisitorTable(visitors)}</section>
         <div class="analytics-kpi-grid">
           ${analyticsDetailedCard('注册用户',m.users,`活跃 ${analyticsNumber(m.activeUsers?.total)} · 本期登录 ${analyticsNumber(m.activeUsers?.loggedInPeriod)}`,'♙','users')}
           ${analyticsDetailedCard('域名申请',m.domains,`活跃 ${analyticsNumber(activeDomains.total)} · 待审核 ${analyticsNumber(activeDomains.pending)}`,'▣','domains',Number(activeDomains.pending)>0)}
@@ -5944,9 +5877,8 @@ async function renderAdminHomepageSettings() {
         ${homepageSettingsSubsection('公开官网总开关','关闭后，未登录用户访问公开首页会直接进入登录页。')}
         <label class="check"><input name="publicHomepageEnabled" type="checkbox" ${yn(site.publicHomepageEnabled !== false)}> 启用公开官网</label>
 
-        ${homepageSettingsSubsection('顶部导航与品牌','控制顶部左侧品牌、语言按钮、登录/注册/控制台按钮，以及 5 个公开入口。')}
+        ${homepageSettingsSubsection('顶部导航与品牌','控制顶部左侧品牌、登录/注册/控制台按钮，以及 5 个公开入口。')}
         <label class="check"><input name="publicHeaderShowBrand" type="checkbox" ${yn(site.publicHeaderShowBrand !== false)}> 显示顶部品牌</label>
-        <label class="check"><input name="publicHeaderShowLanguage" type="checkbox" ${yn(site.publicHeaderShowLanguage !== false)}> 显示中英文切换</label>
         <label class="check"><input name="publicHeaderShowAccountActions" type="checkbox" ${yn(site.publicHeaderShowAccountActions !== false)}> 显示登录 / 注册 / 进入控制台按钮</label>
         ${homepageSettingField('publicBrandTitle','公开官网品牌名称',site.publicBrandTitle || '',{max:100,hint:'留空使用“界面设置 → 网站标题”。只影响公开官网顶部和页脚品牌。'})}
         ${homepageSettingField('publicHeaderDashboardText','已登录按钮文字',site.publicHeaderDashboardText || '进入控制台',{max:40})}
@@ -6173,7 +6105,7 @@ async function renderAdminHomepageSettings() {
       syncOrder();
       const data = new FormData(form);
       const boolNames = [
-        'publicHomepageEnabled','publicHeaderShowBrand','publicHeaderShowLanguage','publicHeaderShowAccountActions',
+        'publicHomepageEnabled','publicHeaderShowBrand','publicHeaderShowAccountActions',
         'publicNavShowHome','publicNavShowAvailable','publicNavShowKnowledge','publicNavShowFeatured','publicNavShowNavigation',
         'publicHomepageShowBadge','publicHomepageShowHighlight','publicHomepageShowDescription','publicHomepageShowPrimaryButton','publicHomepageShowSecondaryButton',
         'publicHomepageShowSearch','publicHomepageShowStats','publicHomepageStatsShowUsers','publicHomepageStatsShowDomains','publicHomepageStatsShowDns','publicHomepageStatsShowSuffixes',
@@ -6266,7 +6198,6 @@ async function renderAdminSettings() {
           <label class="field wide"><span>自定义头部第三方 JS 代码</span><textarea name="headerThirdPartyJs" rows="5" placeholder="例如统计代码。高危：请只粘贴可信代码。">${esc(site.headerThirdPartyJs || '')}</textarea><em>高危配置，保存前会二次确认；错误 JS 可能导致前台白屏。</em></label>
           <label class="check"><input name="maintenanceMode" type="checkbox" ${yn(site.maintenanceMode)}> 开启网站维护模式 <em>开启后前台显示维护提示。</em></label>
           <label class="field wide"><span>维护文案</span><textarea name="maintenanceMessage" rows="3">${esc(site.maintenanceMessage || '')}</textarea><em>维护模式开启时展示给用户。</em></label>
-          <label class="field"><span>前台默认语言</span><select name="defaultLanguage"><option value="zh" ${site.defaultLanguage !== 'en' ? 'selected' : ''}>中文</option><option value="en" ${site.defaultLanguage === 'en' ? 'selected' : ''}>英文</option></select><em>对应右上角 EN/中文切换按钮。</em></label>
           <label class="field"><span>公告开始时间</span><input name="noticeStartAt" type="datetime-local" value="${fieldValue(toLocalDateTimeValue(site.noticeStartAt))}"><em>留空表示立即生效。</em></label>
           <label class="field"><span>公告结束时间</span><input name="noticeEndAt" type="datetime-local" value="${fieldValue(toLocalDateTimeValue(site.noticeEndAt))}"><em>留空表示长期展示。</em></label>
           <label class="field wide"><span>前台首页公告 Markdown</span><textarea name="homepageNotice" rows="5">${esc(site.homepageNotice || '')}</textarea><em>作为前台顶部横幅通知。</em><button class="btn soft small" id="preview-notice" type="button">Markdown 实时预览</button></label>
@@ -6830,8 +6761,8 @@ Object.assign(I18N_EN, {
   '未匹配':'Unmatched',
 });
 
-function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v121</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
-async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v121')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v121')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
+function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v122</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
+async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v122')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v122')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
 function bindSettingsTools() {
   const exportFn = async () => {
     try {
