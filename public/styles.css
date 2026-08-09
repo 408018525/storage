@@ -4299,3 +4299,10 @@ html[data-theme="dark"] .admin-settings-v79 .settings-section-heading{
 ) :where(a,div,header,footer){
   min-width:0!important;
 }
+
+
+/* v121 analytics: homepage/console unique visitor cards. */
+.analytics-visitor-kpis{grid-template-columns:repeat(2,minmax(260px,1fr))!important}
+.analytics-visitor-card{cursor:default}
+.analytics-visitor-card:hover{transform:none}
+@media(max-width:620px){.analytics-visitor-kpis{grid-template-columns:1fr!important}}
