@@ -4181,3 +4181,121 @@ html[data-theme="dark"] .admin-settings-v79 .settings-section-heading{
   .home-feature-editor-grid>.wide{grid-column:auto}
   .home-settings-subsection{padding:11px 12px}
 }
+
+
+/* v120 unified anti-overflow rules for every public page. */
+.public-site :where(
+  .public-notice,
+  .public-hero,
+  .public-page-hero,
+  .public-section>header,
+  .public-feature-grid article,
+  .public-suffix-card,
+  .public-available-grid>article,
+  .public-mini-guide>div,
+  .public-knowledge-category,
+  .public-privacy-showcase,
+  .public-nav-directory article,
+  .public-about-grid article,
+  .public-contact-grid article,
+  .public-faq-list details,
+  .public-steps article,
+  .public-infra-grid article,
+  .public-cta,
+  .public-footer-grid>div,
+  .public-footer-bottom,
+  .public-home-v114-copy,
+  .public-home-v114-tool,
+  .public-nav-hub-v114 article,
+  .public-contact-note,
+  .public-contact-email,
+  .public-contact-actions
+){
+  min-width:0!important;
+}
+
+.public-site :where(
+  .public-notice,
+  .public-notice *,
+  .public-hero h1,
+  .public-hero>p,
+  .public-page-hero h1,
+  .public-page-hero p,
+  .public-section>header h2,
+  .public-section>header p,
+  .public-section>header>a,
+  .public-feature-grid h3,
+  .public-feature-grid p,
+  .public-suffix-card h3,
+  .public-suffix-card p,
+  .public-suffix-card small,
+  .public-suffix-card a,
+  .public-domain-card-top b,
+  .public-available-grid p,
+  .public-available-grid dt,
+  .public-available-grid dd,
+  .public-mini-guide b,
+  .public-mini-guide p,
+  .public-knowledge-tools span,
+  .public-knowledge-category>header h2,
+  .public-knowledge-category>header p,
+  .public-knowledge-category summary,
+  .public-knowledge-category details>div,
+  .public-knowledge-category details>div a,
+  .public-privacy-showcase h2,
+  .public-privacy-showcase p,
+  .public-nav-directory h2,
+  .public-nav-directory article>a b,
+  .public-nav-directory article>a span,
+  .public-about-grid span,
+  .public-about-grid h2,
+  .public-about-grid p,
+  .public-contact-grid h2,
+  .public-contact-grid p,
+  .public-contact-grid a,
+  .public-contact-email>a,
+  .public-contact-note,
+  .public-faq-list summary,
+  .public-faq-list details p,
+  .public-steps h3,
+  .public-steps p,
+  .public-infra-grid h3,
+  .public-infra-grid p,
+  .public-cta span,
+  .public-cta h2,
+  .public-cta p,
+  .public-footer-grid>div>b,
+  .public-footer-grid a,
+  .public-footer-grid p,
+  .public-footer-bottom,
+  .public-home-v114-badge,
+  .public-home-v114-copy h1,
+  .public-home-v114-copy h1 em,
+  .public-home-v114-copy>p,
+  .public-home-v114-tool-head span,
+  .public-home-v114-tool-head b,
+  .public-home-v114-tool>p,
+  .public-nav-hub-v114-title h2,
+  .public-nav-hub-v114 a b,
+  .public-nav-hub-v114 a small,
+  .public-nav-hub-v114 a em
+){
+  max-width:100%!important;
+  white-space:normal!important;
+  overflow-wrap:anywhere!important;
+  word-break:break-word!important;
+  hyphens:auto;
+}
+
+.public-site :where(
+  .public-feature-grid article,
+  .public-suffix-card,
+  .public-available-grid>article,
+  .public-nav-directory article,
+  .public-about-grid article,
+  .public-contact-grid article,
+  .public-nav-hub-v114>article,
+  .public-footer-grid>div
+) :where(a,div,header,footer){
+  min-width:0!important;
+}
