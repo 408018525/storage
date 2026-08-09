@@ -6,10 +6,46 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#5468ff">
   <title>二级域名注册</title>
-  <link rel="stylesheet" href="/styles.css?v=122">
+  <meta name="robots" content="index,follow,max-image-preview:large">
+  <meta name="description" content="免费二级域名申请、可用域名查询、DNS 管理与知识库。">
+  <link rel="canonical" href="https://bloss.top/">
+  <link rel="sitemap" type="application/xml" title="Sitemap" href="/sitemap.xml">
+  <meta name="renderer" content="webkit">
+  <script id="crawler-route-meta">
+    (function(){
+      var routes={
+        '/': ['免费二级域名服务','免费二级域名申请、可用域名查询、DNS 管理与知识库。'],
+        '/home': ['免费二级域名服务','免费二级域名申请、可用域名查询、DNS 管理与知识库。'],
+        '/available': ['可用域名查询','查询本站开放的二级域名是否可以注册。'],
+        '/knowledge': ['知识库','二级域名、DNS 配置、申请与常见问题知识库。'],
+        '/featured': ['可用根域名','查看目前开放申请的免费二级域名后缀。'],
+        '/navigation': ['站点导航','快速访问本站公开服务、工具和帮助页面。'],
+        '/about': ['关于本站','了解本站免费二级域名服务与使用方式。'],
+        '/contact': ['联系我们','通过站内工单或管理员邮箱联系本站。'],
+        '/abuse': ['举报滥用','举报域名滥用、违规内容或安全问题。'],
+        '/faq': ['常见问题','查看免费二级域名申请和 DNS 使用常见问题。'],
+        '/terms': ['服务条款','本站免费二级域名服务条款。'],
+        '/privacy': ['隐私政策','本站账户、域名与公开查询的数据使用说明。']
+      };
+      var path=(location.pathname||'/').replace(/\/+$/,'')||'/';
+      var item=routes[path];
+      if(!item)return;
+      document.title=item[0];
+      var meta=document.querySelector('meta[name="description"]'); if(meta)meta.setAttribute('content',item[1]);
+      var canonical=document.querySelector('link[rel="canonical"]'); if(canonical)canonical.setAttribute('href','https://bloss.top'+(path==='/home'?'/' : path));
+    })();
+  </script>
+  <link rel="stylesheet" href="/styles.css?v=124">
   <style id="boot-blank-style">html,body{background:#fff!important}#background-layer{display:none!important}</style>
 </head>
 <body>
+  <noscript>
+    <main style="max-width:900px;margin:48px auto;padding:24px;font-family:system-ui,sans-serif;line-height:1.8;color:#1f2937">
+      <h1>免费二级域名服务</h1>
+      <p>本站提供免费二级域名可用性查询、域名申请、DNS 管理和使用知识库。</p>
+      <nav><a href="/available">可用域名</a> · <a href="/knowledge">知识库</a> · <a href="/featured">优质站点</a> · <a href="/navigation">站点导航</a> · <a href="/about">关于本站</a></nav>
+    </main>
+  </noscript>
   <div id="background-layer"></div>
   <div id="app"></div>
   <div id="modal-root"></div>
@@ -24,7 +60,7 @@
       function showBootHelp(title, message){
         var app = document.getElementById('app');
         if (!app) return;
-        app.innerHTML = '<div class="center-screen boot-error"><h2>'+escapeHtml(title)+'</h2><p>'+escapeHtml(message)+'</p><div class="boot-actions"><button class="btn primary" onclick="location.reload()">重新加载</button><button class="btn" onclick="localStorage.clear(); sessionStorage.clear(); location.reload()">清缓存重试</button><a class="btn" href="#/login" onclick="setTimeout(function(){location.reload()},30)">进入登录页</a></div><p class="muted">如果反复出现，请打开 F12 → Console，把红色错误截图发给管理员。</p></div>';
+        app.innerHTML = '<div class="center-screen boot-error"><h2>'+escapeHtml(title)+'</h2><p>'+escapeHtml(message)+'</p><div class="boot-actions"><button class="btn primary" onclick="location.reload()">重新加载</button><button class="btn" onclick="localStorage.clear(); sessionStorage.clear(); location.reload()">清缓存重试</button><a class="btn" href="/login">进入登录页</a></div><p class="muted">如果反复出现，请打开 F12 → Console，把红色错误截图发给管理员。</p></div>';
       }
       window.addEventListener('error', function(e){
         if (!window.__storageBootCompleted) showBootHelp('系统脚本加载失败', e && e.message ? e.message : '前端文件没有正确执行。');
@@ -41,6 +77,6 @@
       }, 14000);
     })();
   </script>
-  <script defer src="/app.js?v=122"></script>
+  <script defer src="/app.js?v=124"></script>
 </body>
 </html>
