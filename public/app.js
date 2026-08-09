@@ -771,9 +771,39 @@ function afterRender() {
   ensureI18nObserver();
   applyI18n();
 }
+function analyticsVisitorId() {
+  const key = 'storage_analytics_visitor_id';
+  try {
+    let value = localStorage.getItem(key) || '';
+    if (!/^[A-Za-z0-9_-]{8,160}$/.test(value)) {
+      value = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`).replace(/[^A-Za-z0-9_-]/g,'_');
+      localStorage.setItem(key, value);
+    }
+    return value;
+  } catch {
+    return `session_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  }
+}
+function trackAnalyticsPageVisit() {
+  const hash = location.hash || '#/home';
+  const isHome = hash === '#/home';
+  const isConsole = Boolean(state.me) && !PUBLIC_ROUTES.has(hash) && !['#/login','#/register','#/setup'].includes(hash);
+  const area = isHome ? 'home' : (isConsole ? 'console' : '');
+  if (!area) return;
+  const visitorId = analyticsVisitorId();
+  const throttleKey = `storage_visit_ping_${area}`;
+  const now = Date.now();
+  try {
+    const last = Number(sessionStorage.getItem(throttleKey) || 0);
+    if (last && now - last < 15 * 60 * 1000) return;
+    sessionStorage.setItem(throttleKey, String(now));
+  } catch {}
+  api('/api/public/visit',{method:'POST',body:{area,visitorId}}).catch(()=>{});
+}
 async function renderRoute() {
   await route();
   afterRender();
+  trackAnalyticsPageVisit();
 }
 
 
@@ -5327,6 +5357,16 @@ function analyticsDetailedCard(title, metric, description, icon, target='overvie
     ${current !== undefined ? `<span class="analytics-kpi-change"><b>本期 ${analyticsNumber(current)}</b>${analyticsChange(metric)}</span>` : ''}
   </button>`;
 }
+function analyticsVisitCard(title, data, icon) {
+  const current = Number(data?.current || 0);
+  const previous = Number(data?.previous || 0);
+  const meta = { current, previous, noPrevious: previous === 0, pct: previous ? Math.round((current-previous)/previous*1000)/10 : 0 };
+  return `<div class="analytics-kpi-card analytics-visitor-card">
+    <span class="analytics-kpi-icon">${esc(icon)}</span>
+    <span class="analytics-kpi-copy"><em>${esc(title)}</em><strong>${analyticsNumber(current)}</strong><small>所选区间独立访客 · 已排除管理员</small></span>
+    <span class="analytics-kpi-change"><b>上期 ${analyticsNumber(previous)}</b>${analyticsChange(meta)}</span>
+  </div>`;
+}
 function analyticsRatio(numerator, denominator) {
   const d = Number(denominator || 0); return d ? Math.round(Number(numerator || 0) / d * 1000) / 10 : 0;
 }
@@ -5444,7 +5484,7 @@ function analyticsInfoCard(label,value,sub='',tone='') {
 function buildAnalyticsCsv(data) {
   const rows=[['section','name','value','extra']];
   const add=(section,obj)=>Object.entries(obj||{}).forEach(([k,v])=>rows.push([section,k,typeof v==='object'?JSON.stringify(v):v,'']));
-  add('metrics',data.metrics); add('approval',data.approval); add('funnel',data.funnel); add('messageEngagement',data.messageEngagement);
+  add('metrics',data.metrics); add('visitors',data.visitors); add('approval',data.approval); add('funnel',data.funnel); add('messageEngagement',data.messageEngagement);
   (data.rankings?.users||[]).forEach(r=>rows.push(['topUsers',r.username,r.active_domains,r.email||'']));
   (data.rankings?.suffixes||[]).forEach(r=>rows.push(['suffixes',r.suffix,r.total,`active=${r.active};pending=${r.pending}`]));
   return rows.map(row=>row.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n');
@@ -5461,7 +5501,7 @@ async function renderAdminAnalytics() {
     const {analytics}=await api(`/api/admin/analytics?${qs}`);
     LAST_ANALYTICS_DATA=analytics;
     const m=analytics.metrics||{},d=analytics.distributions||{},r=analytics.rankings||{},bucket=analytics.range?.bucket||'day';
-    const approval=analytics.approval||{},funnel=analytics.funnel||{},security=m.security||{},activeDomains=m.activeDomains||{},dnsHealth=m.dnsHealth||{};
+    const visitors=analytics.visitors||{},approval=analytics.approval||{},funnel=analytics.funnel||{},security=m.security||{},activeDomains=m.activeDomains||{},dnsHealth=m.dnsHealth||{};
     const dnsHealthRate=Math.max(0,100-analyticsRatio(Number(dnsHealth.errors||0)+Number(dnsHealth.pending||0),m.dns?.total));
     const userParticipation=analyticsRatio(funnel.applicants,funnel.users),completionRate=analyticsRatio(funnel.dnsUsers,funnel.users);
     const messageReadRate=analyticsRatio(analytics.messageEngagement?.readers,m.activeUsers?.total);
@@ -5487,6 +5527,10 @@ async function renderAdminAnalytics() {
       ${analyticsViewTabs()}
 
       <div data-analytics-panel="overview" class="analytics-panel active">
+        <div class="analytics-kpi-grid analytics-visitor-kpis">
+          ${analyticsVisitCard('首页访问人数',visitors.home,'⌂')}
+          ${analyticsVisitCard('控制台访问人数',visitors.console,'▦')}
+        </div>
         <div class="analytics-kpi-grid">
           ${analyticsDetailedCard('注册用户',m.users,`活跃 ${analyticsNumber(m.activeUsers?.total)} · 本期登录 ${analyticsNumber(m.activeUsers?.loggedInPeriod)}`,'♙','users')}
           ${analyticsDetailedCard('域名申请',m.domains,`活跃 ${analyticsNumber(activeDomains.total)} · 待审核 ${analyticsNumber(activeDomains.pending)}`,'▣','domains',Number(activeDomains.pending)>0)}
@@ -5582,6 +5626,7 @@ function bindAnalyticsControls(rangeState) {
 Object.assign(statusText,{admin:'管理员',user:'普通用户',proxied:'已代理',dns_only:'仅 DNS',success:'成功',failed:'失败',warning:'警告',error:'错误',danger:'危险',info:'信息',all:'全部用户',role:'按角色',single:'指定用户',auth:'认证',dns:'DNS',domain:'域名',message:'消息',settings:'设置',other:'其他',no_expiry:'无到期时间',expired:'已过期',within_7d:'7 天内',within_30d:'30 天内',within_90d:'90 天内',after_90d:'90 天后'});
 
 Object.assign(I18N_EN, {
+  '首页访问人数':'Homepage Visitors','控制台访问人数':'Console Visitors','所选区间独立访客 · 已排除管理员':'Unique visitors in selected period · administrators excluded',
   '综合数据分析中心':'Comprehensive Analytics Center','从用户增长、域名转化、DNS 健康、消息触达、操作安全和异常事件多个维度查看系统运行情况。所有指标均随时间范围联动。':'Analyze user growth, domain conversion, DNS health, message reach, operational security, and incidents. All metrics follow the selected time range.','数据生成时间：':'Generated at:','对比区间：':'Comparison period:','导出 CSV':'Export CSV','导出 JSON':'Export JSON','打印报表':'Print Report','总览':'Overview','用户分析':'User Analytics','域名与 DNS':'Domains & DNS','运营与安全':'Operations & Security','明细数据':'Detailed Data','注册用户':'Registered Users','域名申请':'Domain Applications','有效 DNS 记录':'Active DNS Records','系统消息':'System Messages','操作日志':'Audit Logs','注册码':'Registration Keys','本期':'Current period','本期登录':'Logged in this period','本期阅读回执':'Read receipts this period','本期异常':'Incidents this period','活跃':'Active','待审核':'Pending','异常':'Errors','待同步':'Pending sync','已使用':'Used','申请通过率':'Approval Rate','平均审核耗时':'Average Review Time','待审核平均等待':'Average Pending Time','7 天内到期':'Expiring Within 7 Days','已过期':'Expired','登录失败':'Login Failures','成功登录':'Successful Logins','DNS 代理率':'DNS Proxy Rate','代理记录':'Proxied Records','消息阅读人数':'Message Readers','阅读回执':'Read Receipts','系统增长与业务活跃趋势':'System Growth and Business Activity','同时观察新用户、域名申请、审核通过、DNS 新增和消息发送。':'Track new users, applications, approvals, DNS additions, and messages together.','新用户':'New Users','新申请':'New Applications','新增 DNS':'DNS Added','发送消息':'Messages Sent','用户转化漏斗':'User Conversion Funnel','申请转化漏斗':'Application Conversion Funnel','注册用户':'Registered Users','提交过申请':'Submitted an Application','拥有通过域名':'Owns an Approved Domain','配置 DNS':'Configured DNS','全部申请':'All Applications','已配置 DNS':'DNS Configured','异常动作排行':'Top Failure Actions','用户状态':'User Status','域名状态':'Domain Status','DNS 类型':'DNS Types','用户增长与使用深度':'User Growth and Engagement','分析账号状态、角色结构、申请参与度和高活跃用户。':'Analyze account status, role mix, application participation, and highly active users.','用户状态分布':'User Status Distribution','用户角色分布':'User Role Distribution','用户与业务增长趋势':'User and Business Growth','高活跃用户排行':'Most Active Users','按活跃域名、DNS 记录和申请总量综合排序。':'Ranked by active domains, DNS records, and total applications.','搜索用户、邮箱或状态':'Search users, email, or status','用户':'User','域名':'Domains','活跃域名':'Active Domains','最后登录':'Last Login','从未登录':'Never Logged In','域名与 DNS 全链路':'End-to-End Domains and DNS','从申请、审核、根域名分布、到期风险、DNS 类型与同步状态进行完整分析。':'Analyze applications, reviews, suffix distribution, expiry risk, DNS types, and synchronization status.','域名申请与审批趋势':'Domain Application and Review Trend','DNS 记录变更趋势':'DNS Record Change Trend','删除 DNS':'DNS Removed','根域名使用量':'Root Domain Usage','DNS 同步状态':'DNS Sync Status','代理方式':'Proxy Mode','域名到期风险':'Domain Expiry Risk','DNS 类型结构':'DNS Type Mix','根域名业务明细':'Root Domain Details','比较各根域名的申请规模、活跃量、待审核量和通过率。':'Compare application volume, active domains, pending reviews, and approval rates by suffix.','搜索根域名':'Search root domains','根域名':'Root Domain','总量':'Total','已驳回':'Rejected','通过率':'Approval Rate','运营、安全与系统稳定性':'Operations, Security, and Reliability','观察登录、失败事件、操作类型、消息触达和一周内的活跃时段。':'Review logins, failures, operation categories, message reach, and activity periods.','登录与异常趋势':'Login and Incident Trend','系统异常':'System Incidents','操作分类':'Operation Categories','消息级别':'Message Levels','消息对象':'Message Targets','操作活跃热力图':'Activity Heatmap','按星期和小时统计所选时间范围内的操作日志，时间采用系统存储时间。':'Audit activity by weekday and hour using the system storage time.','异常与失败动作明细':'Failure and Incident Details','异常动作':'Failure Action','次数':'Count','最近发生':'Latest Occurrence','当前时间范围没有异常':'No incidents in the selected range','可搜索、可排序的明细数据':'Searchable and Sortable Details','用于追踪近期申请和操作记录。点击表头可排序，输入关键词可实时筛选。':'Track recent applications and operations. Click headers to sort and type to filter.','最近域名申请':'Recent Domain Applications','搜索域名、用户、状态或类型':'Search domain, user, status, or type','记录类型':'Record Type','申请时间':'Application Time','错误':'Error','最近操作日志':'Recent Audit Logs','搜索动作、用户、IP或对象':'Search action, user, IP, or target','时间':'Time','操作人':'Actor','动作':'Action','对象':'Target','系统':'System','正在读取完整分析数据…':'Loading comprehensive analytics…','较少':'Less','较多':'More','周日':'Sun','周一':'Mon','周二':'Tue','周三':'Wed','周四':'Thu','周五':'Fri','周六':'Sat','分钟':'minutes','小时':'hours','天':'days','DATA COMMAND CENTER':'DATA COMMAND CENTER'
  });
 
@@ -6785,8 +6830,8 @@ Object.assign(I18N_EN, {
   '未匹配':'Unmatched',
 });
 
-function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v120</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
-async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v120')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v120')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
+function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v121</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
+async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v121')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v121')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
 function bindSettingsTools() {
   const exportFn = async () => {
     try {
