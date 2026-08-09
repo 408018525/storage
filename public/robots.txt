@@ -1,0 +1,17 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /admin
+Disallow: /apply
+Disallow: /domains
+Disallow: /applications
+Disallow: /account
+Disallow: /messages
+Disallow: /logs
+Disallow: /support/
+Disallow: /domain/
+Disallow: /login
+Disallow: /register
+Disallow: /setup
+
+Sitemap: https://bloss.top/sitemap.xml
