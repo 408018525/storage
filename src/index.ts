@@ -1,7914 +1,4173 @@
-/// <reference types="@cloudflare/workers-types" />
-
-import { EmailMessage } from "cloudflare:email";
-
-interface D1Result<T = unknown> { results?: T[]; meta?: { changes?: number } }
-interface D1PreparedStatement {
-  bind(...values: unknown[]): D1PreparedStatement;
-  first<T = unknown>(): Promise<T | null>;
-  all<T = unknown>(): Promise<D1Result<T>>;
-  run<T = unknown>(): Promise<D1Result<T>>;
+:root{
+  --accent:#4f63f6;
+  --accent-2:#7c4dff;
+  --text:#111827;
+  --muted:#6b7280;
+  --line:#e5e7eb;
+  --panel:#ffffff;
+  --soft:#f5f7ff;
+  --danger:#dc2626;
+  --success:#059669;
+  --warning:#d97706;
+  --shadow:0 24px 70px rgba(15,23,42,.08);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",Arial,sans-serif;
 }
-interface D1Database {
-  prepare(query: string): D1PreparedStatement;
-  batch<T = unknown>(statements: D1PreparedStatement[]): Promise<D1Result<T>[]>;
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  color:var(--text);
+  background:
+    radial-gradient(circle at 20% 0%, rgba(79,99,246,.12), transparent 32%),
+    radial-gradient(circle at 90% 20%, rgba(124,77,255,.10), transparent 36%),
+    #f6f8ff;
 }
-interface KVNamespace {
-  get(key: string): Promise<string | null>;
-  put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
-  delete(key: string): Promise<void>;
+a{color:inherit;text-decoration:none}
+button,input,select,textarea{font:inherit}
+button{cursor:pointer}
+button:disabled{cursor:not-allowed;opacity:.5}
+code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+#toast-root{position:fixed;right:24px;top:24px;z-index:1000;display:grid;gap:12px}
+.toast{padding:14px 18px;background:#111827;color:#fff;border-radius:14px;box-shadow:var(--shadow);font-weight:700}
+.toast.success{background:#047857}.toast.error{background:#dc2626}
+.center-screen,.loading-card{min-height:50vh;display:grid;place-items:center;text-align:center}
+.loading-card{background:rgba(255,255,255,.75);border:1px solid var(--line);border-radius:28px;font-weight:800;color:var(--muted)}
+.btn{
+  border:0;
+  border-radius:14px;
+  padding:12px 18px;
+  font-weight:900;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  transition:.18s;
+  white-space:nowrap;
 }
-interface Fetcher {
-  fetch(request: Request): Promise<Response>;
+.btn:hover{transform:translateY(-1px)}
+.btn.primary{color:#fff;background:linear-gradient(135deg,var(--accent),var(--accent-2));box-shadow:0 16px 32px rgba(79,99,246,.22)}
+.btn.secondary{background:#fff;border:1px solid #cfd8ea;color:#334155}
+.btn.soft{background:#eef3ff;color:#21305f}
+.btn.ghost{background:transparent;color:#64748b}
+.btn.success{background:#e8fff5;color:#047857;border:1px solid #b7f7d6}
+.btn.danger{background:#dc2626;color:#fff}
+.btn.danger-soft{background:#fff1f2;color:#be123c;border:1px solid #fecdd3}
+.btn.small{padding:8px 10px;border-radius:10px;font-size:13px}
+.auth-wrap{min-height:100vh;display:grid;grid-template-columns:1.1fr .9fr;gap:40px;align-items:center;max-width:1120px;margin:auto;padding:48px}
+.auth-brand{color:#172033}
+.auth-logo{width:78px;height:78px;border-radius:28px;background:linear-gradient(135deg,var(--accent),var(--accent-2));display:grid;place-items:center;color:#fff;font-size:36px;font-weight:900;box-shadow:var(--shadow);margin-bottom:24px}
+.auth-brand h1{font-size:52px;margin:0 0 18px;letter-spacing:-1px}
+.auth-brand p{font-size:22px;color:var(--muted);line-height:1.7}
+.auth-card{background:rgba(255,255,255,.9);border:1px solid var(--line);border-radius:34px;padding:38px;box-shadow:var(--shadow)}
+.auth-card h2{font-size:32px;margin:0 0 8px}.auth-card>p{color:var(--muted);margin:0 0 28px}
+.auth-link{text-align:center;color:var(--muted)}.auth-link a{color:var(--accent);font-weight:900}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.field{display:grid;gap:9px}
+.field.wide,.wide{grid-column:1/-1}
+.field span{font-weight:900;color:#1f2937}
+.field input,.field select,.field textarea{
+  width:100%;
+  border:1px solid #d8e0ee;
+  background:#fff;
+  border-radius:16px;
+  padding:15px 16px;
+  outline:0;
+  min-height:54px;
 }
-
-export interface Env {
-  DB: D1Database;
-  APP_KV: KVNamespace;
-  ASSETS: Fetcher;
-  BOOTSTRAP_ADMIN_TOKEN?: string;
-  CF_API_TOKEN?: string;
-  CF_ACCOUNT_ID?: string;
-  CF_EMAIL_ROUTING_API_TOKEN?: string;
-  CF_WORKERS_API_TOKEN?: string;
-  CF_WORKER_SCRIPT_NAME?: string;
-  RESEND_API_KEY?: string;
-  EMAIL_FROM?: string;
-  EMAIL_FROM_NAME?: string;
-  APP_ENVIRONMENT?: string;
-  ENVIRONMENT?: string;
-  CF_ADMIN_EMAIL?: string;
-  SEB?: { send(message: EmailMessage): Promise<unknown> };
-  DNS_SUFFIX?: string;
-  DNS_SUFFIX_LABEL?: string;
-  DNS_ZONE_ID?: string;
-  DNS_ALLOWED_TYPES?: string;
-  DNS_DEFAULT_TYPE?: string;
-  DNS_TTL?: string;
-  DNS_PROXIED?: string;
-  DNS_RESERVED_PREFIXES?: string;
-  TURNSTILE_SITE_KEY?: string;
-  TURNSTILE_SECRET?: string;
-  TURNSTILE_EXPECTED_HOSTNAME?: string;
-  TURNSTILE_ENABLE_APPLY?: string;
-  TURNSTILE_ENABLE_LOGIN?: string;
-  TURNSTILE_ENABLE_REGISTER?: string;
-  TURNSTILE_ACTION_APPLY?: string;
-  TURNSTILE_ACTION_LOGIN?: string;
-  TURNSTILE_ACTION_REGISTER?: string;
+.field textarea{min-height:110px}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent);box-shadow:0 0 0 4px rgba(79,99,246,.12)}
+.field em{font-style:normal;color:#73809a;font-size:14px}
+.check{display:flex;align-items:center;gap:10px;font-weight:800;color:#334155}
+.app-shell{display:grid;grid-template-columns:280px 1fr;min-height:100vh}
+.sidebar{
+  background:#111827;
+  color:#e5e7eb;
+  padding:24px;
+  display:flex;
+  flex-direction:column;
+  gap:22px;
+  position:sticky;
+  top:0;
+  height:100vh;
 }
-
-type Role = 'admin' | 'user';
-type UserStatus = 'active' | 'disabled' | 'deleted';
-type DnsRecordType = 'A' | 'AAAA' | 'CNAME' | 'TXT' | 'MX' | 'NS' | 'CAA' | 'SRV';
-
-const SUPPORTED_DNS_RECORD_TYPES: DnsRecordType[] = ['A', 'AAAA', 'CNAME', 'TXT', 'MX', 'NS', 'CAA', 'SRV'];
-
-interface DnsRecordTypePolicy {
-  type: DnsRecordType;
-  displayName: string;
-  allowUserAdd: boolean;
-  note: string;
+.brand{display:flex;align-items:center;gap:12px;font-size:18px}
+.brand div{width:44px;height:44px;border-radius:16px;background:linear-gradient(135deg,var(--accent),var(--accent-2));display:grid;place-items:center;font-weight:900;color:white}
+.sidebar nav{display:grid;gap:8px}
+.sidebar hr{width:100%;border:0;border-top:1px solid rgba(255,255,255,.1);margin:12px 0}
+.nav{display:flex;align-items:center;gap:12px;padding:13px 14px;border-radius:14px;color:#cbd5e1;font-weight:900}
+.nav.active,.nav:hover{background:rgba(255,255,255,.1);color:#fff}
+.nav span{width:24px;text-align:center}
+.side-user{margin-top:auto;display:grid;gap:10px;padding:14px;border:1px solid rgba(255,255,255,.1);border-radius:18px}
+.side-user small{color:#94a3b8}
+.main{min-width:0}
+.topbar{
+  position:sticky;
+  top:0;
+  z-index:10;
+  backdrop-filter:blur(16px);
+  background:rgba(246,248,255,.78);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:24px 34px;
+  border-bottom:1px solid rgba(226,232,240,.7);
 }
-
-interface UserRow {
-  id: string;
-  username: string;
-  email: string | null;
-  phone?: string | null;
-  password_hash: string;
-  password_salt: string;
-  role: Role;
-  status: UserStatus;
-  domain_quota?: number | null;
-  permissions_json?: string | null;
-  created_at: string;
-  updated_at?: string | null;
-  last_login_at?: string | null;
+.topbar h1{margin:0;font-size:30px}
+.menu-btn{display:none}
+.content{max-width:1280px;margin:auto;padding:28px 34px 54px}
+.notice{background:#edf6ff;border:1px solid #d5e8ff;color:#244a82;padding:16px 20px;border-radius:18px;font-weight:800;margin-bottom:18px}
+.quota-hero{
+  background:rgba(255,255,255,.9);
+  border:1px solid #e3e8f8;
+  border-radius:28px;
+  padding:28px;
+  display:flex;
+  align-items:center;
+  gap:22px;
+  box-shadow:var(--shadow);
+  margin-bottom:26px;
 }
-
-interface ApplicationRow {
-  id: string;
-  user_id: string;
-  username?: string | null;
-  prefix_unicode: string;
-  prefix_ascii: string;
-  suffix_unicode: string;
-  suffix_ascii: string;
-  fqdn_unicode: string;
-  fqdn_ascii: string;
-  record_type: string | null;
-  record_content: string | null;
-  proxied: number | null;
-  ttl: number | null;
-  status: string;
-  review_note?: string | null;
-  error_message?: string | null;
-  dns_record_id?: string | null;
-  created_at: string;
-  reviewed_at?: string | null;
-  reviewed_by?: string | null;
-  expires_at?: string | null;
-  renewed_at?: string | null;
-  renew_count?: number | null;
-  deleted_at?: string | null;
-  delete_requested_at?: string | null;
-  delete_requested_by?: string | null;
-  controlled_at?: string | null;
-  controlled_by?: string | null;
+.quota-hero.compact{padding:22px}
+.quota-icon{width:68px;height:68px;border-radius:24px;background:linear-gradient(135deg,var(--accent),var(--accent-2));display:grid;place-items:center;color:#fff;font-size:28px}
+.quota-hero strong{font-size:40px;line-height:1}.quota-hero span{display:block;color:var(--muted);font-weight:800;margin-top:6px}
+.quota-left{margin-left:auto;background:#fff;border:1px solid var(--line);border-radius:20px;padding:14px 22px;text-align:center}
+.quota-left strong{font-size:30px}
+.card,.domain-card,.detail-hero,.detail-panel,.stat,.info-card{
+  background:rgba(255,255,255,.92);
+  border:1px solid var(--line);
+  border-radius:28px;
+  box-shadow:var(--shadow);
 }
-
-interface DnsRecordRow {
-  id: string;
-  application_id: string;
-  user_id: string;
-  host: string;
-  name: string;
-  type: DnsRecordType;
-  content: string;
-  priority?: number | null;
-  proxied?: number | null;
-  ttl?: number | null;
-  cf_record_id?: string | null;
-  status: string;
-  error_message?: string | null;
-  created_at: string;
-  updated_at?: string | null;
-  deleted_at?: string | null;
-  fqdn_unicode?: string | null;
-  fqdn_ascii?: string | null;
-  username?: string | null;
+.card{padding:28px;margin-bottom:26px}
+.card h2,.info-card h2{margin:0 0 12px;font-size:26px}
+.card p{color:var(--muted);line-height:1.8}
+.section-head{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:18px}
+.section-head h2{margin:0}.section-head p{margin:6px 0 0;color:var(--muted)}
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:24px}
+.steps div{border:1px solid var(--line);background:#f8fafc;border-radius:20px;padding:18px}
+.steps b{display:grid;place-items:center;width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff;margin-bottom:14px}
+.steps strong{font-size:20px}
+.domain-list{display:grid;gap:0}
+.domain-card{padding:24px;margin-bottom:0;border-radius:26px}
+.domain-card+ .domain-card{margin-top:0;border-top-left-radius:0;border-top-right-radius:0}
+.domain-head{display:flex;align-items:center;gap:16px;margin-bottom:20px}
+.globe{width:54px;height:54px;border-radius:18px;background:#eef4ff;display:grid;place-items:center;font-size:24px}.globe.big{width:64px;height:64px;font-size:30px}
+.domain-title h3{font-size:26px;margin:0 0 6px}.domain-title code{color:#667085;font-weight:800}
+.domain-head .status-pill{margin-left:auto}
+.status-pill{display:inline-flex;align-items:center;border-radius:999px;padding:8px 13px;font-weight:900;font-size:14px}
+.status-approved,.status-active{background:#dcfce7;color:#047857}
+.status-pending,.status-processing{background:#fff7ed;color:#c2410c}
+.status-rejected,.status-revoked,.status-deleted,.status-disabled{background:#fee2e2;color:#b91c1c}
+.domain-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.domain-metrics div,.preview-box{
+  background:#f8fafc;
+  border:1px solid var(--line);
+  border-radius:18px;
+  padding:16px;
 }
-
-interface MessageRow {
-  id: string;
-  sender_user_id?: string | null;
-  sender_username?: string | null;
-  target_type: string;
-  target_user_id?: string | null;
-  target_username?: string | null;
-  target_role?: string | null;
-  title: string;
-  body: string;
-  level: string;
-  status: string;
-  created_at: string;
-  updated_at?: string | null;
-  sent_at?: string | null;
-  deleted_at?: string | null;
-  read_at?: string | null;
-}
-
-interface SupportTicketRow {
-  id: string;
-  user_id: string;
-  username?: string | null;
-  category: string;
-  priority: string;
-  title: string;
-  description: string;
-  status: string;
-  client_context_json?: string | null;
-  created_at: string;
-  updated_at?: string | null;
-  last_reply_at?: string | null;
-  closed_at?: string | null;
-}
-
-interface SupportTicketReplyRow {
-  id: string;
-  ticket_id: string;
-  user_id: string;
-  username?: string | null;
-  is_admin: number;
-  body: string;
-  created_at: string;
-}
-
-
-interface HelpItemSetting {
-  id?: string;
-  q: string;
-  a: string;
-}
-
-interface HelpCategorySetting {
-  key: string;
-  title: string;
-  subtitle?: string;
-  items: HelpItemSetting[];
-}
-
-interface AppSettings {
-  site: {
-    title: string;
-    subtitle: string;
-    footer: string;
-    copyright?: string;
-    faviconUrl?: string;
-    headerThirdPartyJs?: string;
-    maintenanceMode?: boolean;
-    maintenanceMessage?: string;
-    themeMode?: string;
-    noticeStartAt?: string;
-    noticeEndAt?: string;
-    accent: string;
-    accent2: string;
-    logoText: string;
-    logoImageUrl?: string;
-    icp?: string;
-    homepageNotice?: string;
-    publicHomepageEnabled?: boolean;
-    publicHomepageLayout?: 'brand' | 'compact' | 'data';
-    publicHomepageBadge?: string;
-    publicHomepageTitle?: string;
-    publicHomepageHighlight?: string;
-    publicHomepageDescription?: string;
-    publicHomepagePrimaryText?: string;
-    publicHomepagePrimaryHref?: string;
-    publicHomepageSecondaryText?: string;
-    publicHomepageSecondaryHref?: string;
-    publicHomepageSearchEyebrow?: string;
-    publicHomepageSearchTitle?: string;
-    publicHomepageSearchNote?: string;
-    publicHomepageStatsUsersLabel?: string;
-    publicHomepageStatsDomainsLabel?: string;
-    publicHomepageStatsDnsLabel?: string;
-    publicHomepageStatsSuffixesLabel?: string;
-    publicHomepageFeaturesTitle?: string;
-    publicHomepageFeaturesDescription?: string;
-    publicHomepageDomainsTitle?: string;
-    publicHomepageDomainsDescription?: string;
-    publicHomepageProcessTitle?: string;
-    publicHomepageProcessDescription?: string;
-    publicHomepageInfrastructureTitle?: string;
-    publicHomepageInfrastructureDescription?: string;
-    publicHomepageFaqTitle?: string;
-    publicHomepageFaqDescription?: string;
-    publicHomepageSectionOrder?: string;
-    publicHomepageCtaEyebrow?: string;
-    publicHomepageCtaTitle?: string;
-    publicHomepageCtaDescription?: string;
-    publicHomepageCtaPrimaryText?: string;
-    publicHomepageCtaPrimaryHref?: string;
-    publicHomepageCtaSecondaryText?: string;
-    publicHomepageCtaSecondaryHref?: string;
-    publicHomepageShowSearch?: boolean;
-    publicHomepageShowStats?: boolean;
-    publicHomepageShowFeatures?: boolean;
-    publicHomepageShowDomains?: boolean;
-    publicHomepageShowProcess?: boolean;
-    publicHomepageShowInfrastructure?: boolean;
-    publicHomepageShowFaq?: boolean;
-    publicHomepageShowCta?: boolean;
-    publicHomepageSearchPlaceholder?: string;
-    publicHomepageSearchButtonText?: string;
-    publicNavShowHome?: boolean;
-    publicNavShowAvailable?: boolean;
-    publicNavShowKnowledge?: boolean;
-    publicNavShowFeatured?: boolean;
-    publicNavShowNavigation?: boolean;
-    publicNavHomeLabel?: string;
-    publicNavAvailableLabel?: string;
-    publicNavKnowledgeLabel?: string;
-    publicNavFeaturedLabel?: string;
-    publicNavNavigationLabel?: string;
-    publicBrandTitle?: string;
-    publicHeaderShowBrand?: boolean;
-    publicHeaderShowLanguage?: boolean;
-    publicHeaderShowAccountActions?: boolean;
-    publicHeaderDashboardText?: string;
-    publicHeaderLoginText?: string;
-    publicHeaderRegisterText?: string;
-    publicDomainCheckEmptyText?: string;
-    publicDomainCheckCheckingText?: string;
-    publicDomainCheckAvailableText?: string;
-    publicDomainCheckUnavailableText?: string;
-    publicDomainCheckFailureText?: string;
-    publicDomainCheckApplyText?: string;
-    publicDomainCheckRegisterApplyText?: string;
-    publicHomepageShowBadge?: boolean;
-    publicHomepageShowHighlight?: boolean;
-    publicHomepageShowDescription?: boolean;
-    publicHomepageShowPrimaryButton?: boolean;
-    publicHomepageShowSecondaryButton?: boolean;
-    publicHomepageStatsShowUsers?: boolean;
-    publicHomepageStatsShowDomains?: boolean;
-    publicHomepageStatsShowDns?: boolean;
-    publicHomepageStatsShowSuffixes?: boolean;
-    publicHomepageFeature1Show?: boolean;
-    publicHomepageFeature1Icon?: string;
-    publicHomepageFeature1Title?: string;
-    publicHomepageFeature1Description?: string;
-    publicHomepageFeature2Show?: boolean;
-    publicHomepageFeature2Icon?: string;
-    publicHomepageFeature2Title?: string;
-    publicHomepageFeature2Description?: string;
-    publicHomepageFeature3Show?: boolean;
-    publicHomepageFeature3Icon?: string;
-    publicHomepageFeature3Title?: string;
-    publicHomepageFeature3Description?: string;
-    publicHomepageFeature4Show?: boolean;
-    publicHomepageFeature4Icon?: string;
-    publicHomepageFeature4Title?: string;
-    publicHomepageFeature4Description?: string;
-    publicHomepageFeature5Show?: boolean;
-    publicHomepageFeature5Icon?: string;
-    publicHomepageFeature5Title?: string;
-    publicHomepageFeature5Description?: string;
-    publicHomepageFeature6Show?: boolean;
-    publicHomepageFeature6Icon?: string;
-    publicHomepageFeature6Title?: string;
-    publicHomepageFeature6Description?: string;
-    publicHomepageDomainsLimit?: number;
-    publicHomepageDomainsStatusText?: string;
-    publicHomepageDomainsLinkText?: string;
-    publicHomepageDomainsViewAllText?: string;
-    publicHomepageFaqLimit?: number;
-    publicHomepageFaqViewAllText?: string;
-    publicHomepageCtaShowPrimaryButton?: boolean;
-    publicHomepageCtaShowSecondaryButton?: boolean;
-    publicAvailableShowHero?: boolean;
-    publicAvailableShowSearchDescription?: boolean;
-    publicAvailableEmptySuffixesText?: string;
-    publicKnowledgeShowHero?: boolean;
-    publicKnowledgeShowSearch?: boolean;
-    publicKnowledgeShowCategorySubtitle?: boolean;
-    publicKnowledgeNoResultsText?: string;
-    publicFeaturedShowHero?: boolean;
-    publicFeaturedShowCardBadge?: boolean;
-    publicFeaturedShowCardStatus?: boolean;
-    publicFeaturedShowCardButton?: boolean;
-    publicFeaturedEmptyText?: string;
-    publicNavigationShowHero?: boolean;
-    publicNavigationShowBackButton?: boolean;
-    publicNavigationShowDescriptions?: boolean;
-    publicNavigationShowNumbers?: boolean;
-    publicNavigationShowArrows?: boolean;
-    publicFooterEnabled?: boolean;
-    publicFooterShowBrand?: boolean;
-    publicFooterServicesTitle?: string;
-    publicFooterInfoTitle?: string;
-    publicFooterStartTitle?: string;
-    publicFooterCopyrightText?: string;
-    publicFooterShowIcp?: boolean;
-    publicAvailableBadge?: string;
-    publicAvailableTitle?: string;
-    publicAvailableDescription?: string;
-    publicAvailableSearchEyebrow?: string;
-    publicAvailableSearchTitle?: string;
-    publicAvailableSearchDescription?: string;
-    publicAvailableSearchPlaceholder?: string;
-    publicAvailableSearchButtonText?: string;
-    publicAvailableShowGuide?: boolean;
-    publicAvailableGuideAvailableTitle?: string;
-    publicAvailableGuideAvailableText?: string;
-    publicAvailableGuideUnavailableTitle?: string;
-    publicAvailableGuideUnavailableText?: string;
-    publicKnowledgeBadge?: string;
-    publicKnowledgeTitle?: string;
-    publicKnowledgeDescription?: string;
-    publicKnowledgeSearchPlaceholder?: string;
-    publicKnowledgeShowArticleCount?: boolean;
-    publicFeaturedBadge?: string;
-    publicFeaturedTitle?: string;
-    publicFeaturedDescription?: string;
-    publicFeaturedCardBadgeText?: string;
-    publicFeaturedCardStatusText?: string;
-    publicFeaturedCardButtonText?: string;
-    publicFeaturedCardFallbackDescription?: string;
-    publicFeaturedShowQueryHelper?: boolean;
-    publicFeaturedQueryTitle?: string;
-    publicFeaturedQueryDescription?: string;
-    publicFeaturedQueryButtonText?: string;
-    publicNavigationBadge?: string;
-    publicNavigationTitle?: string;
-    publicNavigationDescription?: string;
-    publicNavigationBackText?: string;
-    publicNavigationGroupStart?: string;
-    publicNavigationGroupTools?: string;
-    publicNavigationGroupUser?: string;
-    publicNavigationGroupRequirements?: string;
-    publicFooterSubtitle?: string;
-    publicFooterShowPowered?: boolean;
-    notFoundText?: string;
-    defaultLanguage?: string;
-    showQuota?: boolean;
-    showExpiryReminder?: boolean;
-  };
-  registration: {
-    enabled: boolean;
-    autoActivate: boolean;
-    blockTempEmail?: boolean;
-    maxAccountsPerIp?: number;
-    ipRegisterCooldownMinutes?: number;
-    turnstileRegisterEnabled?: boolean;
-    defaultStatus?: 'auto' | 'manual';
-    disabledMessage?: string;
-    turnstileSiteKey?: string;
-    turnstileSecret?: string;
-    humanVerificationMode?: 'image' | 'turnstile' | 'turnstile_fallback';
-    captchaBackgroundEnabled?: boolean;
-    captchaBackgroundMode?: 'random' | 'upload';
-    captchaBackgroundImage?: string;
-    captchaNoiseLinesEnabled?: boolean;
-    captchaNoiseLinesMin?: number;
-    captchaNoiseLinesMax?: number;
-    captchaNoiseLineColorMode?: 'random' | 'fixed';
-    captchaNoiseLineFixedColor?: string;
-    captchaCharset?: string;
-    captchaLength?: number;
-    emailDomainBlacklist?: string;
-    emailVerificationEnabled?: boolean;
-    emailApiKey?: string;
-    emailFrom?: string;
-    emailFromName?: string;
-    emailCodeExpiryMinutes?: number;
-    emailCodeLength?: number;
-    emailCodeCharset?: string;
-    emailAllowedEnvironments?: string;
-    emailRegistrationSceneEnabled?: boolean;
-    emailTestSceneEnabled?: boolean;
-    emailFixedRecipients?: string;
-    emailRegistrationRecipientMode?: 'user' | 'user_bcc_fixed';
-    emailTestRecipientMode?: 'manual' | 'admin' | 'fixed';
-    cloudflareEmailAccountId?: string;
-    cloudflareEmailApiToken?: string;
-    cloudflareAdminRecipient?: string;
-    cloudflareVerifiedRecipients?: string[];
-    cloudflareRecipientsSyncedAt?: string;
-    emailRegistrationSubjectTemplate?: string;
-    emailRegistrationTextTemplate?: string;
-    emailRegistrationHtmlTemplate?: string;
-    emailTestSubjectTemplate?: string;
-    emailTestTextTemplate?: string;
-    emailTestHtmlTemplate?: string;
-    dailyDomainApplyLimit?: number;
-    failedRegisterBanThreshold?: number;
-    failedRegisterBanMinutes?: number;
-    blockVpnProxy?: boolean;
-    requireRegistrationKey?: boolean;
-  };
-  domain: {
-    defaultQuota: number;
-    validDays: number;
-    renewWindowDays: number;
-    allowUserDeleteInvalid: boolean;
-    allowDnsEditAfterApproved: boolean;
-    prefixMinLength?: number;
-    prefixMaxLength?: number;
-    prefixBlacklistText?: string;
-    allowNumericPrefix?: boolean;
-    allowUnderscorePrefix?: boolean;
-    selfRenewEnabled?: boolean;
-    expiryReminderDays?: number;
-    expiredDnsCleanupDays?: number;
-    allowUserDeleteActive?: boolean;
-    allowDomainTransfer?: boolean;
-    maxDnsRecordsPerDomain?: number;
-    approvalMode?: 'manual' | 'auto' | 'risk';
-    platformMaxDomains?: number;
-    normalUserQuota?: number;
-    normalUserValidDays?: number;
-    whitelistUserQuota?: number;
-    whitelistUserValidDays?: number;
-    lockAfterExpireDays?: number;
-    hardDeleteAfterExpireDays?: number;
-    blockedPrefixText?: string;
-    adminOnlyPrefixText?: string;
-  };
-  help: {
-    categories: HelpCategorySetting[];
-  };
-  dns: {
-    envManaged: boolean;
-    reservedPrefixes: string[];
-    defaultProxied?: boolean;
-    allowMxRecords?: boolean;
-    cfApiToken?: string;
-    blockWildcardRecords?: boolean;
-    cnameTargetBlacklist?: string;
-    recordTypePolicies: DnsRecordTypePolicy[];
-    suffixes: Array<{
-      label: string;
-      suffix: string;
-      suffixAscii: string;
-      zoneId: string;
-      allowedTypes: string[];
-      defaultType: DnsRecordType;
-      ttl: number;
-      proxied: boolean;
-      enabled: boolean;
-      allowRegister?: boolean;
-      registerOrder?: number;
-      cfApiToken?: string;
-    }>;
-  };
-  blacklist?: {
-    prefixes: string[];
-    ips: string[];
-    emails: string[];
-    registration?: unknown[];
-    access?: unknown[];
-    userIds?: unknown[];
-  };
-  notification?: {
-    events: Record<string, boolean>;
-    expiryTemplate: string;
-    templates?: Record<string, string>;
-    userTargets?: Record<string, string>;
-    adminTargets?: Record<string, string>;
-    rateLimitPerHour?: number;
-  };
-  security?: {
-    adminSessionTimeoutHours: number;
-    adminIpWhitelist: string;
-    auditRetentionDays: number;
-    failedLoginLockThreshold?: number;
-    failedLoginLockMinutes?: number;
-    adminPath?: string;
-    rolesPermissions?: string;
-    auditRecordItems?: string;
-  };
-  automation?: {
-    enabled: boolean;
-    scanCycleMinutes: number;
-    checkExpiringDomains: boolean;
-    cleanupExpiredDns: boolean;
-    cronExpression?: string;
-    notifyAdminOnFailure?: boolean;
-    dnsCleanupProtectionDays?: number;
-    taskLogs?: unknown[];
-  };
+.domain-metrics span,.preview-box span{display:block;color:#6b7280;font-weight:800;margin-bottom:8px}
+.domain-metrics strong{font-size:18px;word-break:break-all}
+.card-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:18px}
+.error-line{color:var(--danger)!important;font-weight:800}
+.empty{padding:40px;text-align:center;color:var(--muted);font-weight:800}
+.modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.46);z-index:999;display:grid;place-items:center;padding:24px}
+.modal{width:min(760px,100%);max-height:92vh;overflow:auto;background:#fff;border-radius:28px;box-shadow:0 40px 100px rgba(0,0,0,.25)}
+.modal.wide{width:min(980px,100%)}
+.modal-titlebar{display:flex;align-items:center;gap:18px;padding:28px 32px;border-bottom:1px solid var(--line)}
+.modal-icon{width:58px;height:58px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff;font-size:30px;font-weight:900}
+.modal-titlebar h2{margin:0;font-size:30px}.modal-titlebar p{margin:6px 0 0;color:#6b7280;font-weight:700}
+.modal-x{margin-left:auto;border:0;background:transparent;font-size:56px;line-height:1;color:#555}
+.modal-body{padding:32px}
+.modal-form{display:grid;gap:22px}
+.suffix-input{display:grid;grid-template-columns:1fr auto}
+.suffix-input input{border-top-right-radius:0;border-bottom-right-radius:0}
+.suffix-input strong{display:grid;place-items:center;background:#f2f5fb;border:1px solid #d8e0ee;border-left:0;border-radius:0 16px 16px 0;padding:0 22px;color:#334155;font-size:20px}
+.dns-note{display:flex;align-items:center;gap:14px;background:#f0f7ff;border:1px solid #d7eaff;border-radius:18px;padding:18px;color:#1d4ed8}
+.dns-note span{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#1d4ed8;color:#fff;font-weight:900}
+.dns-note button{margin-left:auto;border:0;background:transparent;color:#2563eb;font-weight:900}
+.modal-actions{display:flex;justify-content:flex-end;gap:14px;border-top:1px solid var(--line);padding-top:22px}
+.detail-hero{padding:26px;margin-bottom:24px}
+.back-link{display:inline-block;color:#64748b;font-weight:900;margin-bottom:22px}
+.detail-main{display:flex;align-items:center;gap:18px}
+.detail-main h1{font-size:42px;margin:0 0 8px}
+.detail-main code{font-size:18px;color:#6b7280}
+.detail-actions{margin-left:auto;display:flex;gap:12px}
+.detail-panel{overflow:hidden}
+.tabs{display:flex;gap:18px;padding:22px 28px;border-bottom:1px solid var(--line);overflow:auto}
+.tab{border:0;background:transparent;padding:12px 0;font-weight:900;color:#64748b;font-size:18px;border-bottom:3px solid transparent}
+.tab.active{color:var(--accent);border-color:var(--accent)}
+.tab-page{display:none;padding:28px}.tab-page.active{display:block}
+.detail-grid,.grid.two{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.info-card{padding:28px}
+.info-card dl,.info-list{display:grid;grid-template-columns:150px 1fr;gap:18px;align-items:center}
+.info-card dt,.info-list span{color:#6b7280;font-weight:800}
+.info-card dd,.info-list strong{margin:0;font-weight:900;font-size:18px}
+.quick-actions{display:flex;gap:14px;flex-wrap:wrap;margin-top:18px}
+.table-wrap{overflow:auto}
+table{width:100%;border-collapse:separate;border-spacing:0;min-width:760px}
+th,td{text-align:left;padding:16px;border-bottom:1px solid var(--line);vertical-align:middle}
+th{color:#64748b;font-size:14px}
+.actions-cell{display:flex;gap:8px;flex-wrap:wrap}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-bottom:26px}
+.stat{padding:24px}.stat span{color:var(--muted);font-weight:800}.stat strong{display:block;font-size:36px;margin:8px 0}.stat em{font-style:normal;color:#64748b}
+.admin-settings .tab-page{padding:28px 0 0}
+.delete-box{background:#fff7f7;border:1px solid #fecaca;border-radius:18px;padding:18px}.danger-text{color:var(--danger);font-weight:800}
+.muted{color:var(--muted)}
+.turnstile-holder{min-height:70px}
+@media(max-width:1000px){
+  .app-shell{grid-template-columns:1fr}
+  .sidebar{position:fixed;left:-290px;z-index:50;transition:.2s}.sidebar.open{left:0}
+  .menu-btn{display:inline-flex}
+  .auth-wrap{grid-template-columns:1fr;padding:24px}
+  .auth-brand h1{font-size:38px}
+  .content{padding:20px}
+  .quota-hero,.detail-main{align-items:flex-start;flex-direction:column}
+  .quota-left,.detail-actions{margin-left:0}
+  .steps,.domain-metrics,.detail-grid,.grid.two,.stats{grid-template-columns:1fr}
+  .form-grid{grid-template-columns:1fr}
+  .section-head{align-items:flex-start;flex-direction:column}
 }
 
-const DAY = 24 * 60 * 60 * 1000;
-const SETTINGS_KEY = 'app_settings_v4';
+.status-delete-requested,.status-delete_requested{background:#fff7ed;color:#9a3412}
+.delete-box .danger-text{color:#b91c1c;font-weight:700}
 
-class HttpError extends Error {
-  status: number;
-  code: string;
-  details?: unknown;
-  constructor(status: number, code: string, message: string, details?: unknown) {
-    super(message);
-    this.status = status;
-    this.code = code;
-    this.details = details;
+
+/* v13 compact UI tuning */
+body{font-size:14px}
+.btn{padding:10px 15px;border-radius:12px}
+.btn.small{padding:7px 9px;font-size:12px}
+.auth-wrap{max-width:1040px;padding:36px;gap:30px}
+.auth-logo{width:64px;height:64px;border-radius:22px;font-size:30px;margin-bottom:18px}
+.auth-brand h1{font-size:42px}.auth-brand p{font-size:18px}
+.auth-card{border-radius:28px;padding:30px}.auth-card h2{font-size:28px}
+.app-shell{grid-template-columns:250px 1fr}
+.sidebar{padding:20px;gap:18px}.brand div{width:38px;height:38px;border-radius:14px}.nav{padding:11px 12px;border-radius:12px}
+.topbar{padding:18px 28px}.topbar h1{font-size:26px}
+.content{max-width:1160px;padding:22px 28px 44px}
+.notice{padding:13px 16px;border-radius:16px;margin-bottom:14px}
+.quota-hero{padding:22px;border-radius:24px;gap:18px;margin-bottom:20px}.quota-icon{width:58px;height:58px;border-radius:20px;font-size:24px}.quota-hero strong{font-size:34px}.quota-left{padding:10px 18px;border-radius:16px}.quota-left strong{font-size:26px}
+.card{padding:22px;margin-bottom:20px;border-radius:24px}.card h2,.info-card h2{font-size:23px}.card p{line-height:1.65}
+.section-head{margin-bottom:14px}.steps{gap:12px;margin-top:18px}.steps div{padding:14px;border-radius:16px}.steps b{width:32px;height:32px;margin-bottom:10px}.steps strong{font-size:17px}
+.domain-card{padding:20px;border-radius:22px}.domain-title h3{font-size:23px}.globe{width:46px;height:46px;border-radius:16px;font-size:20px}.globe.big{width:56px;height:56px;font-size:26px}
+.domain-metrics{gap:12px}.domain-metrics div,.preview-box{padding:13px;border-radius:15px}.domain-metrics strong{font-size:16px}.card-actions{margin-top:14px}
+.modal{border-radius:24px}.modal-titlebar{padding:22px 26px}.modal-icon{width:48px;height:48px;font-size:24px}.modal-titlebar h2{font-size:25px}.modal-x{font-size:44px}.modal-body{padding:24px}.modal-form{gap:18px}.modal-actions{padding-top:18px}
+.detail-hero{padding:22px;border-radius:24px}.detail-main h1{font-size:34px}.tabs{padding:16px 22px;gap:14px}.tab{font-size:16px}.tab-page{padding:22px}.info-card{padding:22px;border-radius:24px}
+th,td{padding:13px}table{min-width:700px}.stats{gap:14px}.stat{padding:20px}.stat strong{font-size:30px}
+
+
+/* v14 account cancellation */
+.account-delete-card {
+  grid-column: 1 / -1;
+}
+.danger-zone {
+  border-color: rgba(239, 68, 68, 0.28);
+  background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,245,245,0.92));
+}
+.danger-zone p {
+  color: #64748b;
+  margin: 8px 0 18px;
+  line-height: 1.7;
+}
+
+
+/* v15 DNS editor */
+.dns-editor-form .preview-box strong { word-break: break-all; }
+.dns-editor-form select { cursor: pointer; }
+
+
+/* v18 mobile compact appended */
+/* v18 mobile + compact display tuning
+   用法：复制本段到 public/styles.css 最后面，不要替换整个 styles.css。 */
+
+:root {
+  --shadow: 0 14px 42px rgba(15, 23, 42, .07);
+}
+
+html { font-size: 14px; }
+body { font-size: 13px; }
+
+.btn { padding: 8px 12px; border-radius: 10px; font-size: 13px; gap: 6px; }
+.btn.small { padding: 6px 8px; border-radius: 8px; font-size: 11px; }
+
+.field { gap: 6px; }
+.field span { font-size: 13px; }
+.field input,
+.field select,
+.field textarea {
+  min-height: 40px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+}
+.field textarea { min-height: 88px; }
+.field em { font-size: 12px; }
+.check { font-size: 13px; gap: 8px; }
+
+.app-shell { grid-template-columns: 230px 1fr; }
+.sidebar { padding: 16px; gap: 14px; }
+.brand { font-size: 15px; gap: 10px; }
+.brand div { width: 34px; height: 34px; border-radius: 12px; }
+.sidebar nav { gap: 6px; }
+.nav { padding: 9px 10px; border-radius: 10px; font-size: 13px; gap: 9px; }
+.nav span { width: 20px; }
+.side-user { padding: 10px; border-radius: 14px; gap: 7px; }
+
+.topbar { padding: 14px 20px; gap: 10px; }
+.topbar h1 { font-size: 22px; line-height: 1.25; }
+.content { max-width: 1080px; padding: 18px 22px 34px; }
+
+.notice { padding: 10px 13px; border-radius: 13px; margin-bottom: 12px; font-size: 13px; }
+.quota-hero { padding: 16px; border-radius: 18px; gap: 14px; margin-bottom: 16px; }
+.quota-hero.compact { padding: 14px; }
+.quota-icon { width: 46px; height: 46px; border-radius: 16px; font-size: 20px; }
+.quota-hero strong { font-size: 28px; }
+.quota-hero span { font-size: 12px; margin-top: 4px; }
+.quota-left { padding: 8px 14px; border-radius: 14px; }
+.quota-left strong { font-size: 22px; }
+
+.card,
+.domain-card,
+.detail-hero,
+.detail-panel,
+.stat,
+.info-card { border-radius: 18px; }
+.card { padding: 18px; margin-bottom: 16px; }
+.card h2,
+.info-card h2 { font-size: 20px; margin-bottom: 9px; }
+.card p { line-height: 1.55; font-size: 13px; }
+.section-head { gap: 12px; margin-bottom: 12px; }
+.section-head p { font-size: 12px; }
+
+.steps { gap: 10px; margin-top: 14px; }
+.steps div { padding: 12px; border-radius: 14px; }
+.steps b { width: 28px; height: 28px; margin-bottom: 8px; font-size: 13px; }
+.steps strong { font-size: 15px; }
+
+.domain-card { padding: 16px; border-radius: 18px; }
+.domain-head { gap: 12px; margin-bottom: 14px; }
+.globe { width: 40px; height: 40px; border-radius: 14px; font-size: 18px; }
+.globe.big { width: 48px; height: 48px; font-size: 22px; }
+.domain-title h3 { font-size: 20px; margin-bottom: 3px; }
+.domain-title code { font-size: 12px; }
+.status-pill { padding: 6px 10px; font-size: 12px; }
+.domain-metrics { gap: 10px; }
+.domain-metrics div,
+.preview-box { padding: 11px; border-radius: 13px; }
+.domain-metrics span,
+.preview-box span { font-size: 12px; margin-bottom: 5px; }
+.domain-metrics strong { font-size: 14px; }
+.card-actions { gap: 8px; margin-top: 12px; }
+.empty { padding: 28px; font-size: 13px; }
+
+.detail-hero { padding: 18px; margin-bottom: 16px; }
+.back-link { margin-bottom: 14px; font-size: 13px; }
+.detail-main { gap: 12px; }
+.detail-main h1 { font-size: 28px; }
+.detail-main code { font-size: 13px; }
+.detail-actions { gap: 8px; }
+.tabs { padding: 12px 16px; gap: 12px; }
+.tab { font-size: 14px; padding: 8px 0; }
+.tab-page { padding: 16px; }
+.detail-grid,
+.grid.two { gap: 16px; }
+.info-card { padding: 16px; }
+.info-card dl,
+.info-list { grid-template-columns: 110px 1fr; gap: 12px; }
+.info-card dt,
+.info-list span { font-size: 12px; }
+.info-card dd,
+.info-list strong { font-size: 14px; }
+.quick-actions { gap: 8px; margin-top: 12px; }
+
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+table { min-width: 640px; }
+th, td { padding: 10px; font-size: 12px; }
+th { font-size: 12px; }
+.actions-cell { gap: 6px; }
+.stats { gap: 12px; margin-bottom: 16px; }
+.stat { padding: 16px; }
+.stat strong { font-size: 24px; margin: 5px 0; }
+
+.modal-backdrop { padding: 12px; }
+.modal { border-radius: 20px; max-height: 94vh; }
+.modal.wide { width: min(880px, 100%); }
+.modal-titlebar { padding: 16px 18px; gap: 12px; }
+.modal-icon { width: 40px; height: 40px; font-size: 20px; }
+.modal-titlebar h2 { font-size: 20px; }
+.modal-titlebar p { font-size: 12px; margin-top: 3px; }
+.modal-x { font-size: 36px; }
+.modal-body { padding: 18px; }
+.modal-form { gap: 14px; }
+.modal-actions { gap: 10px; padding-top: 14px; }
+.suffix-input strong { padding: 0 12px; font-size: 14px; border-radius: 0 12px 12px 0; }
+.dns-note { padding: 12px; border-radius: 14px; gap: 10px; font-size: 13px; }
+.dns-note span { width: 22px; height: 22px; font-size: 12px; }
+.turnstile-holder { min-height: 54px; }
+
+.auth-wrap { max-width: 960px; padding: 28px; gap: 24px; }
+.auth-logo { width: 56px; height: 56px; border-radius: 18px; font-size: 26px; margin-bottom: 14px; }
+.auth-brand h1 { font-size: 34px; margin-bottom: 10px; }
+.auth-brand p { font-size: 15px; line-height: 1.55; }
+.auth-card { border-radius: 22px; padding: 24px; }
+.auth-card h2 { font-size: 24px; }
+.auth-card > p { margin-bottom: 18px; font-size: 13px; }
+.auth-link { font-size: 13px; }
+.form-grid { gap: 14px; }
+
+/* 手机端专项适配 */
+@media (max-width: 768px) {
+  html { font-size: 13px; }
+  body { font-size: 12px; overflow-x: hidden; }
+
+  #toast-root { left: 10px; right: 10px; top: 10px; }
+  .toast { padding: 10px 12px; border-radius: 12px; font-size: 12px; }
+
+  .app-shell { grid-template-columns: 1fr; }
+  .sidebar {
+    position: fixed;
+    left: -236px;
+    top: 0;
+    width: 226px;
+    height: 100vh;
+    z-index: 50;
+    transition: .2s;
+    padding: 14px;
+  }
+  .sidebar.open { left: 0; }
+  .menu-btn { display: inline-flex; }
+
+  .topbar {
+    padding: 10px 12px;
+    min-height: 52px;
+    align-items: center;
+  }
+  .topbar h1 { font-size: 20px; max-width: 68vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .topbar .status-pill { font-size: 11px; padding: 5px 8px; }
+  .content { width: 100%; max-width: none; padding: 10px 10px 26px; }
+
+  .notice { padding: 9px 10px; border-radius: 12px; margin-bottom: 10px; }
+  .quota-hero {
+    padding: 12px;
+    border-radius: 16px;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .quota-icon { width: 40px; height: 40px; border-radius: 14px; font-size: 18px; }
+  .quota-hero strong { font-size: 24px; }
+  .quota-left { margin-left: auto; padding: 7px 12px; border-radius: 12px; }
+  .quota-left strong { font-size: 18px; }
+  .quota-hero .btn { width: 100%; margin-top: 2px; }
+
+  .card,
+  .domain-card,
+  .detail-hero,
+  .detail-panel,
+  .info-card,
+  .stat { border-radius: 16px; }
+  .card { padding: 14px; margin-bottom: 12px; }
+  .card h2,
+  .info-card h2 { font-size: 18px; }
+  .section-head { align-items: flex-start; flex-direction: column; gap: 8px; }
+  .section-head .btn { width: 100%; }
+
+  .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .steps div { padding: 10px; border-radius: 12px; }
+  .steps b { width: 24px; height: 24px; margin-bottom: 6px; font-size: 12px; }
+  .steps strong { font-size: 13px; }
+
+  .domain-card { padding: 13px; }
+  .domain-head { display: grid; grid-template-columns: auto 1fr auto; gap: 9px; align-items: center; }
+  .domain-head .status-pill { margin-left: 0; }
+  .domain-title h3 { font-size: 17px; word-break: break-all; }
+  .domain-title code { font-size: 11px; word-break: break-all; }
+  .globe { width: 34px; height: 34px; border-radius: 12px; font-size: 15px; }
+  .domain-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .domain-metrics div,
+  .preview-box { padding: 9px; border-radius: 11px; }
+  .domain-metrics span,
+  .preview-box span { font-size: 11px; }
+  .domain-metrics strong { font-size: 12px; line-height: 1.4; }
+  .card-actions { gap: 7px; }
+  .card-actions .btn { flex: 1 1 auto; min-width: 128px; }
+
+  .detail-hero { padding: 13px; }
+  .detail-main { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .detail-main h1 { font-size: 22px; word-break: break-all; }
+  .detail-main code { font-size: 12px; word-break: break-all; }
+  .detail-actions { width: 100%; margin-left: 0; flex-wrap: wrap; }
+  .detail-actions .btn { flex: 1 1 auto; }
+  .tabs { padding: 9px 12px; gap: 12px; overflow-x: auto; }
+  .tab { font-size: 13px; white-space: nowrap; }
+  .tab-page { padding: 12px; }
+  .detail-grid,
+  .grid.two,
+  .stats { grid-template-columns: 1fr; gap: 10px; }
+  .info-card { padding: 13px; }
+  .info-card dl,
+  .info-list { grid-template-columns: 86px 1fr; gap: 9px; }
+
+  table { min-width: 560px; }
+  th, td { padding: 8px; font-size: 11px; }
+  .actions-cell .btn { padding: 5px 7px; font-size: 11px; }
+
+  .modal-backdrop { padding: 8px; align-items: end; }
+  .modal,
+  .modal.wide {
+    width: 100%;
+    max-height: 92vh;
+    border-radius: 18px 18px 0 0;
+  }
+  .modal-titlebar { padding: 13px 14px; }
+  .modal-icon { width: 34px; height: 34px; font-size: 17px; }
+  .modal-titlebar h2 { font-size: 18px; }
+  .modal-titlebar p { font-size: 11px; }
+  .modal-x { font-size: 32px; }
+  .modal-body { padding: 14px; }
+  .modal-form { gap: 12px; }
+  .modal-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .modal-actions .btn { width: 100%; }
+  .suffix-input { grid-template-columns: 1fr; }
+  .suffix-input input { border-radius: 12px 12px 0 0; }
+  .suffix-input strong { border-left: 1px solid #d8e0ee; border-top: 0; min-height: 36px; border-radius: 0 0 12px 12px; }
+  .dns-note { align-items: flex-start; flex-wrap: wrap; }
+  .dns-note button { width: 100%; margin-left: 0; text-align: left; }
+
+  .auth-wrap { min-height: 100vh; grid-template-columns: 1fr; padding: 18px 12px; gap: 14px; }
+  .auth-brand { text-align: center; }
+  .auth-logo { margin: 0 auto 10px; width: 48px; height: 48px; border-radius: 16px; font-size: 22px; }
+  .auth-brand h1 { font-size: 26px; }
+  .auth-brand p { font-size: 13px; }
+  .auth-card { padding: 18px; border-radius: 18px; }
+  .auth-card h2 { font-size: 22px; }
+  .form-grid { grid-template-columns: 1fr; gap: 12px; }
+}
+
+@media (max-width: 430px) {
+  .steps { grid-template-columns: 1fr 1fr; }
+  .domain-metrics { grid-template-columns: 1fr; }
+  .card-actions .btn { width: 100%; min-width: 0; }
+  .info-card dl,
+  .info-list { grid-template-columns: 78px 1fr; }
+  .quota-hero { display: grid; grid-template-columns: auto 1fr auto; }
+  .quota-hero .btn { grid-column: 1 / -1; }
+}
+
+
+/* v19 mobile drawer + global language switch */
+.topbar-actions{display:flex;align-items:center;gap:8px;min-width:0}
+.lang-toggle{min-width:52px;padding:8px 11px!important;border:1px solid rgba(148,163,184,.35)!important;background:rgba(255,255,255,.65)!important;color:#334155!important}
+.auth-wrap{position:relative}.lang-floating{position:fixed;right:18px;top:18px;z-index:20;background:rgba(255,255,255,.82)!important;border:1px solid rgba(148,163,184,.35)!important;color:#334155!important;backdrop-filter:blur(12px)}
+.sidebar-mask{display:none}
+@media(max-width:1000px){
+  .sidebar-mask{display:none;position:fixed;inset:0;background:rgba(15,23,42,.44);z-index:45;backdrop-filter:blur(2px)}
+  .sidebar-mask.open{display:block}
+  body.sidebar-open{overflow:hidden}
+  .sidebar{left:-82vw!important;width:min(78vw,280px);max-width:280px;box-shadow:20px 0 60px rgba(15,23,42,.22)}
+  .sidebar.open{left:0!important}
+  .menu-btn{display:inline-flex!important;min-width:38px;height:34px;padding:6px 10px!important}
+  .topbar-actions .status-pill{display:none}
+  .topbar{gap:8px}.topbar h1{font-size:18px!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:calc(100vw - 150px)}
+  .lang-toggle{min-width:46px;font-size:12px;padding:7px 9px!important}
+  .auth-brand{display:none}.auth-wrap{display:block;max-width:460px;padding:72px 14px 20px!important}.auth-card{padding:18px!important;border-radius:20px!important}.auth-card h2{font-size:22px!important}
+  .content{padding:12px!important}.notice{font-size:12px!important;padding:10px 12px!important}
+  .quota-hero{padding:14px!important;border-radius:18px!important;gap:10px!important}.quota-icon{width:42px!important;height:42px!important;border-radius:14px!important;font-size:18px!important}.quota-hero strong{font-size:22px!important}.quota-left{padding:8px 12px!important}.quota-left strong{font-size:20px!important}
+  .card,.domain-card,.detail-hero,.detail-panel,.info-card{border-radius:18px!important}.card{padding:14px!important}.card h2,.info-card h2{font-size:18px!important}.section-head{gap:10px!important}
+  .steps{grid-template-columns:1fr 1fr!important;gap:8px!important}.steps div{padding:10px!important}.steps strong{font-size:14px!important}.steps b{width:26px!important;height:26px!important;font-size:12px!important}
+  .domain-card{padding:14px!important}.domain-head{gap:10px!important;margin-bottom:12px!important}.domain-title h3{font-size:17px!important}.domain-title code{font-size:12px!important}.globe{width:36px!important;height:36px!important;border-radius:12px!important;font-size:16px!important}.status-pill{font-size:11px!important;padding:5px 8px!important}
+  .domain-metrics{grid-template-columns:1fr 1fr!important;gap:8px!important}.domain-metrics div,.preview-box{padding:9px!important;border-radius:12px!important}.domain-metrics span,.preview-box span{font-size:11px!important;margin-bottom:4px!important}.domain-metrics strong{font-size:12px!important}
+  .card-actions,.quick-actions,.actions-cell{gap:6px!important}.card-actions .btn,.quick-actions .btn,.actions-cell .btn{flex:1 1 auto;font-size:12px!important;padding:7px 9px!important}
+  .modal-backdrop{align-items:flex-end;padding:8px!important}.modal{width:100%!important;max-height:88vh!important;border-radius:18px 18px 0 0!important}.modal-titlebar{padding:14px 16px!important}.modal-titlebar h2{font-size:18px!important}.modal-titlebar p{font-size:12px!important}.modal-icon{width:36px!important;height:36px!important;font-size:18px!important}.modal-x{font-size:34px!important}.modal-body{padding:14px!important}.modal-form{gap:12px!important}.modal-actions{gap:8px!important}.modal-actions .btn{flex:1}
+  .field{gap:5px!important}.field span{font-size:12px!important}.field input,.field select,.field textarea{min-height:40px!important;border-radius:12px!important;padding:10px 12px!important;font-size:13px!important}.field em{font-size:11px!important}.suffix-input{grid-template-columns:1fr!important}.suffix-input input{border-radius:12px!important}.suffix-input strong{border:1px solid #d8e0ee!important;border-radius:12px!important;min-height:38px;font-size:13px!important;margin-top:6px}
+  .tabs{gap:8px!important;padding:10px 14px!important}.tab{font-size:13px!important;white-space:nowrap}.tab-page{padding:14px!important}.detail-main h1{font-size:22px!important;word-break:break-all}.detail-main code{font-size:12px!important}.detail-actions{width:100%;flex-wrap:wrap}.detail-actions .btn{flex:1}
+  .info-card dl,.info-list{grid-template-columns:90px 1fr!important;gap:10px!important}.info-card dd,.info-list strong{font-size:13px!important}.table-wrap{margin:0 -6px;padding:0 6px}table{min-width:620px!important}th,td{padding:9px!important;font-size:12px!important}.stats{grid-template-columns:1fr 1fr!important;gap:8px!important}.stat{padding:12px!important}.stat strong{font-size:22px!important}
+}
+@media(max-width:430px){
+  .domain-metrics{grid-template-columns:1fr!important}.steps{grid-template-columns:1fr!important}.quota-hero{align-items:flex-start!important;flex-direction:column!important}.quota-left{margin-left:0!important;width:100%;text-align:left!important}.quota-hero .btn{width:100%}.topbar{padding:10px 12px!important}.topbar h1{max-width:calc(100vw - 120px)}
+}
+
+
+/* v20 mobile drawer + language + disabled domain note */
+.note-line{
+  margin:12px 0 0;
+  padding:10px 12px;
+  border:1px solid #fed7aa;
+  border-radius:12px;
+  background:#fff7ed;
+  color:#9a3412;
+  font-weight:700;
+  line-height:1.55;
+}
+.note-line b{font-weight:900;color:#7c2d12}
+.sidebar-mask{display:none}
+.topbar-actions{display:flex;align-items:center;gap:8px}
+.lang-toggle{min-width:52px}
+@media(max-width:760px){
+  .sidebar-mask{display:none;position:fixed;inset:0;background:rgba(15,23,42,.46);z-index:45}
+  .sidebar-mask.open{display:block}
+  body.sidebar-open{overflow:hidden}
+  .sidebar{width:min(78vw,260px);left:-280px;box-shadow:20px 0 60px rgba(0,0,0,.22)}
+  .sidebar.open{left:0}
+  .topbar-actions{gap:6px}
+  .topbar-actions .status-pill{display:none}
+  .lang-toggle{padding:7px 9px;min-width:44px;font-size:12px}
+}
+
+
+/* v24 sidebar scroll */
+/* v24 mobile sidebar scroll fix */
+@media (max-width: 1000px) {
+  .sidebar {
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    padding-bottom: calc(22px + env(safe-area-inset-bottom));
+  }
+
+  .sidebar nav {
+    flex: 0 0 auto;
+  }
+
+  .side-user {
+    margin-top: 22px;
+    flex: 0 0 auto;
+  }
+
+  .sidebar::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .sidebar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.22);
+    border-radius: 999px;
   }
 }
 
-export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    try {
-      assertSameOrigin(request);
-      const url = new URL(request.url);
-      if (url.pathname.startsWith('/api/')) {
-        await ensureSchema(env);
-        return await handleApi(request, env, url);
-      }
-      return env.ASSETS.fetch(request);
-    } catch (error) {
-      if (error instanceof HttpError) {
-        return json({ ok: false, code: error.code, message: error.message, details: error.details }, error.status);
-      }
-      console.error(error);
-      const message = error instanceof Error && error.message ? error.message : '服务器内部错误';
-      ctx.waitUntil(notifySystemExceptionByCloudflare(env, request, error).catch(notifyError => {
-        console.error('system exception email failed', notifyError);
-      }));
-      return json({ ok: false, code: 'INTERNAL_ERROR', message }, 500);
-    }
-  },
-};
-
-async function handleApi(request: Request, env: Env, url: URL): Promise<Response> {
-  const method = request.method.toUpperCase();
-  const pathname = url.pathname;
-
-  if (method === 'GET' && pathname === '/api/public/config') return publicConfigHandler(env);
-  if (method === 'GET' && pathname === '/api/public/stats') return publicStatsHandler(env);
-  if (method === 'POST' && pathname === '/api/public/domain-check') return publicDomainCheckHandler(request, env);
-
-  if (method === 'POST' && pathname === '/api/setup/bootstrap') return bootstrapAdmin(request, env);
-
-  if (method === 'POST' && pathname === '/api/auth/login') return login(request, env);
-  if (method === 'POST' && pathname === '/api/auth/register') return register(request, env);
-  if (method === 'POST' && pathname === '/api/auth/email-verification/send') return sendRegistrationEmailCode(request, env);
-  if (method === 'POST' && pathname === '/api/auth/captcha/challenge') return createImageCaptchaChallenge(request, env);
-  if (method === 'POST' && pathname === '/api/auth/logout') return logout(request, env);
-  if (method === 'GET' && pathname === '/api/auth/me') return authMe(request, env);
-  if (method === 'POST' && pathname === '/api/auth/change-password') return changeOwnPassword(request, env);
-  if (method === 'PATCH' && pathname === '/api/account/profile') return updateOwnProfile(request, env);
-  if (method === 'POST' && pathname === '/api/account/delete') return deleteOwnAccount(request, env);
-  if (method === 'GET' && pathname === '/api/account/devices') return listOwnLoginDevices(request, env);
-
-  if (method === 'GET' && pathname === '/api/applications') return listOwnApplications(request, env);
-  if (method === 'POST' && pathname === '/api/applications/check-availability') return checkDomainAvailability(request, env);
-  if (method === 'POST' && pathname === '/api/applications') return createApplication(request, env);
-
-  let match = pathname.match(/^\/api\/applications\/([^/]+)$/);
-  if (match && method === 'GET') return getOwnApplication(request, env, decodeURIComponent(match[1]));
-  if (match && method === 'DELETE') return deleteOwnApplication(request, env, decodeURIComponent(match[1]));
-
-  match = pathname.match(/^\/api\/applications\/([^/]+)\/dns$/);
-  if (match && method === 'PATCH') return updateOwnDns(request, env, decodeURIComponent(match[1]));
-
-  match = pathname.match(/^\/api\/applications\/([^/]+)\/dns-records$/);
-  if (match && method === 'GET') return listOwnDnsRecords(request, env, decodeURIComponent(match[1]));
-  if (match && method === 'POST') return createOwnDnsRecord(request, env, decodeURIComponent(match[1]));
-
-  match = pathname.match(/^\/api\/dns-records\/([^/]+)$/);
-  if (match && method === 'PATCH') return updateOwnDnsRecordManaged(request, env, decodeURIComponent(match[1]));
-  if (match && method === 'DELETE') return deleteOwnDnsRecordManaged(request, env, decodeURIComponent(match[1]));
-
-  match = pathname.match(/^\/api\/applications\/([^/]+)\/renew$/);
-  if (match && method === 'POST') return renewOwnApplication(request, env, decodeURIComponent(match[1]));
-
-  match = pathname.match(/^\/api\/applications\/([^/]+)\/delete-request$/);
-  if (match && method === 'POST') return requestDeleteOwnApplication(request, env, decodeURIComponent(match[1]));
-
-  match = pathname.match(/^\/api\/applications\/([^/]+)\/delete-request\/cancel$/);
-  if (match && method === 'POST') return cancelDeleteOwnApplication(request, env, decodeURIComponent(match[1]));
-
-  if (method === 'GET' && pathname === '/api/messages') return listOwnMessages(request, env);
-  if (method === 'POST' && pathname === '/api/messages/contact-admin') return contactAdminMessage(request, env);
-
-  if (method === 'GET' && pathname === '/api/support/tickets') return listSupportTickets(request, env, url);
-  if (method === 'POST' && pathname === '/api/support/tickets') return createSupportTicket(request, env);
-  match = pathname.match(/^\/api\/support\/tickets\/([^/]+)$/);
-  if (match && method === 'GET') return getSupportTicket(request, env, decodeURIComponent(match[1]));
-  if (match && method === 'PATCH') return updateSupportTicket(request, env, decodeURIComponent(match[1]));
-  match = pathname.match(/^\/api\/support\/tickets\/([^/]+)\/replies$/);
-  if (match && method === 'POST') return replySupportTicket(request, env, decodeURIComponent(match[1]));
-  if (method === 'POST' && pathname === '/api/messages/read-batch') return markOwnMessagesReadBatch(request, env);
-  if (method === 'POST' && pathname === '/api/messages/delete-batch') return deleteOwnMessagesBatch(request, env);
-  match = pathname.match(/^\/api\/messages\/([^/]+)\/reply$/);
-  if (match && method === 'POST') return replyOwnMessage(request, env, decodeURIComponent(match[1]));
-  match = pathname.match(/^\/api\/messages\/([^/]+)\/withdraw$/);
-  if (match && method === 'POST') return withdrawOwnMessage(request, env, decodeURIComponent(match[1]));
-  match = pathname.match(/^\/api\/messages\/([^/]+)\/read$/);
-  if (match && method === 'POST') return markOwnMessageRead(request, env, decodeURIComponent(match[1]));
-
-  if (method === 'GET' && pathname === '/api/operation-logs') return listOperationLogs(request, env);
-  if (method === 'POST' && pathname === '/api/operation-logs/delete-batch') return deleteOperationLogsBatch(request, env);
-
-  if (method === 'GET' && pathname === '/api/admin/overview') return adminOverview(request, env);
-  if (method === 'GET' && pathname === '/api/admin/analytics') return adminAnalytics(request, env, url);
-  if (method === 'GET' && pathname === '/api/admin/applications') return adminApplications(request, env, url);
-  if (method === 'GET' && pathname === '/api/admin/users') return adminUsers(request, env);
-  if (method === 'POST' && pathname === '/api/admin/users') return adminCreateUser(request, env);
-  if (method === 'GET' && pathname === '/api/admin/registration-keys') return adminListRegistrationKeys(request, env);
-  if (method === 'POST' && pathname === '/api/admin/registration-keys') return adminCreateRegistrationKey(request, env);
-  if (method === 'GET' && pathname === '/api/admin/messages') return adminListMessages(request, env, url);
-  if (method === 'POST' && pathname === '/api/admin/messages') return adminCreateMessage(request, env);
-  if (method === 'GET' && pathname === '/api/admin/settings') return adminSettings(request, env);
-  if (method === 'GET' && pathname === '/api/admin/system-status') return adminSystemStatus(request, env);
-  if (method === 'GET' && pathname === '/api/admin/settings/export') return adminExportSettings(request, env);
-  if (method === 'POST' && pathname === '/api/admin/settings/import') return adminImportSettings(request, env);
-  if (method === 'POST' && pathname === '/api/admin/dns/test') return adminTestCloudflareApi(request, env);
-  if (method === 'POST' && pathname === '/api/admin/email/test') return adminTestEmailDelivery(request, env);
-  if (method === 'POST' && pathname === '/api/admin/email/cloudflare-addresses/sync') return adminSyncCloudflareEmailAddresses(request, env);
-  if (method === 'GET' && pathname === '/api/admin/worker-variables') return adminListManagedWorkerVariables(request, env);
-  if (method === 'POST' && pathname === '/api/admin/worker-variables') return adminUpdateManagedWorkerVariable(request, env);
-  if (method === 'DELETE' && pathname === '/api/admin/worker-variables') return adminDeleteManagedWorkerVariable(request, env);
-  if (method === 'POST' && pathname === '/api/admin/dns/sync-allowed-types') return adminSyncDnsAllowedTypesFromWorker(request, env);
-  if (method === 'POST' && pathname === '/api/admin/dns/discover-existing') return adminDiscoverExistingDns(request, env);
-  if (method === 'POST' && pathname === '/api/admin/dns/import-existing') return adminImportExistingDns(request, env);
-  if (method === 'POST' && pathname === '/api/admin/dns/unlink-domains') return adminUnlinkDomains(request, env);
-
-  match = pathname.match(/^\/api\/admin\/registration-keys\/([^/]+)$/);
-  if (match && method === 'DELETE') return adminDeleteRegistrationKey(request, env, decodeURIComponent(match[1]));
-  match = pathname.match(/^\/api\/admin\/registration-keys\/([^/]+)\/usages$/);
-  if (match && method === 'GET') return adminRegistrationKeyUsages(request, env, decodeURIComponent(match[1]));
-  if (method === 'GET' && pathname === '/api/admin/help-settings') return adminHelpSettings(request, env);
-  if (method === 'PUT' && pathname === '/api/admin/help-settings') return adminUpdateHelpSettings(request, env);
-
-  match = pathname.match(/^\/api\/admin\/messages\/([^/]+)$/);
-  if (match && method === 'PATCH') return adminUpdateMessage(request, env, decodeURIComponent(match[1]));
-  if (match && method === 'DELETE') return adminDeleteMessage(request, env, decodeURIComponent(match[1]));
-
-  match = pathname.match(/^\/api\/admin\/messages\/([^/]+)\/send$/);
-  if (match && method === 'POST') return adminSendMessage(request, env, decodeURIComponent(match[1]));
-
-  match = pathname.match(/^\/api\/admin\/settings\/(site|registration|domain|dns|blacklist|notification|security|automation)$/);
-  if (match && method === 'PUT') return adminUpdateSettings(request, env, match[1] as AdminSettingGroup);
-
-  match = pathname.match(/^\/api\/admin\/users\/([^/]+)$/);
-  if (match && method === 'PATCH') return adminUpdateUser(request, env, decodeURIComponent(match[1]));
-
-  match = pathname.match(/^\/api\/admin\/users\/([^/]+)\/devices$/);
-  if (match && method === 'GET') return adminUserLoginDevices(request, env, decodeURIComponent(match[1]));
-
-  match = pathname.match(/^\/api\/admin\/applications\/([^/]+)\/(approve|reject|revoke|disable|enable|control|uncontrol|delete|approve-delete|reject-delete)$/);
-  if (match && method === 'POST') return adminReviewApplication(request, env, decodeURIComponent(match[1]), match[2]);
-
-  throw new HttpError(404, 'NOT_FOUND', '接口不存在');
-}
-
-async function ensureSchema(env: Env): Promise<void> {
-  await env.DB.batch([
-    env.DB.prepare(`
-      CREATE TABLE IF NOT EXISTS users (
-        id TEXT PRIMARY KEY,
-        username TEXT NOT NULL UNIQUE,
-        email TEXT UNIQUE,
-        phone TEXT,
-        password_hash TEXT NOT NULL,
-        password_salt TEXT NOT NULL,
-        role TEXT NOT NULL DEFAULT 'user',
-        status TEXT NOT NULL DEFAULT 'active',
-        domain_quota INTEGER NOT NULL DEFAULT 3,
-        permissions_json TEXT DEFAULT '{}',
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-        last_login_at TEXT
-      )
-    `),
-    env.DB.prepare(`
-      CREATE TABLE IF NOT EXISTS sessions (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        token_hash TEXT NOT NULL UNIQUE,
-        ip TEXT,
-        user_agent TEXT,
-        device_name TEXT,
-        device_type TEXT,
-        device_model TEXT,
-        first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
-        last_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
-        expires_at TEXT NOT NULL,
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        FOREIGN KEY(user_id) REFERENCES users(id)
-      )
-    `),
-    env.DB.prepare(`
-      CREATE TABLE IF NOT EXISTS domain_applications (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        prefix_unicode TEXT NOT NULL,
-        prefix_ascii TEXT NOT NULL,
-        suffix_unicode TEXT NOT NULL,
-        suffix_ascii TEXT NOT NULL,
-        fqdn_unicode TEXT NOT NULL,
-        fqdn_ascii TEXT NOT NULL,
-        record_type TEXT DEFAULT 'CNAME',
-        record_content TEXT DEFAULT '',
-        proxied INTEGER DEFAULT 0,
-        ttl INTEGER DEFAULT 1,
-        status TEXT NOT NULL DEFAULT 'pending',
-        review_note TEXT,
-        error_message TEXT,
-        dns_record_id TEXT,
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        reviewed_at TEXT,
-        reviewed_by TEXT,
-        expires_at TEXT,
-        renewed_at TEXT,
-        renew_count INTEGER DEFAULT 0,
-        deleted_at TEXT,
-        delete_requested_at TEXT,
-        delete_requested_by TEXT,
-        controlled_at TEXT,
-        controlled_by TEXT,
-        updated_at TEXT,
-        FOREIGN KEY(user_id) REFERENCES users(id)
-      )
-    `),
-    env.DB.prepare(`
-      CREATE TABLE IF NOT EXISTS dns_records (
-        id TEXT PRIMARY KEY,
-        application_id TEXT NOT NULL,
-        user_id TEXT NOT NULL,
-        host TEXT NOT NULL DEFAULT '@',
-        name TEXT NOT NULL,
-        type TEXT NOT NULL,
-        content TEXT NOT NULL,
-        priority INTEGER,
-        proxied INTEGER DEFAULT 0,
-        ttl INTEGER DEFAULT 1,
-        cf_record_id TEXT,
-        status TEXT NOT NULL DEFAULT 'pending',
-        error_message TEXT,
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        updated_at TEXT,
-        deleted_at TEXT,
-        FOREIGN KEY(application_id) REFERENCES domain_applications(id),
-        FOREIGN KEY(user_id) REFERENCES users(id)
-      )
-    `),
-    env.DB.prepare(`
-      CREATE TABLE IF NOT EXISTS system_messages (
-        id TEXT PRIMARY KEY,
-        sender_user_id TEXT,
-        target_type TEXT NOT NULL DEFAULT 'all',
-        target_user_id TEXT,
-        target_role TEXT,
-        title TEXT NOT NULL,
-        body TEXT NOT NULL,
-        level TEXT NOT NULL DEFAULT 'info',
-        status TEXT NOT NULL DEFAULT 'sent',
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        updated_at TEXT,
-        sent_at TEXT,
-        deleted_at TEXT,
-        FOREIGN KEY(sender_user_id) REFERENCES users(id),
-        FOREIGN KEY(target_user_id) REFERENCES users(id)
-      )
-    `),
-    env.DB.prepare(`
-      CREATE TABLE IF NOT EXISTS support_tickets (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        category TEXT NOT NULL DEFAULT 'general',
-        priority TEXT NOT NULL DEFAULT 'normal',
-        title TEXT NOT NULL,
-        description TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'open',
-        client_context_json TEXT,
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-        last_reply_at TEXT,
-        closed_at TEXT,
-        FOREIGN KEY(user_id) REFERENCES users(id)
-      )
-    `),
-    env.DB.prepare(`
-      CREATE TABLE IF NOT EXISTS support_ticket_replies (
-        id TEXT PRIMARY KEY,
-        ticket_id TEXT NOT NULL,
-        user_id TEXT NOT NULL,
-        is_admin INTEGER NOT NULL DEFAULT 0,
-        body TEXT NOT NULL,
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        FOREIGN KEY(ticket_id) REFERENCES support_tickets(id),
-        FOREIGN KEY(user_id) REFERENCES users(id)
-      )
-    `),
-    env.DB.prepare(`
-      CREATE TABLE IF NOT EXISTS message_reads (
-        message_id TEXT NOT NULL,
-        user_id TEXT NOT NULL,
-        read_at TEXT NOT NULL DEFAULT (datetime('now')),
-        PRIMARY KEY(message_id, user_id),
-        FOREIGN KEY(message_id) REFERENCES system_messages(id),
-        FOREIGN KEY(user_id) REFERENCES users(id)
-      )
-    `),
-    env.DB.prepare(`
-      CREATE TABLE IF NOT EXISTS user_message_deletions (
-        message_id TEXT NOT NULL,
-        user_id TEXT NOT NULL,
-        deleted_at TEXT NOT NULL DEFAULT (datetime('now')),
-        PRIMARY KEY(message_id, user_id),
-        FOREIGN KEY(message_id) REFERENCES system_messages(id),
-        FOREIGN KEY(user_id) REFERENCES users(id)
-      )
-    `),
-    env.DB.prepare(`
-      CREATE TABLE IF NOT EXISTS audit_logs (
-        id TEXT PRIMARY KEY,
-        actor_user_id TEXT,
-        action TEXT NOT NULL,
-        target_type TEXT,
-        target_id TEXT,
-        ip TEXT,
-        meta_json TEXT,
-        created_at TEXT NOT NULL DEFAULT (datetime('now'))
-      )
-    `),
-
-    env.DB.prepare(`
-      CREATE TABLE IF NOT EXISTS email_verification_codes (
-        email TEXT PRIMARY KEY COLLATE NOCASE,
-        code_hash TEXT NOT NULL,
-        expires_at TEXT NOT NULL,
-        attempts INTEGER NOT NULL DEFAULT 0,
-        sent_at TEXT NOT NULL DEFAULT (datetime('now')),
-        ip TEXT
-      )
-    `),
-
-    env.DB.prepare(`
-      CREATE TABLE IF NOT EXISTS registration_keys (
-        id TEXT PRIMARY KEY,
-        code TEXT NOT NULL UNIQUE,
-        role TEXT NOT NULL DEFAULT 'user',
-        max_uses INTEGER NOT NULL DEFAULT 0,
-        used_count INTEGER NOT NULL DEFAULT 0,
-        expires_at TEXT,
-        status TEXT NOT NULL DEFAULT 'active',
-        created_by TEXT,
-        created_at TEXT NOT NULL DEFAULT (datetime('now'))
-      )
-    `),
-    env.DB.prepare(`
-      CREATE TABLE IF NOT EXISTS registration_key_usages (
-        id TEXT PRIMARY KEY,
-        key_id TEXT NOT NULL,
-        user_id TEXT,
-        username TEXT,
-        used_at TEXT NOT NULL DEFAULT (datetime('now')),
-        FOREIGN KEY(key_id) REFERENCES registration_keys(id),
-        FOREIGN KEY(user_id) REFERENCES users(id)
-      )
-    `),
-    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token_hash)'),
-    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_apps_user ON domain_applications(user_id, created_at)'),
-    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_apps_fqdn ON domain_applications(fqdn_ascii)'),
-    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_dns_records_app ON dns_records(application_id, deleted_at)'),
-    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_dns_records_cf ON dns_records(cf_record_id)'),
-    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_messages_status ON system_messages(status, sent_at)'),
-    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_messages_target_user ON system_messages(target_type, target_user_id, status)'),
-    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_messages_target_role ON system_messages(target_type, target_role, status)'),
-    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_user_message_deletions_user ON user_message_deletions(user_id, deleted_at)'),
-    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_support_tickets_user ON support_tickets(user_id, updated_at)'),
-    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets(status, updated_at)'),
-    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_support_ticket_replies_ticket ON support_ticket_replies(ticket_id, created_at)'),
-    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at)'),
-    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_audit_logs_actor ON audit_logs(actor_user_id, created_at)'),
-  ]);
-
-  const alters = [
-    `ALTER TABLE sessions ADD COLUMN ip TEXT`,
-    `ALTER TABLE sessions ADD COLUMN user_agent TEXT`,
-    `ALTER TABLE sessions ADD COLUMN device_name TEXT`,
-    `ALTER TABLE sessions ADD COLUMN device_type TEXT`,
-    `ALTER TABLE sessions ADD COLUMN device_model TEXT`,
-    `ALTER TABLE sessions ADD COLUMN first_seen_at TEXT`,
-    `ALTER TABLE sessions ADD COLUMN last_seen_at TEXT`,
-    `ALTER TABLE sessions ADD COLUMN expires_at TEXT`,
-    `ALTER TABLE sessions ADD COLUMN created_at TEXT`,
-    `ALTER TABLE users ADD COLUMN phone TEXT`,
-    `ALTER TABLE users ADD COLUMN domain_quota INTEGER NOT NULL DEFAULT 3`,
-    `ALTER TABLE users ADD COLUMN permissions_json TEXT DEFAULT '{}'`,
-    `ALTER TABLE users ADD COLUMN updated_at TEXT`,
-    `ALTER TABLE users ADD COLUMN last_login_at TEXT`,
-    `ALTER TABLE domain_applications ADD COLUMN expires_at TEXT`,
-    `ALTER TABLE domain_applications ADD COLUMN renewed_at TEXT`,
-    `ALTER TABLE domain_applications ADD COLUMN renew_count INTEGER DEFAULT 0`,
-    `ALTER TABLE domain_applications ADD COLUMN deleted_at TEXT`,
-    `ALTER TABLE domain_applications ADD COLUMN delete_requested_at TEXT`,
-    `ALTER TABLE domain_applications ADD COLUMN delete_requested_by TEXT`,
-    `ALTER TABLE domain_applications ADD COLUMN controlled_at TEXT`,
-    `ALTER TABLE domain_applications ADD COLUMN controlled_by TEXT`,
-    `ALTER TABLE domain_applications ADD COLUMN updated_at TEXT`,
-    `ALTER TABLE domain_applications ADD COLUMN record_type TEXT DEFAULT 'CNAME'`,
-    `ALTER TABLE domain_applications ADD COLUMN record_content TEXT DEFAULT ''`,
-    `ALTER TABLE domain_applications ADD COLUMN proxied INTEGER DEFAULT 0`,
-    `ALTER TABLE domain_applications ADD COLUMN ttl INTEGER DEFAULT 1`,
-    `ALTER TABLE domain_applications ADD COLUMN dns_record_id TEXT`,
-    `ALTER TABLE domain_applications ADD COLUMN error_message TEXT`,
-    `ALTER TABLE registration_keys ADD COLUMN code TEXT`,
-    `ALTER TABLE registration_keys ADD COLUMN role TEXT DEFAULT 'user'`,
-    `ALTER TABLE registration_keys ADD COLUMN max_uses INTEGER DEFAULT 0`,
-    `ALTER TABLE registration_keys ADD COLUMN used_count INTEGER DEFAULT 0`,
-    `ALTER TABLE registration_keys ADD COLUMN expires_at TEXT`,
-    `ALTER TABLE registration_keys ADD COLUMN status TEXT DEFAULT 'active'`,
-    `ALTER TABLE registration_keys ADD COLUMN created_by TEXT`,
-    `ALTER TABLE registration_keys ADD COLUMN created_at TEXT`,
-    `CREATE INDEX IF NOT EXISTS idx_registration_keys_code ON registration_keys(code)`,
-    `CREATE INDEX IF NOT EXISTS idx_registration_key_usages_key ON registration_key_usages(key_id, used_at)`,
-  ];
-
-  for (const sql of alters) {
-    try { await env.DB.prepare(sql).run(); } catch {}
+@media (max-height: 720px) and (max-width: 1000px) {
+  .sidebar {
+    gap: 14px;
+    padding-top: 18px;
   }
 
-  // 兼容旧版 registration_keys 表：旧结构存在 name TEXT NOT NULL，但没有 code 字段。
-  try {
-    const columns = await registrationKeyColumnNames(env);
-    if (columns.has('name') && columns.has('code')) {
-      await env.DB.prepare(`UPDATE registration_keys SET code=name WHERE (code IS NULL OR code='') AND name IS NOT NULL`).run();
-      await env.DB.prepare(`UPDATE registration_keys SET name=code WHERE (name IS NULL OR name='') AND code IS NOT NULL`).run();
-    }
-  } catch (error) {
-    console.error('registration key schema compatibility failed', error);
+  .nav {
+    padding-top: 9px;
+    padding-bottom: 9px;
   }
 
-  const settings = await loadSettings(env);
-  await env.DB.prepare(`
-    UPDATE users SET domain_quota=?
-    WHERE domain_quota IS NULL OR domain_quota <= 0
-  `).bind(settings.domain.defaultQuota).run();
-
-  await env.DB.prepare(`
-    UPDATE domain_applications
-    SET expires_at = datetime(COALESCE(reviewed_at, created_at), '+' || ? || ' days')
-    WHERE (expires_at IS NULL OR expires_at='')
-      AND status='approved'
-      AND (deleted_at IS NULL OR deleted_at='')
-  `).bind(settings.domain.validDays).run();
-
-  await cleanupOperationLogs(env);
-  await cleanupHardDeletedRows(env);
-}
-
-async function cleanupOperationLogs(env: Env): Promise<void> {
-  // 操作日志只保留最近 7 天；账号注销或被标记删除后，自动清理该账号相关日志。
-  try {
-    const settings = await loadSettings(env);
-    await env.DB.prepare(`DELETE FROM audit_logs WHERE datetime(created_at) < datetime('now','-' || ? || ' days')`).bind(settings.security?.auditRetentionDays || 7).run();
-  } catch (error) { console.error('cleanup old audit logs failed', error); }
-  try {
-    await env.DB.prepare(`
-      DELETE FROM audit_logs
-      WHERE actor_user_id IN (SELECT id FROM users WHERE status='deleted')
-         OR (target_type='user' AND target_id IN (SELECT id FROM users WHERE status='deleted'))
-         OR (actor_user_id IS NOT NULL AND actor_user_id NOT IN (SELECT id FROM users))
-         OR (target_type='user' AND target_id IS NOT NULL AND target_id NOT IN (SELECT id FROM users))
-    `).run();
-  } catch (error) { console.error('cleanup deleted-user audit logs failed', error); }
-}
-
-
-async function cleanupHardDeletedRows(env: Env): Promise<void> {
-  // v43：历史软删除数据自动转为硬删除，避免 D1 里长期残留 deleted_at/status=deleted 的脏数据。
-  const statements = [
-    `DELETE FROM dns_records WHERE deleted_at IS NOT NULL AND deleted_at!=''`,
-    `DELETE FROM message_reads WHERE message_id NOT IN (SELECT id FROM system_messages)`,
-    `DELETE FROM message_reads WHERE user_id NOT IN (SELECT id FROM users)`,
-    `DELETE FROM system_messages WHERE deleted_at IS NOT NULL AND deleted_at!=''`,
-    `DELETE FROM dns_records WHERE user_id IN (SELECT id FROM users WHERE status='deleted')`,
-    `DELETE FROM domain_applications WHERE user_id IN (SELECT id FROM users WHERE status='deleted')`,
-    `DELETE FROM message_reads WHERE user_id IN (SELECT id FROM users WHERE status='deleted')`,
-    `DELETE FROM system_messages WHERE sender_user_id IN (SELECT id FROM users WHERE status='deleted') OR target_user_id IN (SELECT id FROM users WHERE status='deleted')`,
-    `DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE status='deleted')`,
-    `DELETE FROM audit_logs WHERE actor_user_id IN (SELECT id FROM users WHERE status='deleted') OR (target_type='user' AND target_id IN (SELECT id FROM users WHERE status='deleted'))`,
-    `DELETE FROM users WHERE status='deleted'`,
-    `DELETE FROM domain_applications WHERE deleted_at IS NOT NULL AND deleted_at!=''`,
-    `DELETE FROM sessions WHERE user_id NOT IN (SELECT id FROM users)`,
-    `DELETE FROM email_verification_codes WHERE datetime(expires_at) < datetime('now')`,
-  ];
-  for (const sql of statements) {
-    try { await env.DB.prepare(sql).run(); } catch (error) { console.error('cleanup hard deleted rows failed', sql, error); }
+  .side-user {
+    margin-top: 16px;
   }
 }
 
-async function deleteKnownKvKeys(env: Env, keys: string[]): Promise<void> {
-  for (const key of keys.filter(Boolean)) {
-    try { await env.APP_KV.delete(key); } catch {}
+/* v31 login redesign + help center */
+.login-modern-wrap{
+  min-height:100vh;
+  display:grid;
+  place-items:center;
+  padding:28px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(59,130,246,.12), transparent 35%),
+    linear-gradient(180deg, rgba(255,255,255,.88), rgba(245,249,255,.96));
+}
+.login-modern-card{
+  width:min(860px,100%);
+  padding:54px 58px 46px;
+  border-radius:30px;
+  background:rgba(255,255,255,.78);
+  border:1px solid rgba(203,213,225,.65);
+  box-shadow:0 28px 90px rgba(37,99,235,.12);
+  backdrop-filter:blur(12px);
+}
+.login-lock{
+  width:70px;
+  height:70px;
+  margin:0 auto 20px;
+  border-radius:50%;
+  display:grid;
+  place-items:center;
+  background:#dbeafe;
+  border:1px solid #bfdbfe;
+  color:#2563eb;
+  font-size:32px;
+}
+.login-modern-card h1{
+  margin:0;
+  text-align:center;
+  font-size:38px;
+  letter-spacing:-.5px;
+}
+.login-subtitle{
+  margin:14px 0 30px;
+  text-align:center;
+  color:#64748b;
+  font-size:20px;
+  font-weight:700;
+}
+.login-modern-form{display:grid;gap:20px}
+.login-field{display:grid;gap:9px;font-weight:900;color:#111827}
+.login-input-wrap{
+  display:flex;
+  align-items:center;
+  gap:14px;
+  min-height:62px;
+  padding:0 18px;
+  border:1px solid #cfe0f6;
+  border-radius:16px;
+  background:rgba(255,255,255,.9);
+}
+.login-input-wrap:focus-within{border-color:#60a5fa;box-shadow:0 0 0 5px rgba(96,165,250,.22)}
+.login-input-wrap input{border:0;outline:0;background:transparent;flex:1;min-width:0;font-size:20px}
+.login-input-icon{font-size:24px;color:#818cf8;width:28px;text-align:center}
+.password-eye,.login-link-btn{border:0;background:transparent;color:#ef4444;font-weight:900;font-size:17px;cursor:pointer}
+.password-eye{color:#64748b;font-size:24px}
+.login-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.login-check{display:flex;align-items:center;gap:10px;font-weight:900}
+.login-check input{width:24px;height:24px}
+.login-submit{width:100%;min-height:66px;font-size:22px;border-radius:16px;margin-top:8px}
+.login-divider{height:1px;background:#dbe4f0;margin:34px 0}
+.login-register-row{text-align:center;font-size:22px;font-weight:900;color:#111827}
+.login-register-row a{color:#2563eb;background:#e8f0ff;border-radius:14px;padding:8px 18px;margin-left:8px}
+.help-hero{display:flex;align-items:center;gap:16px}
+.help-search-row{display:flex;gap:12px;margin-bottom:18px}
+.help-search{flex:1;border:1px solid #d7e1ef;border-radius:18px;padding:14px 18px;font-weight:800;background:#fff;outline:0}
+.help-search:focus{border-color:var(--accent);box-shadow:0 0 0 4px rgba(79,99,246,.12)}
+.help-tabs{display:grid;gap:12px;margin-top:18px}
+.help-tabs a,.help-item summary{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:16px 18px;
+  border:1px solid #e0e7f2;
+  border-radius:14px;
+  background:#fff;
+  font-weight:900;
+  cursor:pointer;
+}
+.help-item{margin-bottom:12px}
+.help-item summary::-webkit-details-marker{display:none}
+.help-item summary::after{content:'⌄';font-size:22px;color:#111827}
+.help-item[open] summary::after{content:'⌃'}
+.help-detail{padding:14px 18px 18px;color:#475569;line-height:1.75;font-weight:650}
+.help-detail p{margin:8px 0}
+.help-detail b{color:#0f172a}
+.guide-box{display:grid;gap:18px}
+.guide-alert{display:flex;gap:14px;padding:18px;border:1px solid #bfdbfe;background:#eff6ff;border-radius:18px;color:#1e40af}
+.guide-alert>span{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:#1d4ed8;color:#fff;font-weight:900;flex:none}
+.guide-alert ul{margin:10px 0 0 22px;color:#475569;line-height:1.7}
+@media(max-width:760px){
+  .login-modern-wrap{padding:14px;align-items:start}
+  .login-modern-card{padding:34px 20px 30px;border-radius:24px;box-shadow:0 18px 50px rgba(37,99,235,.1)}
+  .login-lock{width:54px;height:54px;font-size:24px;margin-bottom:14px}
+  .login-modern-card h1{font-size:29px}
+  .login-subtitle{font-size:15px;margin:10px 0 24px}
+  .login-input-wrap{min-height:52px;border-radius:14px;padding:0 13px}
+  .login-input-wrap input{font-size:16px}
+  .login-row{font-size:14px}
+  .login-submit{min-height:54px;font-size:18px}
+  .login-register-row{font-size:16px}
+  .help-search-row{display:grid}
+  .guide-alert{align-items:flex-start}
+}
+
+/* v33 message center */
+.hidden{display:none!important}
+.message-hero{display:flex;align-items:center;justify-content:space-between;gap:18px}
+.message-hero h2{margin:0 0 8px;font-size:28px}.message-hero p{margin:0;color:var(--muted);font-weight:700;line-height:1.6}
+.message-count{min-width:96px;text-align:center;background:#eef4ff;border:1px solid #dbe7ff;border-radius:20px;padding:14px 18px}
+.message-count strong{display:block;font-size:34px;color:var(--accent);line-height:1}.message-count span{display:block;margin-top:6px;color:var(--muted);font-weight:900}
+.message-list{display:grid;gap:12px}
+.message-card{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;border:1px solid var(--line);border-left:5px solid #60a5fa;background:#fff;border-radius:20px;padding:16px;box-shadow:0 10px 30px rgba(15,23,42,.04)}
+.message-card.read{opacity:.82}.message-card.unread{box-shadow:0 16px 34px rgba(79,99,246,.10)}
+.message-card.message-success{border-left-color:#10b981}.message-card.message-warning{border-left-color:#f59e0b}.message-card.message-danger{border-left-color:#ef4444}.message-card.message-info{border-left-color:#3b82f6}
+.message-main{min-width:0;flex:1}.message-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}.message-head h3{margin:0;font-size:19px;word-break:break-word}
+.message-main p{margin:8px 0;color:#334155;line-height:1.7;white-space:normal;word-break:break-word}.message-meta{display:flex;gap:14px;flex-wrap:wrap;color:#64748b;font-size:13px;font-weight:800;margin-top:10px}
+.message-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.message-level{display:inline-flex;align-items:center;border-radius:999px;padding:5px 9px;font-weight:900;font-size:12px}.message-level-info{background:#eff6ff;color:#1d4ed8}.message-level-success{background:#ecfdf5;color:#047857}.message-level-warning{background:#fffbeb;color:#b45309}.message-level-danger{background:#fef2f2;color:#b91c1c}
+.message-unread,.message-read{display:inline-flex;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:900}.message-unread{background:#eef2ff;color:#4338ca}.message-read{background:#f1f5f9;color:#64748b}
+.message-compose{background:#f8fafc;border:1px solid var(--line);border-radius:22px;padding:18px}.message-compose textarea{resize:vertical}.message-compose-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+@media(max-width:760px){.message-hero,.message-card{flex-direction:column}.message-count{width:100%;display:flex;align-items:center;justify-content:center;gap:10px}.message-count strong{font-size:24px}.message-actions{width:100%;justify-content:flex-start}.message-compose-actions{justify-content:stretch}.message-compose-actions .btn{flex:1}.message-head h3{font-size:17px}}
+
+
+/* v35 help center dropdown categories */
+.help-category-wrap{display:grid;gap:16px;margin-bottom:22px}
+.help-category{background:rgba(255,255,255,.94);border:1px solid var(--line);border-radius:24px;box-shadow:var(--shadow);overflow:hidden}
+.help-category>summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:22px 26px;cursor:pointer;border-bottom:1px solid transparent}
+.help-category>summary::-webkit-details-marker{display:none}
+.help-category>summary h2{margin:0 0 6px;font-size:24px}
+.help-category>summary p{margin:0;color:var(--muted);font-weight:800;line-height:1.5}
+.help-category>summary strong{white-space:nowrap;background:#eef4ff;color:#1d4ed8;border:1px solid #dbe7ff;border-radius:999px;padding:8px 12px;font-size:13px}
+.help-category>summary::after{content:'⌄';font-size:26px;font-weight:900;color:#334155;margin-left:6px}
+.help-category[open]>summary{border-bottom-color:var(--line)}
+.help-category[open]>summary::after{content:'⌃'}
+.help-category-body{padding:18px 22px 22px;display:grid;gap:10px;max-height:72vh;overflow:auto}
+.help-category-body .help-item{margin-bottom:0}
+.help-category-body .help-item summary{padding:13px 15px;border-radius:13px}
+.help-category-body .help-detail{background:#f8fafc;border:1px solid #e5e7eb;border-top:0;border-radius:0 0 13px 13px;margin:-10px 0 4px;padding:16px 18px;color:#475569}
+.help-category-body .help-detail p{margin:8px 0;line-height:1.8}
+@media(max-width:760px){.help-category>summary{padding:17px 16px;align-items:flex-start}.help-category>summary h2{font-size:20px}.help-category>summary p{font-size:13px}.help-category>summary strong{font-size:12px}.help-category-body{padding:12px;max-height:none}.help-category-body .help-item summary{font-size:14px;padding:12px}.help-category-body .help-detail{font-size:13px;padding:13px}}
+
+
+/* v36 operation logs */
+.operation-log-card{padding:26px 28px}
+.operation-log-title{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:18px}
+.operation-title-left{display:flex;align-items:flex-start;gap:14px}
+.operation-title-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:#eef4ff;color:#2563eb;font-size:22px;font-weight:900;flex:none}
+.operation-log-title h2{margin:0 0 8px;font-size:24px;letter-spacing:-.2px}
+.operation-log-title p{margin:0;color:#64748b;font-weight:750;line-height:1.6}
+.operation-log-note{margin:0 0 18px;padding:13px 16px;border:1px solid #dbeafe;background:#eff6ff;color:#1e3a8a;border-radius:16px;font-weight:800;line-height:1.6}
+.operation-empty{border:1px solid #d9e2ee;border-radius:18px;background:#fff;padding:26px 30px;color:#475569;font-size:20px;font-weight:800}
+.operation-log-list{display:grid;gap:12px}
+.operation-log-item{display:flex;gap:14px;border:1px solid #e1e8f2;background:#fff;border-radius:18px;padding:16px;box-shadow:0 8px 22px rgba(15,23,42,.04)}
+.operation-log-icon{display:grid;place-items:center;width:36px;height:36px;border-radius:50%;background:#eef2ff;color:#4f63f6;font-weight:900;flex:none}
+.operation-log-main{min-width:0;flex:1}
+.operation-log-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.operation-log-head strong{font-size:17px;color:#0f172a}
+.operation-log-head span{color:#64748b;font-size:13px;font-weight:850}
+.operation-log-main p{margin:6px 0 10px;color:#334155;line-height:1.65;font-weight:700;word-break:break-word}
+.operation-log-meta{display:flex;gap:10px;flex-wrap:wrap;color:#64748b;font-size:12px;font-weight:850}
+.operation-log-meta span{background:#f8fafc;border:1px solid #e5e7eb;border-radius:999px;padding:5px 9px}
+.operation-retention{margin:16px 0 0;color:#64748b;font-size:13px;font-weight:800;line-height:1.6}
+@media(max-width:760px){.operation-log-card{padding:18px}.operation-log-title{flex-direction:column}.operation-title-left{gap:10px}.operation-title-icon{width:30px;height:30px;font-size:18px}.operation-log-title h2{font-size:20px}.operation-log-title p{font-size:13px}.operation-empty{font-size:16px;padding:22px}.operation-log-item{padding:13px;gap:10px}.operation-log-icon{width:30px;height:30px}.operation-log-head strong{font-size:15px}.operation-log-main p{font-size:13px}.operation-log-meta{font-size:11px}.operation-log-note{font-size:13px}}
+
+
+/* v37 help center category visual fix */
+.help-category-wrap{
+  display:grid;
+  gap:16px;
+  margin:18px 0 22px;
+}
+.help-category{
+  background:transparent !important;
+  border:0 !important;
+  border-radius:0 !important;
+  box-shadow:none !important;
+  overflow:visible !important;
+}
+.help-category>summary{
+  list-style:none !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:space-between !important;
+  gap:16px !important;
+  padding:19px 22px !important;
+  cursor:pointer !important;
+  border:1px solid #e0e7f2 !important;
+  border-radius:18px !important;
+  background:rgba(255,255,255,.96) !important;
+  box-shadow:0 8px 26px rgba(15,23,42,.035) !important;
+}
+.help-category>summary::-webkit-details-marker{display:none !important;}
+.help-category>summary::marker{content:'' !important;font-size:0 !important;}
+.help-category>summary::after{
+  content:'⌄' !important;
+  font-size:28px !important;
+  font-weight:900 !important;
+  line-height:1 !important;
+  color:#111827 !important;
+  margin-left:auto !important;
+}
+.help-category[open]>summary{
+  border-bottom-left-radius:16px !important;
+  border-bottom-right-radius:16px !important;
+  border-color:#d7e1ef !important;
+}
+.help-category[open]>summary::after{content:'⌃' !important;}
+.help-category-title{
+  display:flex;
+  align-items:center;
+  gap:16px;
+  min-width:0;
+}
+.help-category-icon{
+  display:grid;
+  place-items:center;
+  width:34px;
+  height:34px;
+  border-radius:50%;
+  border:2px solid rgba(79,99,246,.55);
+  color:#4f63f6;
+  background:#f4f7ff;
+  font-size:18px;
+  font-weight:900;
+  flex:none;
+}
+.help-category-title h2,
+.help-category>summary h2{
+  margin:0 !important;
+  font-size:23px !important;
+  line-height:1.25 !important;
+  font-weight:900 !important;
+  color:#111827 !important;
+}
+.help-category>summary p,
+.help-category>summary strong{display:none !important;}
+.help-category-body{
+  margin-top:12px;
+  padding:14px !important;
+  display:grid !important;
+  gap:10px !important;
+  max-height:72vh;
+  overflow:auto;
+  border:1px solid #e0e7f2;
+  border-radius:18px;
+  background:rgba(255,255,255,.82);
+  box-shadow:0 10px 30px rgba(15,23,42,.035);
+}
+.help-category-body .help-item summary{
+  border:1px solid #e5eaf3 !important;
+  border-radius:14px !important;
+  background:#fff !important;
+  padding:13px 15px !important;
+}
+.help-category-body .help-item summary::after{
+  color:#111827;
+}
+@media(max-width:760px){
+  .help-category-wrap{gap:12px;margin-top:14px;}
+  .help-category>summary{padding:16px 15px !important;border-radius:16px !important;}
+  .help-category-title{gap:12px;}
+  .help-category-icon{width:30px;height:30px;font-size:15px;}
+  .help-category-title h2,.help-category>summary h2{font-size:18px !important;}
+  .help-category>summary::after{font-size:24px !important;}
+  .help-category-body{max-height:none;padding:10px !important;border-radius:16px;}
+}
+
+
+/* v38 operation log filters */
+.operation-filter-wrap{margin:16px 0 18px}
+.operation-toolbar{display:flex;align-items:center;gap:12px;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px}
+.operation-filter-summary{color:#64748b;font-size:13px;font-weight:850;line-height:1.5}
+.operation-filter-panel{border:1px solid #dbe4ef;background:linear-gradient(180deg,#fff,#f8fbff);border-radius:18px;padding:16px;margin-bottom:14px;box-shadow:0 10px 28px rgba(15,23,42,.04)}
+.operation-filter-panel.hidden{display:none!important}
+.operation-filter-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.operation-filter-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:14px;padding-top:14px;border-top:1px solid #e5ecf5}
+.operation-filter-panel .field{margin:0}.operation-filter-panel .field span{font-size:13px}.operation-filter-panel input,.operation-filter-panel select{min-height:44px;font-size:14px;border-radius:14px}
+@media(max-width:900px){.operation-filter-grid{grid-template-columns:1fr 1fr}.operation-toolbar{align-items:flex-start}.operation-filter-summary{width:100%}}
+@media(max-width:620px){.operation-filter-grid{grid-template-columns:1fr}.operation-filter-panel{padding:14px}.operation-filter-actions{flex-direction:column}.operation-filter-actions .btn{width:100%}.operation-toolbar .btn{width:auto}.operation-filter-summary{font-size:12px}}
+
+
+/* v39 smart help search */
+.help-search-status{
+  margin: -8px 0 16px;
+  min-height: 0;
+  color: #64748b;
+  font-weight: 700;
+  line-height: 1.65;
+}
+.help-search-status strong{
+  color: #0f172a;
+  margin-right: 10px;
+}
+.help-search-status em{
+  font-style: normal;
+  color: #64748b;
+}
+.help-search-tags{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.help-search-tags span{
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 5px 10px;
+  background: #eef4ff;
+  border: 1px solid #dbe7ff;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 900;
+}
+.help-search-warning{
+  display: block;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #9a3412;
+}
+@media(max-width:760px){
+  .help-search-status{font-size:13px;margin: -4px 0 12px;}
+  .help-search-tags span{font-size:11px;padding:4px 8px;}
+}
+
+
+/* v40 admin message/help settings */
+.help-edit-toolbar { display:flex; align-items:center; justify-content:space-between; gap:18px; }
+.help-edit-toolbar .toolbar-actions { display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
+.help-edit-wrap { display:grid; gap:18px; }
+.help-edit-card .section-head { align-items:flex-start; }
+.help-category-fields { margin:14px 0 18px; }
+.help-edit-list { display:grid; gap:10px; }
+.help-edit-item { border:1px solid var(--line); border-radius:18px; background:#fff; overflow:hidden; }
+.help-edit-item summary { cursor:pointer; padding:16px 18px; display:flex; align-items:center; justify-content:space-between; gap:12px; font-weight:900; list-style:none; }
+.help-edit-item summary::-webkit-details-marker { display:none; }
+.help-edit-item summary small { color:var(--muted); font-size:13px; white-space:nowrap; }
+.help-edit-fields { padding:0 18px 18px; }
+.help-edit-fields textarea { min-height:120px; resize:vertical; }
+.help-edit-actions { display:flex; justify-content:flex-end; }
+@media (max-width: 760px) {
+  .help-edit-toolbar { align-items:stretch; flex-direction:column; }
+  .help-edit-toolbar .toolbar-actions { justify-content:stretch; }
+  .help-edit-toolbar .toolbar-actions .btn { flex:1; }
+  .help-edit-item summary { padding:13px 14px; }
+  .help-edit-fields { padding:0 14px 14px; }
+}
+
+
+/* v41 login: keep split auth landing, compact login card mimics modern login inputs */
+.login-split-wrap{
+  min-height:100vh;
+  grid-template-columns:1.05fr .95fr;
+  max-width:1120px;
+  padding:48px;
+}
+.login-split-brand .auth-logo{
+  width:72px;
+  height:72px;
+  border-radius:24px;
+  font-size:27px;
+  text-transform:none;
+}
+.login-split-brand h1{
+  font-size:46px;
+  line-height:1.12;
+}
+.login-split-brand p{
+  font-size:18px;
+  line-height:1.6;
+}
+.login-compact-card{
+  max-width:420px;
+  width:100%;
+  justify-self:center;
+  padding:30px 30px 28px;
+  border-radius:26px;
+  background:rgba(255,255,255,.9);
+  box-shadow:0 24px 70px rgba(15,23,42,.08);
+}
+.login-compact-head{
+  text-align:center;
+  margin-bottom:18px;
+}
+.login-compact-head .login-lock{
+  width:56px;
+  height:56px;
+  margin:0 auto 14px;
+  font-size:24px;
+}
+.login-compact-head h2{
+  margin:0;
+  font-size:30px;
+  letter-spacing:-.3px;
+}
+.login-compact-head p{
+  margin:9px 0 0;
+  color:#64748b;
+  font-weight:800;
+  font-size:15px;
+}
+.login-compact-form{
+  display:grid;
+  gap:14px;
+}
+.login-compact-card .login-field{
+  gap:7px;
+  font-size:13px;
+}
+.login-compact-card .login-input-wrap{
+  min-height:52px;
+  padding:0 13px;
+  border-radius:14px;
+}
+.login-compact-card .login-input-wrap input{
+  font-size:16px;
+}
+.login-compact-card .login-input-icon{
+  font-size:18px;
+  width:22px;
+}
+.login-compact-card .password-eye{
+  font-size:19px;
+}
+.login-compact-card .login-row{
+  font-size:13px;
+  margin:0;
+}
+.login-compact-card .login-check input{
+  width:20px;
+  height:20px;
+}
+.login-compact-card .turnstile-holder{
+  overflow:hidden;
+}
+.login-compact-card .login-submit{
+  min-height:54px;
+  font-size:17px;
+  border-radius:14px;
+  margin-top:4px;
+}
+.login-compact-card .login-divider{
+  margin:20px 0 16px;
+}
+.login-compact-card .login-register-row{
+  margin:0;
+  font-size:15px;
+}
+.login-compact-card .login-register-row a{
+  padding:7px 14px;
+  border-radius:12px;
+}
+@media(max-width:900px){
+  .login-split-wrap{
+    grid-template-columns:1fr;
+    max-width:520px;
+    padding:36px 18px;
+    gap:22px;
+  }
+  .login-split-brand{
+    text-align:center;
+  }
+  .login-split-brand .auth-logo{
+    margin-left:auto;
+    margin-right:auto;
+  }
+  .login-split-brand h1{
+    font-size:34px;
+  }
+  .login-split-brand p{
+    font-size:15px;
+  }
+  .login-compact-card{
+    max-width:440px;
+    padding:24px 18px 22px;
+    border-radius:22px;
+  }
+}
+@media(max-width:520px){
+  .login-split-wrap{
+    padding:26px 14px;
+    align-items:start;
+  }
+  .login-split-brand h1{
+    font-size:28px;
+  }
+  .login-split-brand .auth-logo{
+    width:58px;
+    height:58px;
+    border-radius:20px;
+    font-size:22px;
+  }
+  .login-compact-head h2{
+    font-size:25px;
+  }
+  .login-compact-head p{
+    font-size:13px;
   }
 }
 
-async function purgeAuditForTarget(env: Env, targetType: string, targetId: string): Promise<void> {
-  try {
-    await env.DB.prepare(`DELETE FROM audit_logs WHERE target_type=? AND target_id=?`).bind(targetType, targetId).run();
-  } catch {}
+
+/* v42: remove login input left icons and keep input alignment clean */
+.login-compact-card .login-input-icon,
+.login-input-icon{
+  display:none !important;
+}
+.login-compact-card .login-input-wrap,
+.login-input-wrap{
+  gap:10px;
 }
 
-async function hardDeleteDnsRecordRow(env: Env, recordId: string): Promise<void> {
-  await env.DB.batch([
-    env.DB.prepare(`DELETE FROM dns_records WHERE id=?`).bind(recordId),
-    env.DB.prepare(`DELETE FROM audit_logs WHERE target_type='dns_record' AND target_id=?`).bind(recordId),
-  ]);
-  await deleteKnownKvKeys(env, [`dns_record:${recordId}`, `dns:${recordId}`]);
+/* v44 message center unread badge + read receipts */
+.nav{position:relative}
+.nav .nav-icon{width:24px;text-align:center;flex:0 0 24px}
+.nav .nav-label{flex:1;min-width:0}
+.nav .nav-badge{position:absolute;right:10px;top:8px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#ef4444;color:#fff;font-size:11px;line-height:18px;text-align:center;font-weight:900;box-shadow:0 0 0 2px rgba(15,23,42,.95)}
+.nav.active .nav-badge{box-shadow:0 0 0 2px rgba(255,255,255,.08)}
+.message-toolbar{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.message-card{position:relative}
+.message-select{display:flex;align-items:flex-start;padding-top:5px}
+.message-check{width:18px;height:18px;accent-color:var(--accent,#4f63f6);cursor:pointer}
+.message-readers{margin-top:10px;padding:10px 12px;border-radius:14px;background:#f8fafc;border:1px solid var(--line);color:#475569;font-size:13px;line-height:1.55}
+.message-readers b{color:#0f172a;margin-right:4px}
+.message-card.read .message-check{opacity:.65}
+@media(max-width:760px){.message-toolbar{width:100%;justify-content:flex-start}.message-select{position:absolute;right:14px;top:14px}.message-card{padding-right:48px}.nav .nav-badge{right:14px;top:9px}}
+
+/* v46: help contact form */
+.help-contact-card .section-head {
+  align-items: flex-start;
+  gap: 16px;
+}
+.help-contact-card .section-head .btn {
+  white-space: nowrap;
+}
+.help-contact-methods {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin: 16px 0 18px;
+}
+.help-contact-methods > div {
+  border: 1px solid rgba(114, 132, 167, 0.22);
+  border-radius: 18px;
+  background: rgba(248, 251, 255, 0.88);
+  padding: 16px 18px;
+}
+.help-contact-methods strong {
+  display: block;
+  font-size: 16px;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+.help-contact-methods p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+.help-contact-form textarea {
+  min-height: 180px;
+  resize: vertical;
+}
+.help-contact-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+@media (max-width: 760px) {
+  .help-contact-card .section-head {
+    flex-direction: column;
+  }
+  .help-contact-card .section-head .btn {
+    width: 100%;
+  }
+  .help-contact-methods {
+    grid-template-columns: 1fr;
+  }
+  .help-contact-actions .btn {
+    width: 100%;
+  }
 }
 
-async function hardDeleteDomainApplication(env: Env, appId: string): Promise<void> {
-  const records = await env.DB.prepare(`SELECT id FROM dns_records WHERE application_id=?`).bind(appId).all<{ id: string }>();
-  const recordIds = (records.results || []).map(r => r.id);
-  const batch = [
-    env.DB.prepare(`DELETE FROM dns_records WHERE application_id=?`).bind(appId),
-    env.DB.prepare(`DELETE FROM domain_applications WHERE id=?`).bind(appId),
-    env.DB.prepare(`DELETE FROM audit_logs WHERE target_type='domain_application' AND target_id=?`).bind(appId),
-  ];
-  for (const recordId of recordIds) {
-    batch.push(env.DB.prepare(`DELETE FROM audit_logs WHERE target_type='dns_record' AND target_id=?`).bind(recordId));
-  }
-  await env.DB.batch(batch);
-  await deleteKnownKvKeys(env, [`domain_application:${appId}`, `application:${appId}`, `domain:${appId}`, ...recordIds.flatMap(id => [`dns_record:${id}`, `dns:${id}`])]);
+/* v47 message reply modal */
+.reply-message-form textarea { min-height: 140px; resize: vertical; }
+.reply-original-box {
+  border: 1px solid rgba(148, 163, 184, .32);
+  background: rgba(248, 250, 252, .88);
+  border-radius: 18px;
+  padding: 16px 18px;
+  color: #0f172a;
+  line-height: 1.7;
+}
+.reply-original-box strong { display: block; font-size: 16px; margin-bottom: 8px; }
+.reply-original-box h4 { margin: 8px 0; font-size: 18px; }
+.reply-original-box p { margin: 0; color: #475569; white-space: normal; word-break: break-word; }
+.reply-original-meta { color: #64748b; font-size: 13px; }
+.message-actions .btn[data-reply-message] { margin-left: 6px; }
+@media (max-width: 720px) {
+  .reply-original-box { padding: 12px; border-radius: 14px; }
+  .message-actions .btn[data-reply-message] { margin-left: 0; }
 }
 
-async function hardDeleteUser(env: Env, userId: string): Promise<void> {
-  const apps = await env.DB.prepare(`SELECT id FROM domain_applications WHERE user_id=?`).bind(userId).all<{ id: string }>();
-  const appIds = (apps.results || []).map(a => a.id);
-  const records = await env.DB.prepare(`SELECT id FROM dns_records WHERE user_id=? OR application_id IN (SELECT id FROM domain_applications WHERE user_id=?)`).bind(userId, userId).all<{ id: string }>();
-  const recordIds = (records.results || []).map(r => r.id);
-  const messages = await env.DB.prepare(`SELECT id FROM system_messages WHERE sender_user_id=? OR target_user_id=?`).bind(userId, userId).all<{ id: string }>();
-  const messageIds = (messages.results || []).map(m => m.id);
+/* v48 登录设备管理 */
+.device-card-list{display:grid;gap:12px;margin-top:14px}.device-card{display:flex;justify-content:space-between;gap:16px;padding:16px;border:1px solid var(--line,#dbe4f3);border-radius:18px;background:rgba(255,255,255,.72)}.device-card strong{display:block;font-size:16px;color:var(--text,#111827)}.device-card span{display:block;color:var(--muted,#667085);font-size:13px;margin-top:4px}.device-times{text-align:right;min-width:240px}.device-table-wrap{margin-top:8px}.device-table th,.device-table td{white-space:nowrap}.message-level-important{background:#fff1f2;color:#be123c}.message-level-system{background:#eef4ff;color:#155eef}@media(max-width:760px){.device-card{display:block}.device-times{text-align:left;min-width:0;margin-top:10px}.device-table th,.device-table td{font-size:12px}}
 
-  await env.DB.batch([
-    env.DB.prepare(`DELETE FROM message_reads WHERE user_id=?`).bind(userId),
-    env.DB.prepare(`DELETE FROM user_message_deletions WHERE user_id=?`).bind(userId),
-    env.DB.prepare(`DELETE FROM message_reads WHERE message_id IN (SELECT id FROM system_messages WHERE sender_user_id=? OR target_user_id=?)`).bind(userId, userId),
-    env.DB.prepare(`DELETE FROM user_message_deletions WHERE message_id IN (SELECT id FROM system_messages WHERE sender_user_id=? OR target_user_id=?)`).bind(userId, userId),
-    env.DB.prepare(`DELETE FROM system_messages WHERE sender_user_id=? OR target_user_id=?`).bind(userId, userId),
-    env.DB.prepare(`DELETE FROM dns_records WHERE user_id=? OR application_id IN (SELECT id FROM domain_applications WHERE user_id=?)`).bind(userId, userId),
-    env.DB.prepare(`DELETE FROM domain_applications WHERE user_id=?`).bind(userId),
-    env.DB.prepare(`DELETE FROM sessions WHERE user_id=?`).bind(userId),
-    env.DB.prepare(`DELETE FROM audit_logs WHERE actor_user_id=? OR (target_type='user' AND target_id=?)`).bind(userId, userId),
-    env.DB.prepare(`DELETE FROM users WHERE id=?`).bind(userId),
-  ]);
 
-  const kvKeys = [`user:${userId}`, `account:${userId}`];
-  for (const appId of appIds) kvKeys.push(`domain_application:${appId}`, `application:${appId}`, `domain:${appId}`);
-  for (const recordId of recordIds) kvKeys.push(`dns_record:${recordId}`, `dns:${recordId}`);
-  for (const messageId of messageIds) kvKeys.push(`message:${messageId}`, `system_message:${messageId}`);
-  await deleteKnownKvKeys(env, kvKeys);
+/* v49 message feedback and recipient read state */
+.message-level-feedback {
+  color: #0f766e;
+  background: #ccfbf1;
 }
-
-async function publicConfigHandler(env: Env): Promise<Response> {
-  const settings = await loadSettings(env);
-  const adminCount = await env.DB.prepare(`
-    SELECT COUNT(*) AS count FROM users WHERE role='admin' AND status!='deleted'
-  `).first<{ count: number }>();
-
-  return ok({
-    config: {
-      site: settings.site,
-      registration: publicRegistrationSettings(settings.registration),
-      domain: settings.domain,
-      help: settings.help,
-      dnsRecordTypes: settings.dns.recordTypePolicies.map(policy => ({
-        type: policy.type,
-        displayName: policy.displayName,
-        allowUserAdd: policy.allowUserAdd,
-        note: policy.note,
-      })),
-      suffixes: settings.dns.suffixes
-        .map((item, index) => ({ item, index }))
-        .filter(({ item }) => item.enabled && item.allowRegister !== false)
-        .sort((a, b) => Number(a.item.registerOrder || a.index + 1) - Number(b.item.registerOrder || b.index + 1) || a.index - b.index)
-        .map(({ item: x }) => ({
-          label: x.label || '',
-          suffix: x.suffix,
-          allowedTypes: x.allowedTypes,
-          defaultType: x.defaultType,
-          ttl: x.ttl,
-          proxied: x.proxied,
-          registerOrder: Number(x.registerOrder || 0),
-        })),
-      turnstile: turnstilePublicConfig(env, settings),
-      needsBootstrap: Number(adminCount?.count || 0) === 0,
-    },
-  });
+.message-meta span {
+  word-break: break-word;
 }
 
 
-async function publicStatsHandler(env: Env): Promise<Response> {
-  const settings = await loadSettings(env);
-  const users = await env.DB.prepare(`SELECT COUNT(*) AS count FROM users WHERE status='active'`).first<{ count: number }>();
-  const domains = await env.DB.prepare(`
-    SELECT COUNT(*) AS count FROM domain_applications
-    WHERE status='approved' AND (deleted_at IS NULL OR deleted_at='')
-  `).first<{ count: number }>();
-  const dnsRecords = await env.DB.prepare(`
-    SELECT COUNT(*) AS count FROM dns_records
-    WHERE (deleted_at IS NULL OR deleted_at='') AND status!='deleted'
-  `).first<{ count: number }>();
-  const suffixes = settings.dns.suffixes.filter(item => item.enabled && item.allowRegister !== false).length;
-  return ok({ stats: {
-    users: Number(users?.count || 0),
-    domains: Number(domains?.count || 0),
-    dnsRecords: Number(dnsRecords?.count || 0),
-    suffixes,
-  }});
+/* v51 global scale, login logo, device display, and message refresh fix */
+html, body { min-height: 100%; }
+body { zoom: 0.8; }
+@supports not (zoom: 1) {
+  body { transform: scale(.8); transform-origin: top left; width: 125%; min-height: 125vh; }
+}
+.login-compact-head .login-lock { display: none !important; }
+.login-free-mark {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 14px;
+  border-radius: 20px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #fff;
+  font-size: 22px;
+  font-weight: 950;
+  letter-spacing: -.5px;
+  box-shadow: 0 18px 42px rgba(79,99,246,.22);
+}
+.device-card-list { display: grid; gap: 12px; }
+.device-card span { display: block; color: #64748b; font-weight: 700; margin-top: 4px; }
+.device-table td { vertical-align: middle; }
+@media(max-width:900px){
+  .login-split-brand { display: block !important; order: -1; text-align: center; }
+  .login-split-brand .auth-logo { margin-left: auto !important; margin-right: auto !important; }
+  .login-split-wrap { align-content: start; }
+}
+@media(max-width:520px){
+  .login-free-mark { width: 50px; height: 50px; border-radius: 18px; font-size: 19px; }
+  .login-split-brand { margin-bottom: 4px; }
 }
 
-async function publicDomainCheckHandler(request: Request, env: Env): Promise<Response> {
-  await rateLimit(env, request, 'public-domain-check', 90, 3600);
-  const body = await readJson<Record<string, unknown>>(request, 16 * 1024);
-  const settings = await loadSettings(env);
-  const prefix = normalizePrefix(body.prefix);
-  const p = prefix.unicode;
-  const minLen = settings.domain.prefixMinLength || 2;
-  const maxLen = settings.domain.prefixMaxLength || 36;
-  if (p.length < minLen || p.length > maxLen) {
-    return ok({ available:false, registered:false, message:`域名前缀长度必须为 ${minLen}-${maxLen} 位。` });
-  }
-  if (!settings.domain.allowUnderscorePrefix && p.includes('_')) {
-    return ok({ available:false, registered:false, message:'当前不允许使用下划线前缀。' });
-  }
-  if (!settings.domain.allowNumericPrefix && /^\d+$/.test(p)) {
-    return ok({ available:false, registered:false, message:'当前不允许使用纯数字前缀。' });
-  }
-
-  const suffixInput = normalizeSuffix(String(body.suffix || ''));
-  const suffix = settings.dns.suffixes.find(item => item.enabled && item.allowRegister !== false && (item.suffix === suffixInput || item.suffixAscii === suffixInput));
-  if (!suffix) return ok({ available:false, registered:false, message:'该根域名当前不可申请。' });
-
-  const reserved = new Set(settings.dns.reservedPrefixes.map(x => x.toLowerCase()));
-  const blacklistRules = [
-    ...sanitizeStringList(settings.domain.prefixBlacklistText || ''),
-    ...sanitizeStringList(settings.domain.blockedPrefixText || ''),
-    ...(settings.blacklist?.prefixes || []),
-  ];
-  const adminOnlyRules = sanitizeStringList(settings.domain.adminOnlyPrefixText || '');
-  if (reserved.has(prefix.unicode) || reserved.has(prefix.ascii)
-    || prefixMatchesRule(prefix.unicode, blacklistRules) || prefixMatchesRule(prefix.ascii, blacklistRules)
-    || prefixMatchesRule(prefix.unicode, adminOnlyRules) || prefixMatchesRule(prefix.ascii, adminOnlyRules)) {
-    return ok({ available:false, registered:false, message:'该域名不可注册。' });
-  }
-
-  const fqdnUnicode = `${prefix.unicode}.${suffix.suffix}`;
-  const fqdnAscii = `${prefix.ascii}.${suffix.suffixAscii}`;
-  const duplicate = await env.DB.prepare(`
-    SELECT id FROM domain_applications
-    WHERE fqdn_ascii=? COLLATE NOCASE
-      AND status NOT IN ('rejected','revoked')
-      AND (deleted_at IS NULL OR deleted_at='')
-    LIMIT 1
-  `).bind(fqdnAscii).first<{ id: string }>();
-  if (duplicate) return ok({ available:false, registered:true, fqdnUnicode, fqdnAscii, message:'此域名已注册。' });
-
-  const token = resolveDnsToken(env, settings, suffix);
-  let cloudflareChecked = false;
-  if (token && suffix.zoneId) {
-    cloudflareChecked = true;
-    try {
-      const remoteRecords = await listCloudflareDnsRecordsByName(token, suffix.zoneId, fqdnAscii);
-      if (remoteRecords.length) return ok({ available:false, registered:true, fqdnUnicode, fqdnAscii, cloudflareChecked, message:'此域名已注册。' });
-    } catch (error) {
-      console.error('public domain availability cloudflare check failed', error);
-      throw new HttpError(502, 'PUBLIC_DOMAIN_CHECK_FAILED', '暂时无法确认该域名状态，请稍后重试。');
-    }
-  }
-
-  return ok({ available:true, registered:false, fqdnUnicode, fqdnAscii, cloudflareChecked, message:'此域名可注册。' });
+/* v52 mobile sidebar/display fix
+   The previous global body zoom can make mobile media queries miss and leave
+   the sidebar inside the layout column. On mobile/tablet, use normal viewport
+   layout and scale by font-size instead, then force the sidebar to overlay. */
+html, body {
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
-async function bootstrapAdmin(request: Request, env: Env): Promise<Response> {
-  await rateLimit(env, request, 'bootstrap', 5, 900);
-  const body = await readJson<Record<string, unknown>>(request);
-  const existing = await env.DB.prepare(`
-    SELECT COUNT(*) AS count FROM users WHERE role='admin' AND status!='deleted'
-  `).first<{ count: number }>();
-
-  if (Number(existing?.count || 0) > 0) throw new HttpError(409, 'ALREADY_BOOTSTRAPPED', '管理员已初始化');
-  if (!env.BOOTSTRAP_ADMIN_TOKEN || String(body.setupToken || '') !== env.BOOTSTRAP_ADMIN_TOKEN) {
-    throw new HttpError(403, 'INVALID_SETUP_TOKEN', '初始化令牌不正确');
+@media (max-width: 1100px) {
+  body {
+    zoom: 1 !important;
+    font-size: 80% !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    overflow-x: hidden !important;
   }
 
-  const settings = await loadSettings(env);
-  const username = normalizeUsername(body.username);
-  const email = normalizeOptionalEmailStrict(body.email);
-  const phone = normalizeOptionalPhone(body.phone);
-  if (!email && !phone) throw new HttpError(400, 'CONTACT_REQUIRED', '手机号和邮箱至少填写一个');
-  const password = validatePassword(body.password);
-  const { hash, salt } = await hashPassword(password);
-  const id = crypto.randomUUID();
-
-  await env.DB.prepare(`
-    INSERT INTO users (id, username, email, password_hash, password_salt, role, status, domain_quota, permissions_json)
-    VALUES (?, ?, ?, ?, ?, 'admin', 'active', ?, ?)
-  `).bind(id, username, email, hash, salt, settings.domain.defaultQuota, JSON.stringify({ canApply: true })).run();
-
-  await audit(env, request, id, 'setup.bootstrap_admin', 'user', id);
-  const cookie = await createSession(env, request, id, false);
-  return withCookie(ok({ user: serializeUser({
-    id, username, email, password_hash: '', password_salt: '', role: 'admin', status: 'active',
-    domain_quota: settings.domain.defaultQuota, permissions_json: '{}', created_at: new Date().toISOString(),
-  }) }), cookie);
-}
-
-async function register(request: Request, env: Env): Promise<Response> {
-  await rateLimit(env, request, 'register', 10, 3600);
-  const body = await readJson<Record<string, unknown>>(request);
-  const settings = await loadSettings(env);
-  const ip = clientIp(request);
-
-  if ((settings.blacklist?.ips || []).includes(ip)) throw new HttpError(403, 'IP_BLOCKED', '当前 IP 已被禁止注册');
-  if (!settings.registration.enabled) throw new HttpError(403, 'REGISTER_CLOSED', settings.registration.disabledMessage || '当前暂未开放用户注册');
-
-  const adminCount = await env.DB.prepare(`
-    SELECT COUNT(*) AS count FROM users WHERE role='admin' AND status='active'
-  `).first<{ count: number }>();
-  if (Number(adminCount?.count || 0) < 1) throw new HttpError(503, 'SETUP_REQUIRED', '系统尚未完成管理员初始化');
-  // 用户注册默认开放；前端注册入口不再因为历史 KV 设置关闭而失效。
-
-  await verifyHumanChallenge(env, request, body, 'register', env.TURNSTILE_ACTION_REGISTER || 'register');
-
-  const username = normalizeUsername(body.username);
-  const email = normalizeOptionalEmailStrict(body.email);
-  const phone = normalizeOptionalPhone(body.phone);
-  if (!email && !phone) throw new HttpError(400, 'CONTACT_REQUIRED', '手机号和邮箱至少填写一个');
-  if (settings.registration.emailVerificationEnabled && !email) {
-    throw new HttpError(400, 'EMAIL_REQUIRED', '已开启注册邮箱验证，请填写邮箱');
-  }
-  if (email && settings.registration.blockTempEmail && isTempEmailDomain(email)) throw new HttpError(400, 'TEMP_EMAIL_BLOCKED', '不允许使用临时邮箱注册');
-  const emailDomain = email && email.includes('@') ? email.split('@').pop() || '' : '';
-  const blockedEmailDomains = sanitizeStringList(settings.registration.emailDomainBlacklist || '');
-  if (emailDomain && blockedEmailDomains.some(d => emailDomain.toLowerCase() === d.toLowerCase().replace(/^@/, ''))) throw new HttpError(403, 'EMAIL_DOMAIN_BLOCKED', '该邮箱后缀已被禁止注册');
-  if (email && listMatches(email, settings.blacklist?.emails || [])) throw new HttpError(403, 'EMAIL_BLOCKED', '该邮箱已被禁止注册');
-  if (phone && listMatches(phone, settings.blacklist?.emails || [])) throw new HttpError(403, 'PHONE_BLOCKED', '该手机号已被禁止注册');
-
-  let registrationKey: { id: string; role?: string | null } | null = null;
-  if (settings.registration.requireRegistrationKey) {
-    registrationKey = await validateRegistrationKey(env, body.registrationCode);
-  }
-
-  if (settings.registration.maxAccountsPerIp && settings.registration.maxAccountsPerIp > 0) {
-    const count = await env.DB.prepare(`SELECT COUNT(*) AS count FROM audit_logs WHERE action='auth.register' AND ip=?`).bind(ip).first<{ count: number }>();
-    if (Number(count?.count || 0) >= settings.registration.maxAccountsPerIp) throw new HttpError(429, 'IP_REGISTER_LIMIT', '当前 IP 注册账号数量已达到上限');
-  }
-  if (settings.registration.ipRegisterCooldownMinutes && settings.registration.ipRegisterCooldownMinutes > 0) {
-    const recent = await env.DB.prepare(`SELECT created_at FROM audit_logs WHERE action='auth.register' AND ip=? ORDER BY datetime(created_at) DESC LIMIT 1`).bind(ip).first<{ created_at: string }>();
-    const last = parseDate(recent?.created_at);
-    if (last && Date.now() - last.getTime() < settings.registration.ipRegisterCooldownMinutes * 60 * 1000) throw new HttpError(429, 'IP_REGISTER_COOLDOWN', '当前 IP 注册过于频繁，请稍后再试');
-  }
-
-  const password = validatePassword(body.password);
-  const duplicate = await env.DB.prepare(`
-    SELECT id FROM users
-    WHERE username=? COLLATE NOCASE
-      OR (? IS NOT NULL AND email=? COLLATE NOCASE)
-      OR (? IS NOT NULL AND phone=? COLLATE NOCASE)
-    LIMIT 1
-  `).bind(username, email, email, phone, phone).first<{ id: string }>();
-  if (duplicate) throw new HttpError(409, 'USER_EXISTS', '账号、邮箱或手机号已被使用');
-
-  const emailVerificationKey = settings.registration.emailVerificationEnabled && email
-    ? await verifyRegistrationEmailCode(env, email, body.emailVerificationCode)
-    : '';
-
-  const { hash, salt } = await hashPassword(password);
-  const id = crypto.randomUUID();
-  const status = settings.registration.defaultStatus === 'manual' ? 'disabled' : (settings.registration.autoActivate ? 'active' : 'disabled');
-
-  await env.DB.prepare(`
-    INSERT INTO users (id, username, email, phone, password_hash, password_salt, role, status, domain_quota, permissions_json)
-    VALUES (?, ?, ?, ?, ?, ?, 'user', ?, ?, ?)
-  `).bind(id, username, email, phone, hash, salt, status, settings.domain.defaultQuota, JSON.stringify({ canApply: true })).run();
-
-  if (registrationKey) await consumeRegistrationKey(env, registrationKey.id, id, username);
-  if (emailVerificationKey) await env.DB.prepare(`DELETE FROM email_verification_codes WHERE email=? COLLATE NOCASE`).bind(emailVerificationKey).run().catch(() => undefined);
-
-  await audit(env, request, id, 'auth.register', 'user', id, { status, registrationKeyId: registrationKey?.id || null, emailVerified: Boolean(emailVerificationKey) });
-
-  // 注册接口只负责创建账户，不再自动创建登录会话。
-  // 这样即使旧数据库 sessions 表结构不一致，也不会出现“用户已创建但注册提示失败”。
-  return ok({ registered: true, pendingActivation: status !== 'active' });
-}
-
-type LoginLockState = { count: number; lockedUntil: number };
-
-async function readLoginLockState(env: Env, key: string): Promise<LoginLockState> {
-  try {
-    const raw = await env.APP_KV.get(key);
-    if (!raw) return { count: 0, lockedUntil: 0 };
-    const parsed = JSON.parse(raw) as Partial<LoginLockState>;
-    return { count: Math.max(0, Number(parsed.count || 0)), lockedUntil: Math.max(0, Number(parsed.lockedUntil || 0)) };
-  } catch { return { count: 0, lockedUntil: 0 }; }
-}
-
-async function registerLoginFailure(env: Env, key: string, threshold: number, lockMinutes: number): Promise<void> {
-  if (threshold <= 0 || lockMinutes <= 0) return;
-  const current = await readLoginLockState(env, key);
-  const count = current.count + 1;
-  const lockedUntil = count >= threshold ? Date.now() + lockMinutes * 60000 : 0;
-  await env.APP_KV.put(key, JSON.stringify({ count: lockedUntil ? 0 : count, lockedUntil }), { expirationTtl: Math.max(300, lockMinutes * 60 + 3600) });
-}
-
-async function login(request: Request, env: Env): Promise<Response> {
-  await rateLimit(env, request, 'login', 20, 600);
-  const body = await readJson<Record<string, unknown>>(request);
-  const identity = String(body.identity || '').trim().toLowerCase();
-  const password = String(body.password || '');
-  if (!identity || !password) throw new HttpError(400, 'MISSING_CREDENTIALS', '请输入用户名/邮箱和密码');
-
-  const loginSettings = await loadSettings(env);
-  const lockKey = `login_lock:${await sha256(`${identity}|${clientIp(request)}`)}`;
-  const lockState = await readLoginLockState(env, lockKey);
-  if (lockState.lockedUntil > Date.now()) {
-    const waitMinutes = Math.max(1, Math.ceil((lockState.lockedUntil - Date.now()) / 60000));
-    throw new HttpError(429, 'LOGIN_TEMP_LOCKED', `登录失败次数过多，请 ${waitMinutes} 分钟后再试`);
-  }
-
-  await verifyHumanChallenge(env, request, body, 'login', env.TURNSTILE_ACTION_LOGIN || 'login');
-
-  const user = await env.DB.prepare(`
-    SELECT * FROM users WHERE (username=? COLLATE NOCASE OR email=? COLLATE NOCASE OR phone=? COLLATE NOCASE) LIMIT 1
-  `).bind(identity, identity, identity).first<UserRow>();
-
-  let passwordOk = false;
-  if (user) {
-    try {
-      passwordOk = await verifyPassword(password, user.password_hash, user.password_salt);
-    } catch (error) {
-      console.error('password verify failed', error);
-      passwordOk = false;
+  @supports not (zoom: 1) {
+    body {
+      transform: none !important;
+      transform-origin: initial !important;
+      width: 100% !important;
+      min-height: 100vh !important;
     }
   }
 
-  if (!user || !passwordOk) {
-    await registerLoginFailure(env, lockKey, loginSettings.security?.failedLoginLockThreshold || 0, loginSettings.security?.failedLoginLockMinutes || 0);
-    await audit(env, request, user?.id || null, 'auth.login_failed', 'user', user?.id || null, { identity });
-    throw new HttpError(401, 'INVALID_CREDENTIALS', '用户名或密码错误');
-  }
-  await env.APP_KV.delete(lockKey).catch(() => undefined);
-  const accountDisabled = user.status !== 'active';
-  if (user.role === 'admin' && accountDisabled) {
-    throw new HttpError(403, 'ACCOUNT_DISABLED', '管理员账户已被禁用');
-  }
-  if (user.role === 'admin') {
-    const allowedIps = sanitizeStringList(loginSettings.security?.adminIpWhitelist || '');
-    if (allowedIps.length && !allowedIps.includes(clientIp(request))) {
-      await audit(env, request, user.id, 'auth.login_failed', 'user', user.id, { identity, reason: 'admin ip blocked' });
-      throw new HttpError(403, 'ADMIN_IP_BLOCKED', '当前 IP 不在管理员登录白名单内');
-    }
+  .app-shell {
+    display: block !important;
+    grid-template-columns: 1fr !important;
+    width: 100% !important;
+    max-width: 100vw !important;
+    min-width: 0 !important;
+    min-height: 100dvh !important;
+    overflow-x: hidden !important;
   }
 
-  try {
-    await env.DB.prepare(`
-      UPDATE users SET last_login_at=datetime('now'), updated_at=datetime('now') WHERE id=?
-    `).bind(user.id).run();
-  } catch (error) {
-    try { await env.DB.prepare(`ALTER TABLE users ADD COLUMN last_login_at TEXT`).run(); } catch {}
-    try { await env.DB.prepare(`ALTER TABLE users ADD COLUMN updated_at TEXT`).run(); } catch {}
-    try {
-      await env.DB.prepare(`
-        UPDATE users SET last_login_at=datetime('now'), updated_at=datetime('now') WHERE id=?
-      `).bind(user.id).run();
-    } catch (inner) {
-      console.error('login timestamp update failed', inner);
-    }
+  .main {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100vw !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow-x: hidden !important;
   }
 
-  const cookie = await createSession(env, request, user.id, Boolean(body.remember));
-  await audit(env, request, user.id, 'auth.login', 'user', user.id);
-  return withCookie(ok({ user: serializeUser(user), accountDisabled, message: accountDisabled ? '你的账户已被禁用' : '' }), cookie);
-}
-
-async function logout(request: Request, env: Env): Promise<Response> {
-  const user = await getAuthUser(env, request);
-  const cookie = await destroySession(env, request);
-  if (user) await audit(env, request, user.id, 'auth.logout', 'user', user.id);
-  return withCookie(ok({ loggedOut: true }), cookie);
-}
-
-async function authMe(request: Request, env: Env): Promise<Response> {
-  const user = await getAuthUser(env, request);
-  return ok({ user: user ? serializeUser(user) : null });
-}
-
-
-async function updateOwnProfile(request: Request, env: Env): Promise<Response> {
-  const user = await requireUser(env, request);
-  const body = await readJson<Record<string, unknown>>(request);
-
-  const username = normalizeUsername(body.username ?? user.username);
-  const email = normalizeOptionalEmailStrict(body.email);
-  const phone = normalizeOptionalPhone(body.phone);
-
-  const duplicate = await env.DB.prepare(`
-    SELECT id FROM users
-    WHERE id!=?
-      AND (
-        username=? COLLATE NOCASE
-        OR (? IS NOT NULL AND email=? COLLATE NOCASE)
-        OR (? IS NOT NULL AND phone=? COLLATE NOCASE)
-      )
-    LIMIT 1
-  `).bind(user.id, username, email, email, phone, phone).first<{ id: string }>();
-  if (duplicate) throw new HttpError(409, 'USER_EXISTS', '用户名、邮箱或手机号已被使用');
-
-  await env.DB.prepare(`
-    UPDATE users SET username=?, email=?, phone=?, updated_at=datetime('now') WHERE id=?
-  `).bind(username, email, phone, user.id).run();
-
-  await audit(env, request, user.id, 'account.profile_update', 'user', user.id, { username, email, phone: phone ? 'set' : 'empty' });
-  const updated = await env.DB.prepare(`SELECT * FROM users WHERE id=?`).bind(user.id).first<UserRow>();
-  return ok({ user: serializeUser(updated!) });
-}
-
-async function changeOwnPassword(request: Request, env: Env): Promise<Response> {
-  const user = await requireUser(env, request);
-  const body = await readJson<Record<string, unknown>>(request);
-  const currentPassword = String(body.currentPassword || '');
-  const newPassword = validatePassword(body.newPassword);
-
-  const row = await env.DB.prepare(`
-    SELECT password_hash,password_salt FROM users WHERE id=?
-  `).bind(user.id).first<{ password_hash: string; password_salt: string }>();
-
-  if (!row || !(await verifyPassword(currentPassword, row.password_hash, row.password_salt))) {
-    throw new HttpError(401, 'INVALID_CURRENT_PASSWORD', '当前密码不正确');
+  .topbar {
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    max-width: 100vw !important;
+    padding: 12px 14px !important;
   }
 
-  const { hash, salt } = await hashPassword(newPassword);
-  await env.DB.batch([
-    env.DB.prepare(`UPDATE users SET password_hash=?,password_salt=?,updated_at=datetime('now') WHERE id=?`).bind(hash, salt, user.id),
-    env.DB.prepare(`DELETE FROM sessions WHERE user_id=?`).bind(user.id),
-  ]);
-  await audit(env, request, user.id, 'auth.password_changed', 'user', user.id);
-
-  return withCookie(ok({ changed: true }), await destroySession(env, request));
-}
-
-async function listOwnLoginDevices(request: Request, env: Env): Promise<Response> {
-  const user = await requireUser(env, request);
-  const devices = await listLoginDevicesForUser(env, user.id);
-  return ok({ count: devices.length, devices });
-}
-
-async function adminUserLoginDevices(request: Request, env: Env, userId: string): Promise<Response> {
-  await requireAdmin(env, request);
-  const user = await env.DB.prepare(`SELECT id,username,email,role,status FROM users WHERE id=? AND status!='deleted'`).bind(userId).first<any>();
-  if (!user) throw new HttpError(404, 'USER_NOT_FOUND', '用户不存在');
-  const devices = await listLoginDevicesForUser(env, userId);
-  return ok({ user: serializeUser(user), count: devices.length, devices });
-}
-
-async function listLoginDevicesForUser(env: Env, userId: string) {
-  const rows = await env.DB.prepare(`
-    SELECT id, ip, user_agent, device_name, device_type, device_model,
-      COALESCE(first_seen_at, created_at) AS first_seen_at,
-      COALESCE(last_seen_at, created_at) AS last_seen_at,
-      expires_at, created_at
-    FROM sessions
-    WHERE user_id=? AND expires_at > datetime('now')
-    ORDER BY COALESCE(last_seen_at, created_at) DESC
-    LIMIT 100
-  `).bind(userId).all<any>();
-  return (rows.results || []).map(row => {
-    const parsed = parseDeviceInfo(row.user_agent || '');
-    return {
-      id: row.id,
-      deviceName: row.device_name || parsed.name,
-      deviceType: row.device_type || parsed.type,
-      deviceModel: row.device_model || parsed.model,
-      ip: row.ip || '',
-      firstLoginAt: row.first_seen_at || row.created_at || '',
-      lastUsedAt: row.last_seen_at || row.created_at || '',
-      expiresAt: row.expires_at || '',
-    };
-  });
-}
-
-async function deleteOwnAccount(request: Request, env: Env): Promise<Response> {
-  const user = await requireUser(env, request);
-  const body = await readJson<Record<string, unknown>>(request);
-
-  if (user.role === 'admin') {
-    throw new HttpError(403, 'ADMIN_DELETE_FORBIDDEN', '管理员账号不能在前台注销，请先创建其他管理员后由后台处理');
+  .content {
+    width: 100% !important;
+    max-width: 100vw !important;
+    margin: 0 !important;
+    padding: 16px 12px 34px !important;
+    overflow-x: hidden !important;
   }
 
-  const currentPassword = String(body.currentPassword || '');
-  const confirmAccount = String(body.confirmAccount ?? body.confirmUsername ?? '').trim();
-  if (confirmAccount !== user.username) {
-    throw new HttpError(400, 'CONFIRM_USERNAME_MISMATCH', '请输入当前账号确认注销');
+  .sidebar {
+    position: fixed !important;
+    top: 0 !important;
+    left: calc(-1 * min(82vw, 320px)) !important;
+    width: min(82vw, 320px) !important;
+    max-width: 320px !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    z-index: 1000 !important;
+    transform: none !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior: contain !important;
+    box-shadow: 24px 0 70px rgba(15, 23, 42, .35) !important;
   }
 
-  const row = await env.DB.prepare(`
-    SELECT password_hash,password_salt FROM users WHERE id=? AND status='active'
-  `).bind(user.id).first<{ password_hash: string; password_salt: string }>();
-
-  if (!row || !(await verifyPassword(currentPassword, row.password_hash, row.password_salt))) {
-    throw new HttpError(401, 'INVALID_CURRENT_PASSWORD', '当前密码不正确');
+  .sidebar.open {
+    left: 0 !important;
   }
 
-  const activeDomains = await env.DB.prepare(`
-    SELECT id, fqdn_unicode, fqdn_ascii, status, delete_requested_at
-    FROM domain_applications
-    WHERE user_id=?
-      AND status NOT IN ('rejected','revoked')
-      AND (deleted_at IS NULL OR deleted_at='')
-    ORDER BY created_at DESC
-    LIMIT 100
-  `).bind(user.id).all<{ id: string; fqdn_unicode: string; fqdn_ascii: string; status: string; delete_requested_at?: string | null }>();
-
-  const blockingDomains = (activeDomains.results || []).map(x => ({
-    id: x.id,
-    domain: x.fqdn_unicode || x.fqdn_ascii,
-    status: x.delete_requested_at ? '待删除审核' : statusLabel(x.status),
-  }));
-  if (blockingDomains.length > 0) {
-    throw new HttpError(409, 'ACTIVE_DOMAINS_EXIST', '账户下还有未注销域名，请先申请删除并等待管理员批准后再注销账号', { domains: blockingDomains });
+  .sidebar-mask {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 999 !important;
+    background: rgba(15, 23, 42, .46) !important;
+    backdrop-filter: blur(2px) !important;
   }
 
-  await hardDeleteUser(env, user.id);
-  return withCookie(ok({ deleted: true, purged: true }), await destroySession(env, request));
-}
+  .sidebar-mask.open {
+    display: block !important;
+  }
 
+  body.sidebar-open {
+    overflow: hidden !important;
+  }
 
-function applicationDnsProjection(alias: string = 'a'): string {
-  const live = `(r.deleted_at IS NULL OR r.deleted_at='')`;
-  const order = `CASE r.host WHEN '@' THEN 0 ELSE 1 END, r.host ASC, r.type ASC, r.created_at ASC`;
-  return `
-    (SELECT COUNT(*) FROM dns_records r WHERE r.application_id=${alias}.id AND ${live}) AS dns_count,
-    (SELECT r.type FROM dns_records r WHERE r.application_id=${alias}.id AND ${live} ORDER BY ${order} LIMIT 1) AS primary_record_type,
-    (SELECT r.content FROM dns_records r WHERE r.application_id=${alias}.id AND ${live} ORDER BY ${order} LIMIT 1) AS primary_record_content,
-    (SELECT r.cf_record_id FROM dns_records r WHERE r.application_id=${alias}.id AND ${live} ORDER BY ${order} LIMIT 1) AS primary_dns_record_id,
-    (SELECT GROUP_CONCAT(r.type || ' → ' || r.content, '；') FROM dns_records r WHERE r.application_id=${alias}.id AND ${live}) AS dns_summary
-  `;
-}
+  body.sidebar-open .main {
+    margin-left: 0 !important;
+    transform: none !important;
+  }
 
-async function syncApplicationDnsSummary(env: Env, applicationId: string): Promise<void> {
-  const row = await env.DB.prepare(`
-    SELECT type, content, cf_record_id
-    FROM dns_records
-    WHERE application_id=? AND (deleted_at IS NULL OR deleted_at='')
-    ORDER BY CASE host WHEN '@' THEN 0 ELSE 1 END, host ASC, type ASC, created_at ASC
-    LIMIT 1
-  `).bind(applicationId).first<{ type: string; content: string; cf_record_id?: string | null }>();
-
-  if (row) {
-    await env.DB.prepare(`
-      UPDATE domain_applications
-      SET record_type=?, record_content=?, dns_record_id=?, updated_at=datetime('now')
-      WHERE id=?
-    `).bind(row.type, row.content, row.cf_record_id || '', applicationId).run();
-  } else {
-    await env.DB.prepare(`
-      UPDATE domain_applications
-      SET record_type='', record_content='', dns_record_id=NULL, updated_at=datetime('now')
-      WHERE id=?
-    `).bind(applicationId).run();
+  .menu-btn {
+    display: inline-flex !important;
   }
 }
 
-async function listOwnApplications(request: Request, env: Env): Promise<Response> {
-  const user = await requireUser(env, request);
-  const settings = await loadSettings(env);
-  const rows = await env.DB.prepare(`
-    SELECT a.*, ${applicationDnsProjection('a')}
-    FROM domain_applications a
-    WHERE a.user_id=? AND (a.deleted_at IS NULL OR a.deleted_at='')
-    ORDER BY a.created_at DESC
-    LIMIT 500
-  `).bind(user.id).all<ApplicationRow>();
-
-  const apps = (rows.results || []).map(x => serializeApplication(x, settings));
-  const used = apps.filter(x => !['rejected', 'revoked', 'deleted'].includes(x.status)).length;
-  const rawTotal = Number(user.domain_quota || settings.domain.defaultQuota);
-  const total = Math.max(0, rawTotal); // v29：额度按管理员设置原样生效，不再把 9999 还原为默认值
-
-  return ok({
-    applications: apps,
-    quota: {
-      used,
-      total,
-      remaining: Math.max(0, total - used),
-      label: `${used} / ${total}`,
-    },
-  });
-}
-
-async function getOwnApplication(request: Request, env: Env, id: string): Promise<Response> {
-  const user = await requireUser(env, request);
-  const app = await env.DB.prepare(`
-    SELECT a.*, ${applicationDnsProjection('a')}
-    FROM domain_applications a
-    WHERE a.id=? AND a.user_id=? AND (a.deleted_at IS NULL OR a.deleted_at='')
-  `).bind(id, user.id).first<ApplicationRow>();
-  if (!app) throw new HttpError(404, 'NOT_FOUND', '域名不存在');
-  return ok({ application: serializeApplication(app, await loadSettings(env)) });
-}
-
-
-async function checkDomainAvailability(request: Request, env: Env): Promise<Response> {
-  const user = await requireUser(env, request);
-  await rateLimit(env, request, `domain-availability:${user.id}`, 180, 3600);
-  const body = await readJson<Record<string, unknown>>(request, 32 * 1024);
-  const settings = await loadSettings(env);
-
-  if (user.status !== 'active') {
-    return ok({ available: false, registered: false, message: '账户已被禁用，无法注册域名。' });
+@media (max-width: 520px) {
+  .sidebar {
+    width: 82vw !important;
+    max-width: 300px !important;
+    padding: 18px 16px !important;
   }
 
-  const prefix = normalizePrefix(body.prefix);
-  const prefixRules = settings.domain;
-  const p = prefix.unicode;
-  const minLen = prefixRules.prefixMinLength || 2;
-  const maxLen = prefixRules.prefixMaxLength || 36;
-  if (p.length < minLen || p.length > maxLen) {
-    return ok({ available: false, registered: false, message: `域名前缀长度必须为 ${minLen}-${maxLen} 位。` });
-  }
-  if (!prefixRules.allowUnderscorePrefix && p.includes('_')) {
-    return ok({ available: false, registered: false, message: '当前不允许使用下划线前缀。' });
-  }
-  if (!prefixRules.allowNumericPrefix && /^\d+$/.test(p)) {
-    return ok({ available: false, registered: false, message: '当前不允许使用纯数字前缀。' });
+  .brand {
+    font-size: 16px !important;
+    gap: 10px !important;
   }
 
-  const suffixInput = normalizeSuffix(String(body.suffix || ''));
-  const suffix = settings.dns.suffixes.find(x => x.enabled && (x.suffix === suffixInput || x.suffixAscii === suffixInput));
-  if (!suffix || (user.role !== 'admin' && suffix.allowRegister === false)) {
-    return ok({ available: false, registered: false, message: '该根域名当前不可申请。' });
+  .brand div {
+    width: 42px !important;
+    height: 42px !important;
+    border-radius: 15px !important;
+    font-size: 18px !important;
   }
 
-  const reserved = new Set(settings.dns.reservedPrefixes.map(x => x.toLowerCase()));
-  const blacklistRules = [
-    ...sanitizeStringList(settings.domain.prefixBlacklistText || ''),
-    ...sanitizeStringList(settings.domain.blockedPrefixText || ''),
-    ...(settings.blacklist?.prefixes || []),
-  ];
-  const adminOnlyRules = sanitizeStringList(settings.domain.adminOnlyPrefixText || '');
-  if (reserved.has(prefix.unicode) || reserved.has(prefix.ascii)
-    || prefixMatchesRule(prefix.unicode, blacklistRules) || prefixMatchesRule(prefix.ascii, blacklistRules)) {
-    return ok({ available: false, registered: false, message: '该域名不可注册。' });
-  }
-  if (user.role !== 'admin' && (prefixMatchesRule(prefix.unicode, adminOnlyRules) || prefixMatchesRule(prefix.ascii, adminOnlyRules))) {
-    return ok({ available: false, registered: false, message: '该域名不可注册。' });
+  .nav {
+    font-size: 14px !important;
+    padding: 11px 12px !important;
+    gap: 10px !important;
   }
 
-  const fqdnUnicode = `${prefix.unicode}.${suffix.suffix}`;
-  const fqdnAscii = `${prefix.ascii}.${suffix.suffixAscii}`;
-  const duplicate = await env.DB.prepare(`
-    SELECT id FROM domain_applications
-    WHERE fqdn_ascii=? COLLATE NOCASE
-      AND status NOT IN ('rejected','revoked')
-      AND (deleted_at IS NULL OR deleted_at='')
-    LIMIT 1
-  `).bind(fqdnAscii).first<{ id: string }>();
-  if (duplicate) {
-    return ok({ available: false, registered: true, fqdnUnicode, fqdnAscii, message: '此域名已注册。' });
+  .side-user {
+    margin-top: 18px !important;
+  }
+}
+
+/* v53 desktop/mobile sidebar full-height fix
+   The global 80% zoom makes 100vh look visually shorter.
+   Compensate on non-mobile layouts so the dark sidebar reaches the real bottom. */
+@media (min-width: 1101px) {
+  .app-shell {
+    min-height: calc(100vh / 0.8) !important;
   }
 
-  const token = resolveDnsToken(env, settings, suffix);
-  let cloudflareChecked = false;
-  if (token && suffix.zoneId) {
-    cloudflareChecked = true;
-    try {
-      const remoteRecords = await listCloudflareDnsRecordsByName(token, suffix.zoneId, fqdnAscii);
-      if (remoteRecords.length) {
-        return ok({ available: false, registered: true, fqdnUnicode, fqdnAscii, cloudflareChecked, message: '此域名已注册。' });
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Cloudflare DNS 查询失败';
-      throw new HttpError(502, 'DOMAIN_AVAILABILITY_CHECK_FAILED', `暂时无法检查域名，请稍后重试：${message}`);
-    }
+  .sidebar {
+    min-height: calc(100vh / 0.8) !important;
+    height: calc(100vh / 0.8) !important;
+    align-self: stretch !important;
   }
-
-  return ok({
-    available: true,
-    registered: false,
-    fqdnUnicode,
-    fqdnAscii,
-    cloudflareChecked,
-    message: '此域名可注册。',
-  });
 }
 
-async function createApplication(request: Request, env: Env): Promise<Response> {
-  const user = await requireUser(env, request);
-  await rateLimit(env, request, `apply:${user.id}`, 20, 3600);
-  const body = await readJson<Record<string, unknown>>(request);
-  const settings = await loadSettings(env);
-
-  if (settings.registration.dailyDomainApplyLimit && settings.registration.dailyDomainApplyLimit > 0) {
-    const todayCount = await env.DB.prepare(`
-      SELECT COUNT(*) AS count FROM domain_applications
-      WHERE user_id=? AND date(created_at)=date('now')
-    `).bind(user.id).first<{ count: number }>();
-    if (Number(todayCount?.count || 0) >= settings.registration.dailyDomainApplyLimit) {
-      throw new HttpError(429, 'DAILY_DOMAIN_APPLY_LIMIT', `今天申请域名数量已达到上限：${settings.registration.dailyDomainApplyLimit} 个`);
-    }
-  }
-
-  await verifyHumanChallenge(env, request, body, 'apply', env.TURNSTILE_ACTION_APPLY || 'domain_apply');
-
-  if (user.status !== 'active') throw new HttpError(403, 'ACCOUNT_DISABLED', '账户已被禁用，无法注册域名，请通过帮助中心联系管理人员');
-
-  const prefix = normalizePrefix(body.prefix);
-  const prefixRules = settings.domain;
-  const p = prefix.unicode;
-  const minLen = prefixRules.prefixMinLength || 2;
-  const maxLen = prefixRules.prefixMaxLength || 36;
-  if (p.length < minLen || p.length > maxLen) throw new HttpError(400, 'INVALID_PREFIX_LENGTH', `域名前缀长度必须为 ${minLen}-${maxLen} 位`);
-  if (!prefixRules.allowUnderscorePrefix && p.includes('_')) throw new HttpError(400, 'UNDERSCORE_NOT_ALLOWED', '当前不允许使用下划线前缀');
-  if (!prefixRules.allowNumericPrefix && /^\d+$/.test(p)) throw new HttpError(400, 'NUMERIC_PREFIX_NOT_ALLOWED', '当前不允许使用纯数字前缀');
-
-  const suffixInput = normalizeSuffix(String(body.suffix || ''));
-  const suffix = settings.dns.suffixes.find(x => x.enabled && (x.suffix === suffixInput || x.suffixAscii === suffixInput));
-  if (!suffix) throw new HttpError(400, 'SUFFIX_NOT_ALLOWED', '该根域名不可用');
-  if (user.role !== 'admin' && suffix.allowRegister === false) {
-    throw new HttpError(400, 'SUFFIX_REGISTER_CLOSED', '管理员已关闭该根域名的用户申请入口');
-  }
-
-  const reserved = new Set(settings.dns.reservedPrefixes.map(x => x.toLowerCase()));
-  const blacklistRules = [
-    ...sanitizeStringList(settings.domain.prefixBlacklistText || ''),
-    ...sanitizeStringList(settings.domain.blockedPrefixText || ''),
-    ...(settings.blacklist?.prefixes || []),
-  ];
-  const adminOnlyRules = sanitizeStringList(settings.domain.adminOnlyPrefixText || '');
-  if (reserved.has(prefix.unicode) || reserved.has(prefix.ascii) || prefixMatchesRule(prefix.unicode, blacklistRules) || prefixMatchesRule(prefix.ascii, blacklistRules)) {
-    throw new HttpError(409, 'RESERVED_PREFIX', '该前缀为系统保留词或黑名单关键词');
-  }
-  if (user.role !== 'admin' && (prefixMatchesRule(prefix.unicode, adminOnlyRules) || prefixMatchesRule(prefix.ascii, adminOnlyRules))) {
-    throw new HttpError(409, 'ADMIN_ONLY_PREFIX', '该前缀仅管理员可用');
-  }
-
-  const platformCount = await env.DB.prepare(`
-    SELECT COUNT(*) AS count FROM domain_applications
-    WHERE status NOT IN ('rejected','revoked') AND (deleted_at IS NULL OR deleted_at='')
-  `).first<{ count: number }>();
-  if (Number(platformCount?.count || 0) >= (settings.domain.platformMaxDomains || 9999)) {
-    throw new HttpError(403, 'PLATFORM_DOMAIN_LIMIT', '平台二级域名总配额已满');
-  }
-
-  const fqdnUnicode = `${prefix.unicode}.${suffix.suffix}`;
-  const fqdnAscii = `${prefix.ascii}.${suffix.suffixAscii}`;
-
-  const duplicate = await env.DB.prepare(`
-    SELECT id,status FROM domain_applications
-    WHERE fqdn_ascii=? COLLATE NOCASE
-      AND status NOT IN ('rejected','revoked')
-      AND (deleted_at IS NULL OR deleted_at='')
-    LIMIT 1
-  `).bind(fqdnAscii).first<{ id: string; status: string }>();
-  if (duplicate) throw new HttpError(409, 'DOMAIN_EXISTS', '该域名已被注册或正在审核');
-
-  const activeCount = await env.DB.prepare(`
-    SELECT COUNT(*) AS count FROM domain_applications
-    WHERE user_id=? AND status NOT IN ('rejected','revoked')
-      AND (deleted_at IS NULL OR deleted_at='')
-  `).bind(user.id).first<{ count: number }>();
-
-  const rawQuota = Number(user.domain_quota || settings.domain.defaultQuota);
-  const totalQuota = Math.max(0, rawQuota); // v29：按用户自身额度限制，不再把 9999 还原为默认值
-  if (Number(activeCount?.count || 0) >= totalQuota) {
-    throw new HttpError(403, 'DOMAIN_QUOTA_EXCEEDED', `您的域名额度已用完，当前额度为 ${totalQuota} 个`);
-  }
-
-  const id = crypto.randomUUID();
-
-  const riskRules = ['login','signin','pay','wallet','bank','admin','mail','api','official','support','verify'];
-  const isRiskDomain = riskRules.some(rule => prefix.unicode.toLowerCase().includes(rule) || prefix.ascii.toLowerCase().includes(rule));
-  const autoApproved = settings.domain.approvalMode === 'auto' || (settings.domain.approvalMode === 'risk' && !isRiskDomain);
-  const appStatus = autoApproved ? 'approved' : 'pending';
-  const expiresAt = autoApproved ? new Date(Date.now() + settings.domain.validDays * DAY).toISOString() : null;
-
-  await env.DB.prepare(`
-    INSERT INTO domain_applications (
-      id,user_id,prefix_unicode,prefix_ascii,suffix_unicode,suffix_ascii,fqdn_unicode,fqdn_ascii,
-      record_type,record_content,proxied,ttl,status,expires_at,reviewed_at
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-  `).bind(
-    id, user.id, prefix.unicode, prefix.ascii, suffix.suffix, suffix.suffixAscii, fqdnUnicode, fqdnAscii,
-    suffix.defaultType, '', suffix.proxied ? 1 : 0, suffix.ttl, appStatus, expiresAt, autoApproved ? new Date().toISOString() : null,
-  ).run();
-
-  await audit(env, request, user.id, 'application.create', 'domain_application', id, { fqdnAscii });
-  if (appStatus === 'pending') {
-    await sendAdminCloudflareEmailSafe(env, 'domain_review', {
-      subject: `【域名待审核】${fqdnUnicode}`,
-      text: [
-        '有新的二级域名申请等待管理员审核。',
-        '',
-        `申请用户：${user.username}`,
-        `用户 ID：${user.id}`,
-        `申请域名：${fqdnUnicode}`,
-        `ASCII 域名：${fqdnAscii}`,
-        `提交时间：${new Date().toISOString()}`,
-        `客户端 IP：${clientIp(request) || '未知'}`,
-        isRiskDomain ? '风险提示：前缀命中了系统风险关键词，请重点检查。' : '风险提示：未命中内置高风险关键词。',
-        '',
-        `审核入口：${new URL(request.url).origin}/#/admin/applications`,
-      ].join('\n'),
-      fingerprint: `domain-review|${id}`,
-      cooldownSeconds: 60,
-    }, settings);
-  }
-  const app = await env.DB.prepare(`SELECT * FROM domain_applications WHERE id=?`).bind(id).first<ApplicationRow>();
-  return ok({ application: serializeApplication(app!, settings) });
-}
-
-async function updateOwnDns(request: Request, env: Env, id: string): Promise<Response> {
-  const user = await requireUser(env, request);
-  const body = await readJson<Record<string, unknown>>(request);
-  const settings = await loadSettings(env);
-  const app = await env.DB.prepare(`
-    SELECT * FROM domain_applications WHERE id=? AND user_id=? AND (deleted_at IS NULL OR deleted_at='')
-  `).bind(id, user.id).first<ApplicationRow>();
-  if (!app) throw new HttpError(404, 'NOT_FOUND', '域名不存在');
-  if (app.status !== 'approved') throw new HttpError(409, 'DOMAIN_NOT_APPROVED', '域名审核通过后才能设置解析');
-  if (app.controlled_at) throw new HttpError(403, 'DOMAIN_CONTROLLED', '该域名已被管理员管控，只允许删除 DNS 或申请删除域名');
-
-  const suffix = settings.dns.suffixes.find(x => x.enabled && x.suffixAscii === app.suffix_ascii);
-  if (!suffix) throw new HttpError(409, 'SUFFIX_DISABLED', '该根域名已停用，暂时不能修改解析');
-
-  if (app.status === 'approved' && !settings.domain.allowDnsEditAfterApproved) {
-    throw new HttpError(403, 'DNS_EDIT_CLOSED', '管理员已关闭生效域名的 DNS 修改');
-  }
-
-  const recordType = normalizeRecordType(body.recordType || app.record_type || suffix.defaultType, suffix.allowedTypes);
-  if (!app.record_type || recordType !== String(app.record_type).toUpperCase()) assertUserDnsRecordTypeOpen(settings, recordType);
-  const recordContent = normalizeDnsTarget(recordType, body.target, app.fqdn_ascii);
-  if (recordType === 'CNAME') assertCnameTargetAllowed(recordContent, settings.dns.cnameTargetBlacklist);
-
-  let dnsRecordId = app.dns_record_id || '';
-  let newStatus = app.status;
-  let errorMessage = '';
-
-  if (app.status === 'approved') {
-    const token = resolveDnsToken(env, settings, suffix);
-    if (!token) throw new HttpError(503, 'DNS_TOKEN_MISSING', '尚未配置 Cloudflare DNS API Token；该根域名可在“管理员设置 → DNS 配置”单独填写 API Token');
-    try {
-      if (app.dns_record_id) {
-        const record = await updateDnsRecord(token, suffix.zoneId, app.dns_record_id, {
-          type: recordType,
-          name: app.fqdn_ascii,
-          content: recordContent,
-          ttl: Number(app.ttl || suffix.ttl || 1),
-          proxied: Boolean(app.proxied),
-          comment: `Updated by storage portal ${app.id}`,
-        });
-        dnsRecordId = record.id || app.dns_record_id || '';
-      } else {
-        const record = await createDnsRecord(token, suffix.zoneId, {
-          type: recordType,
-          name: app.fqdn_ascii,
-          content: recordContent,
-          ttl: Number(app.ttl || suffix.ttl || 1),
-          proxied: Boolean(app.proxied),
-          comment: `Created by storage portal ${app.id} after approval`,
-        });
-        dnsRecordId = record.id || '';
-      }
-    } catch (error) {
-      errorMessage = error instanceof Error ? error.message.slice(0, 1000) : 'DNS 保存失败';
-      await sendAdminCloudflareEmailSafe(env, 'dns_anomaly', {
-        subject: `【DNS 异常】保存 ${app.fqdn_ascii}`,
-        text: [
-          '用户保存域名 DNS 时发生异常。',
-          '',
-          `用户：${user.username}（${user.id}）`,
-          `域名：${app.fqdn_unicode}`,
-          `记录：${recordType} ${app.fqdn_ascii} → ${recordContent}`,
-          `Zone ID：${suffix.zoneId || '未配置'}`,
-          `错误：${errorMessage}`,
-          `时间：${new Date().toISOString()}`,
-          `客户端 IP：${clientIp(request) || '未知'}`,
-        ].join('\n'),
-        fingerprint: `dns-save|${app.id}|${errorMessage}`,
-        cooldownSeconds: 900,
-      }, settings);
-      throw new HttpError(502, 'DNS_SAVE_FAILED', errorMessage);
-    }
-  }
-
-  await env.DB.prepare(`
-    UPDATE domain_applications
-    SET record_type=?,record_content=?,dns_record_id=?,status=?,error_message=?,updated_at=datetime('now')
-    WHERE id=? AND user_id=?
-  `).bind(recordType, recordContent, dnsRecordId, newStatus, errorMessage, id, user.id).run();
-
-  await audit(env, request, user.id, 'application.dns_update', 'domain_application', id, { recordType, recordContent });
-  const updated = await env.DB.prepare(`SELECT * FROM domain_applications WHERE id=?`).bind(id).first<ApplicationRow>();
-  return ok({ application: serializeApplication(updated!, settings) });
-}
-
-async function listOwnDnsRecords(request: Request, env: Env, applicationId: string): Promise<Response> {
-  const user = await requireUser(env, request);
-  const app = await env.DB.prepare(`
-    SELECT * FROM domain_applications WHERE id=? AND user_id=? AND (deleted_at IS NULL OR deleted_at='')
-  `).bind(applicationId, user.id).first<ApplicationRow>();
-  if (!app) throw new HttpError(404, 'NOT_FOUND', '域名不存在');
-
-  const rows = await env.DB.prepare(`
-    SELECT * FROM dns_records
-    WHERE application_id=? AND user_id=? AND (deleted_at IS NULL OR deleted_at='')
-    ORDER BY CASE host WHEN '@' THEN 0 ELSE 1 END, host ASC, type ASC, created_at ASC
-  `).bind(applicationId, user.id).all<DnsRecordRow>();
-
-  return ok({ records: (rows.results || []).map(serializeDnsRecord) });
-}
-
-async function createOwnDnsRecord(request: Request, env: Env, applicationId: string): Promise<Response> {
-  const user = await requireUser(env, request);
-  const body = await readJson<Record<string, unknown>>(request);
-  const settings = await loadSettings(env);
-  const app = await env.DB.prepare(`
-    SELECT * FROM domain_applications WHERE id=? AND user_id=? AND (deleted_at IS NULL OR deleted_at='')
-  `).bind(applicationId, user.id).first<ApplicationRow>();
-  if (!app) throw new HttpError(404, 'NOT_FOUND', '域名不存在');
-  if (app.status !== 'approved') throw new HttpError(409, 'DOMAIN_NOT_APPROVED', '域名审核通过后才能添加解析');
-  if (app.controlled_at) throw new HttpError(403, 'DOMAIN_CONTROLLED', '该域名已被管理员管控，只允许删除 DNS 或申请删除域名');
-  if (app.delete_requested_at) throw new HttpError(409, 'DELETE_REQUESTED', '该域名正在等待删除审核，不能添加解析');
-
-  const suffix = settings.dns.suffixes.find(x => x.enabled && x.suffixAscii === app.suffix_ascii);
-  if (!suffix) throw new HttpError(409, 'SUFFIX_DISABLED', '该根域名已停用，暂时不能新增解析');
-
-  const host = normalizeDnsHost(body.host, settings.dns.blockWildcardRecords !== false);
-  const name = fullRecordName(host, app.fqdn_ascii);
-  const type = normalizeRecordType(body.type || body.recordType, suffix.allowedTypes);
-  assertUserDnsRecordTypeOpen(settings, type);
-  if (type === 'MX' && settings.dns.allowMxRecords === false) throw new HttpError(403, 'MX_DISABLED', '管理员已禁止用户创建 MX 解析记录');
-  const recordCount = await env.DB.prepare(`SELECT COUNT(*) AS count FROM dns_records WHERE application_id=? AND (deleted_at IS NULL OR deleted_at='')`).bind(applicationId).first<{ count: number }>();
-  if (Number(recordCount?.count || 0) >= (settings.domain.maxDnsRecordsPerDomain || 20)) throw new HttpError(403, 'DNS_RECORD_LIMIT', `单个域名最多可创建 ${settings.domain.maxDnsRecordsPerDomain || 20} 条 DNS 解析`);
-  const content = normalizeDnsTarget(type, body.content || body.target, name);
-  if (type === 'CNAME') assertCnameTargetAllowed(content, settings.dns.cnameTargetBlacklist);
-  const priority = type === 'MX' ? clamp(Number(body.priority || 10), 0, 65535) : (type === 'SRV' ? clamp(Number(content.split(/\s+/)[0] || 0), 0, 65535) : null);
-  const ttl = clamp(Number(body.ttl || suffix.ttl || 1), 1, 86400);
-  const proxied = ['A', 'AAAA', 'CNAME'].includes(type) && asBoolean(body.proxied, suffix.proxied ?? settings.dns.defaultProxied ?? false) ? 1 : 0;
-
-  const duplicate = await env.DB.prepare(`
-    SELECT id FROM dns_records
-    WHERE application_id=? AND name=? COLLATE NOCASE AND type=? AND (deleted_at IS NULL OR deleted_at='')
-    LIMIT 1
-  `).bind(applicationId, name, type).first<{ id: string }>();
-  if (duplicate) throw new HttpError(409, 'DNS_RECORD_EXISTS', '同一主机和类型的解析已存在，请编辑原记录');
-
-  const id = crypto.randomUUID();
-  let cfRecordId = '';
-  let status = 'active';
-  let errorMessage = '';
-
-  const token = resolveDnsToken(env, settings, suffix);
-  if (!token) throw new HttpError(503, 'DNS_TOKEN_MISSING', '尚未配置 Cloudflare DNS API Token；该根域名可在“管理员设置 → DNS 配置”单独填写 API Token');
-  try {
-    const record = await createDnsRecord(token, suffix.zoneId, dnsPayload({ type, name, content, ttl, proxied, priority }, `Created by storage portal dns record ${id}`));
-    cfRecordId = record.id || '';
-  } catch (error) {
-    errorMessage = error instanceof Error ? error.message.slice(0, 1000) : 'DNS 创建失败';
-    await sendAdminCloudflareEmailSafe(env, 'dns_anomaly', {
-      subject: `【DNS 异常】创建 ${name}`,
-      text: [
-        '用户创建 DNS 记录时发生异常。',
-        '',
-        `用户：${user.username}（${user.id}）`,
-        `所属域名：${app.fqdn_unicode}`,
-        `记录：${type} ${name} → ${content}`,
-        `Zone ID：${suffix.zoneId || '未配置'}`,
-        `错误：${errorMessage}`,
-        `时间：${new Date().toISOString()}`,
-        `客户端 IP：${clientIp(request) || '未知'}`,
-      ].join('\n'),
-      fingerprint: `dns-create|${applicationId}|${name}|${type}|${errorMessage}`,
-      cooldownSeconds: 900,
-    }, settings);
-    throw new HttpError(502, 'DNS_CREATE_FAILED', errorMessage);
-  }
-
-  await env.DB.prepare(`
-    INSERT INTO dns_records (id,application_id,user_id,host,name,type,content,priority,proxied,ttl,cf_record_id,status,error_message)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-  `).bind(id, applicationId, user.id, host, name, type, content, priority, proxied, ttl, cfRecordId, status, errorMessage).run();
-
-  await syncApplicationDnsSummary(env, applicationId);
-
-  await audit(env, request, user.id, 'dns_record.create', 'dns_record', id, { applicationId, name, type });
-  const row = await env.DB.prepare(`SELECT * FROM dns_records WHERE id=?`).bind(id).first<DnsRecordRow>();
-  return ok({ record: serializeDnsRecord(row!) });
-}
-
-async function updateOwnDnsRecordManaged(request: Request, env: Env, recordId: string): Promise<Response> {
-  const user = await requireUser(env, request);
-  const body = await readJson<Record<string, unknown>>(request);
-  const settings = await loadSettings(env);
-  const row = await env.DB.prepare(`
-    SELECT r.*,a.fqdn_ascii,a.suffix_ascii,a.status AS app_status,a.delete_requested_at,a.controlled_at
-    FROM dns_records r
-    JOIN domain_applications a ON a.id=r.application_id
-    WHERE r.id=? AND r.user_id=? AND (r.deleted_at IS NULL OR r.deleted_at='') AND (a.deleted_at IS NULL OR a.deleted_at='')
-  `).bind(recordId, user.id).first<any>();
-  if (!row) throw new HttpError(404, 'NOT_FOUND', '解析记录不存在');
-  if (row.controlled_at) throw new HttpError(403, 'DOMAIN_CONTROLLED', '该域名已被管理员管控，只允许删除 DNS 或申请删除域名');
-  if (row.delete_requested_at) throw new HttpError(409, 'DELETE_REQUESTED', '该域名正在等待删除审核，不能修改解析');
-
-  const suffix = settings.dns.suffixes.find(x => x.enabled && x.suffixAscii === row.suffix_ascii);
-  if (!suffix) throw new HttpError(409, 'SUFFIX_DISABLED', '该根域名已停用，暂时不能修改解析');
-  if (row.app_status === 'approved' && !settings.domain.allowDnsEditAfterApproved) throw new HttpError(403, 'DNS_EDIT_CLOSED', '管理员已关闭生效域名的 DNS 修改');
-
-  const host = normalizeDnsHost(body.host ?? row.host, settings.dns.blockWildcardRecords !== false);
-  const name = fullRecordName(host, row.fqdn_ascii);
-  const type = normalizeRecordType(body.type || body.recordType || row.type, suffix.allowedTypes);
-  const previousType = String(row.type || '').toUpperCase();
-  if (type !== previousType) assertUserDnsRecordTypeOpen(settings, type);
-  if (type === 'MX' && type !== previousType && settings.dns.allowMxRecords === false) throw new HttpError(403, 'MX_DISABLED', '管理员已禁止用户创建 MX 解析记录');
-  const content = normalizeDnsTarget(type, body.content || body.target || row.content, name);
-  if (type === 'CNAME') assertCnameTargetAllowed(content, settings.dns.cnameTargetBlacklist);
-  const priority = type === 'MX' ? clamp(Number(body.priority || row.priority || 10), 0, 65535) : (type === 'SRV' ? clamp(Number(content.split(/\s+/)[0] || row.priority || 0), 0, 65535) : null);
-  const ttl = clamp(Number(body.ttl || row.ttl || suffix.ttl || 1), 1, 86400);
-  const proxied = ['A', 'AAAA', 'CNAME'].includes(type) && asBoolean(body.proxied, Boolean(row.proxied)) ? 1 : 0;
-
-  const duplicate = await env.DB.prepare(`
-    SELECT id FROM dns_records
-    WHERE application_id=? AND id!=? AND name=? COLLATE NOCASE AND type=? AND (deleted_at IS NULL OR deleted_at='')
-    LIMIT 1
-  `).bind(row.application_id, recordId, name, type).first<{ id: string }>();
-  if (duplicate) throw new HttpError(409, 'DNS_RECORD_EXISTS', '同一主机和类型的解析已存在');
-
-  let cfRecordId = row.cf_record_id || '';
-  let status = row.status || 'pending';
-  let errorMessage = '';
-  if (row.app_status === 'approved') {
-    const token = resolveDnsToken(env, settings, suffix);
-    if (!token) throw new HttpError(503, 'DNS_TOKEN_MISSING', '尚未配置 Cloudflare DNS API Token；该根域名可在“管理员设置 → DNS 配置”单独填写 API Token');
-    try {
-      if (cfRecordId) {
-        const record = await updateDnsRecord(token, suffix.zoneId, cfRecordId, dnsPayload({ type, name, content, ttl, proxied, priority }, `Updated by storage portal dns record ${recordId}`));
-        cfRecordId = record.id || cfRecordId;
-      } else {
-        const record = await createDnsRecord(token, suffix.zoneId, dnsPayload({ type, name, content, ttl, proxied, priority }, `Created by storage portal dns record ${recordId}`));
-        cfRecordId = record.id || '';
-      }
-      status = 'active';
-    } catch (error) {
-      errorMessage = error instanceof Error ? error.message.slice(0, 1000) : 'DNS 更新失败';
-      await env.DB.prepare(`UPDATE dns_records SET error_message=?,status='error',updated_at=datetime('now') WHERE id=?`).bind(errorMessage, recordId).run();
-      await sendAdminCloudflareEmailSafe(env, 'dns_anomaly', {
-        subject: `【DNS 异常】更新 ${name}`,
-        text: [
-          '用户更新 DNS 记录时发生异常。',
-          '',
-          `用户：${user.username}（${user.id}）`,
-          `记录 ID：${recordId}`,
-          `记录：${type} ${name} → ${content}`,
-          `Zone ID：${suffix.zoneId || '未配置'}`,
-          `错误：${errorMessage}`,
-          `时间：${new Date().toISOString()}`,
-          `客户端 IP：${clientIp(request) || '未知'}`,
-        ].join('\n'),
-        fingerprint: `dns-update|${recordId}|${errorMessage}`,
-        cooldownSeconds: 900,
-      }, settings);
-      throw new HttpError(502, 'DNS_UPDATE_FAILED', errorMessage);
-    }
-  }
-
-  await env.DB.prepare(`
-    UPDATE dns_records
-    SET host=?,name=?,type=?,content=?,priority=?,proxied=?,ttl=?,cf_record_id=?,status=?,error_message=?,updated_at=datetime('now')
-    WHERE id=? AND user_id=?
-  `).bind(host, name, type, content, priority, proxied, ttl, cfRecordId, status, errorMessage, recordId, user.id).run();
-
-  await syncApplicationDnsSummary(env, row.application_id);
-  await audit(env, request, user.id, 'dns_record.update', 'dns_record', recordId, { name, type });
-  const updated = await env.DB.prepare(`SELECT * FROM dns_records WHERE id=?`).bind(recordId).first<DnsRecordRow>();
-  return ok({ record: serializeDnsRecord(updated!) });
-}
-
-async function deleteOwnDnsRecordManaged(request: Request, env: Env, recordId: string): Promise<Response> {
-  const user = await requireUser(env, request);
-  const settings = await loadSettings(env);
-  const row = await env.DB.prepare(`
-    SELECT r.*,a.suffix_ascii,a.status AS app_status,a.delete_requested_at
-    FROM dns_records r
-    JOIN domain_applications a ON a.id=r.application_id
-    WHERE r.id=? AND r.user_id=? AND (r.deleted_at IS NULL OR r.deleted_at='') AND (a.deleted_at IS NULL OR a.deleted_at='')
-  `).bind(recordId, user.id).first<any>();
-  if (!row) throw new HttpError(404, 'NOT_FOUND', '解析记录不存在');
-  if (row.delete_requested_at) throw new HttpError(409, 'DELETE_REQUESTED', '该域名正在等待删除审核，不能删除解析');
-
-  const suffix = settings.dns.suffixes.find(x => x.suffixAscii === row.suffix_ascii);
-  if (!suffix) throw new HttpError(409, 'SUFFIX_MISSING', '根域名配置不存在');
-  let warning = '';
-  if (row.app_status === 'approved' && row.cf_record_id) {
-    const token = resolveDnsToken(env, settings, suffix);
-    const result = await deleteDnsRecordBestEffort(token, suffix.zoneId, row.cf_record_id);
-    warning = result.warning || '';
-  }
-
-  await hardDeleteDnsRecordRow(env, recordId);
-  await syncApplicationDnsSummary(env, row.application_id);
-  await audit(env, request, user.id, 'dns_record.delete', 'dns_record', recordId, { warning });
-  if (warning) {
-    await sendAdminCloudflareEmailSafe(env, 'dns_anomaly', {
-      subject: `【DNS 清理警告】记录 ${recordId}`,
-      text: [
-        '用户删除 DNS 记录时，Cloudflare 远端清理出现警告。',
-        '',
-        `用户：${user.username}（${user.id}）`,
-        `记录 ID：${recordId}`,
-        `本地记录：已删除`,
-        `远端警告：${warning}`,
-        `时间：${new Date().toISOString()}`,
-        '',
-        '请到 Cloudflare DNS 控制台确认是否仍有残留记录。',
-      ].join('\n'),
-      fingerprint: `dns-delete-warning|${recordId}|${warning}`,
-      cooldownSeconds: 900,
-    }, settings);
-  }
-  return ok({ deleted: true, purged: true, warning });
-}
-
-async function adminDnsRecords(request: Request, env: Env, url: URL): Promise<Response> {
-  await requireAdmin(env, request);
-  const limit = clamp(Number(url.searchParams.get('limit') || 500), 1, 1000);
-  const rows = await env.DB.prepare(`
-    SELECT r.*,a.fqdn_unicode,a.fqdn_ascii,u.username
-    FROM dns_records r
-    JOIN domain_applications a ON a.id=r.application_id
-    LEFT JOIN users u ON u.id=r.user_id
-    WHERE (r.deleted_at IS NULL OR r.deleted_at='')
-    ORDER BY r.created_at DESC
-    LIMIT ?
-  `).bind(limit).all<DnsRecordRow>();
-  return ok({ records: (rows.results || []).map(serializeDnsRecord) });
-}
-
-async function syncPendingDnsRecordsForApp(env: Env, app: ApplicationRow, suffix: AppSettings['dns']['suffixes'][number], actorId: string): Promise<number> {
-  const rows = await env.DB.prepare(`
-    SELECT * FROM dns_records
-    WHERE application_id=? AND (deleted_at IS NULL OR deleted_at='') AND (cf_record_id IS NULL OR cf_record_id='')
-  `).bind(app.id).all<DnsRecordRow>();
-  const records = rows.results || [];
-  if (!records.length) return 0;
-  const settings = await loadSettings(env);
-  const token = resolveDnsToken(env, settings, suffix);
-  if (!token) throw new HttpError(503, 'DNS_TOKEN_MISSING', '尚未配置 Cloudflare DNS API Token；该根域名可在“管理员设置 → DNS 配置”单独填写 API Token');
-  let created = 0;
-  for (const record of records) {
-    try {
-      const cf = await createDnsRecord(token, suffix.zoneId, dnsPayload(record, `Created by storage portal dns record ${record.id}`));
-      await env.DB.prepare(`
-        UPDATE dns_records SET cf_record_id=?,status='active',error_message=NULL,updated_at=datetime('now') WHERE id=?
-      `).bind(cf.id || '', record.id).run();
-      created += 1;
-    } catch (error) {
-      const message = error instanceof Error ? error.message.slice(0, 1000) : 'DNS 创建失败';
-      await env.DB.prepare(`UPDATE dns_records SET status='error',error_message=?,updated_at=datetime('now') WHERE id=?`).bind(message, record.id).run();
-      await sendAdminCloudflareEmailSafe(env, 'dns_anomaly', {
-        subject: `【DNS 同步异常】${record.name || app.fqdn_ascii}`,
-        text: [
-          '管理员批准域名后，待写入 DNS 记录同步失败。',
-          '',
-          `域名：${app.fqdn_unicode}`,
-          `记录 ID：${record.id}`,
-          `记录：${record.type} ${record.name} → ${record.content}`,
-          `Zone ID：${suffix.zoneId || '未配置'}`,
-          `错误：${message}`,
-          `时间：${new Date().toISOString()}`,
-        ].join('\n'),
-        fingerprint: `dns-sync|${record.id}|${message}`,
-        cooldownSeconds: 900,
-      }, settings);
-    }
-  }
-  return created;
-}
-
-async function deleteAllDnsRecordsForApp(env: Env, app: ApplicationRow, suffix: AppSettings['dns']['suffixes'][number]): Promise<{ warnings: string[] }> {
-  const settings = await loadSettings(env);
-  const token = resolveDnsToken(env, settings, suffix);
-  const rows = await env.DB.prepare(`
-    SELECT * FROM dns_records WHERE application_id=? AND (deleted_at IS NULL OR deleted_at='')
-  `).bind(app.id).all<DnsRecordRow>();
-  const records = rows.results || [];
-  const namesToClean = new Set<string>();
-  const warnings: string[] = [];
-
-  if (app.fqdn_ascii) namesToClean.add(String(app.fqdn_ascii).toLowerCase());
-  for (const record of records) {
-    if (record.name) namesToClean.add(String(record.name).toLowerCase());
-    if (record.cf_record_id) {
-      const result = await deleteDnsRecordBestEffort(token, suffix.zoneId, record.cf_record_id);
-      if (result.warning) warnings.push(result.warning);
-    }
-    await hardDeleteDnsRecordRow(env, record.id);
-  }
-  if (app.dns_record_id) {
-    const result = await deleteDnsRecordBestEffort(token, suffix.zoneId, app.dns_record_id);
-    if (result.warning) warnings.push(result.warning);
-  }
-
-  if (token && suffix.zoneId) {
-    for (const name of namesToClean) {
-      try { await deleteDnsRecordsByName(token, suffix.zoneId, name); }
-      catch (error) { warnings.push(error instanceof Error ? error.message : 'Cloudflare 按名称清理失败'); }
-    }
-  } else if (namesToClean.size) {
-    warnings.push('未配置 Cloudflare Token 或 Zone ID，已仅清理本地记录');
-  }
-  const uniqueWarnings = Array.from(new Set(warnings)).slice(0, 10);
-  if (uniqueWarnings.length) {
-    await sendAdminCloudflareEmailSafe(env, 'dns_anomaly', {
-      subject: `【DNS 清理警告】${app.fqdn_ascii}`,
-      text: [
-        '系统清理域名关联 DNS 时出现警告。',
-        '',
-        `域名：${app.fqdn_unicode}`,
-        `Zone ID：${suffix.zoneId || '未配置'}`,
-        `警告：${uniqueWarnings.join('；')}`,
-        `时间：${new Date().toISOString()}`,
-        '',
-        '本地记录可能已经清理，请到 Cloudflare DNS 控制台核对远端是否有残留。',
-      ].join('\n'),
-      fingerprint: `dns-cleanup|${app.id}|${uniqueWarnings.join('|')}`,
-      cooldownSeconds: 900,
-    }, settings);
-  }
-  return { warnings: uniqueWarnings };
-}
-
-function serializeDnsRecord(row: DnsRecordRow): Record<string, unknown> {
-  return {
-    id: row.id,
-    applicationId: row.application_id,
-    userId: row.user_id,
-    host: row.host || '@',
-    name: row.name,
-    type: row.type,
-    content: row.content,
-    priority: row.priority ?? null,
-    proxied: Boolean(row.proxied),
-    ttl: Number(row.ttl || 1),
-    cfRecordId: row.cf_record_id || '',
-    status: row.status || 'pending',
-    statusText: ({ pending: '待写入', active: '已生效', error: '失败', deleted: '已删除' } as Record<string,string>)[row.status] || row.status,
-    errorMessage: row.error_message || '',
-    createdAt: row.created_at,
-    updatedAt: row.updated_at || null,
-    fqdnUnicode: row.fqdn_unicode || null,
-    fqdnAscii: row.fqdn_ascii || null,
-    username: row.username || null,
-  };
-}
-
-async function renewOwnApplication(request: Request, env: Env, id: string): Promise<Response> {
-  const user = await requireUser(env, request);
-  const settings = await loadSettings(env);
-  const app = await env.DB.prepare(`
-    SELECT * FROM domain_applications WHERE id=? AND user_id=? AND status='approved'
-  `).bind(id, user.id).first<ApplicationRow>();
-  if (!app) throw new HttpError(404, 'NOT_FOUND', '只有正常域名可以续期');
-  if (settings.domain.selfRenewEnabled === false) throw new HttpError(403, 'RENEW_DISABLED', '管理员未开放用户自助续期');
-
-  const expiresAt = parseDate(app.expires_at);
-  if (!expiresAt) throw new HttpError(400, 'NO_EXPIRY', '未设置到期时间，不能续期');
-
-  const remaining = expiresAt.getTime() - Date.now();
-  if (remaining > settings.domain.renewWindowDays * DAY) {
-    throw new HttpError(403, 'TOO_EARLY', `到期前 ${settings.domain.renewWindowDays} 天内才可以续期`);
-  }
-
-  const base = Math.max(Date.now(), expiresAt.getTime());
-  const newExpires = new Date(base + settings.domain.validDays * DAY).toISOString();
-
-  await env.DB.prepare(`
-    UPDATE domain_applications
-    SET expires_at=?, renewed_at=datetime('now'), renew_count=COALESCE(renew_count,0)+1
-    WHERE id=? AND user_id=?
-  `).bind(newExpires, id, user.id).run();
-
-  await audit(env, request, user.id, 'application.renew', 'domain_application', id, { newExpires });
-  const updated = await env.DB.prepare(`SELECT * FROM domain_applications WHERE id=?`).bind(id).first<ApplicationRow>();
-  return ok({ application: serializeApplication(updated!, settings) });
-}
-
-async function requestDeleteOwnApplication(request: Request, env: Env, id: string): Promise<Response> {
-  const user = await requireUser(env, request);
-  const body = await readJson<Record<string, unknown>>(request);
-  const settings = await loadSettings(env);
-  const app = await env.DB.prepare(`
-    SELECT * FROM domain_applications
-    WHERE id=? AND user_id=? AND status='approved' AND (deleted_at IS NULL OR deleted_at='')
-  `).bind(id, user.id).first<ApplicationRow>();
-
-  if (!app) throw new HttpError(404, 'NOT_FOUND', '只有正常域名可以申请删除');
-  if (settings.domain.allowUserDeleteActive === false && user.role !== 'admin') throw new HttpError(403, 'DELETE_ACTIVE_DISABLED', '管理员未开放用户删除已生效域名');
-  const confirmDomain = String(body.confirmDomain || '').trim();
-  if (confirmDomain !== app.fqdn_unicode && confirmDomain !== app.fqdn_ascii) {
-    throw new HttpError(400, 'CONFIRM_DOMAIN_MISMATCH', '请输入完整域名确认删除');
-  }
-
-  const directDelete = body.directDelete === true || String(body.directDelete || '').toLowerCase() === 'true';
-  if (directDelete) {
-    if (user.role !== 'admin') throw new HttpError(403, 'ADMIN_ONLY_DIRECT_DELETE', '只有管理员可以直接删除域名');
-    const suffix = settings.dns.suffixes.find(x => x.suffixAscii === app.suffix_ascii);
-    if (!suffix) throw new HttpError(409, 'SUFFIX_MISSING', '该后缀配置不存在，无法安全清理 Cloudflare DNS');
-    const deleteResult = await deleteAllDnsRecordsForApp(env, app, suffix);
-    await hardDeleteDomainApplication(env, id);
-    await audit(env, request, user.id, 'admin.application_direct_delete', 'domain_application', id, {
-      fqdn: app.fqdn_ascii,
-      warnings: deleteResult.warnings,
-    });
-    return ok({ deleted: true, purged: true, directDelete: true, warnings: deleteResult.warnings });
-  }
-
-  if (app.delete_requested_at) throw new HttpError(409, 'DELETE_ALREADY_REQUESTED', '该域名已提交删除申请，等待管理员审核');
-
-  await env.DB.prepare(`
-    UPDATE domain_applications
-    SET delete_requested_at=datetime('now'), delete_requested_by=?, updated_at=datetime('now')
-    WHERE id=? AND user_id=?
-  `).bind(user.id, id, user.id).run();
-
-  await audit(env, request, user.id, 'application.delete_request', 'domain_application', id);
-  await sendAdminCloudflareEmailSafe(env, 'domain_review', {
-    subject: `【域名删除待审核】${app.fqdn_unicode}`,
-    text: [
-      '用户提交了已生效域名的删除申请。',
-      '',
-      `申请用户：${user.username}`,
-      `用户 ID：${user.id}`,
-      `域名：${app.fqdn_unicode}`,
-      `ASCII 域名：${app.fqdn_ascii}`,
-      `提交时间：${new Date().toISOString()}`,
-      `客户端 IP：${clientIp(request) || '未知'}`,
-      '',
-      '请先确认该域名的 DNS 记录和业务使用情况，再批准或拒绝删除。',
-      `审核入口：${new URL(request.url).origin}/#/admin/applications`,
-    ].join('\n'),
-    fingerprint: `domain-delete-review|${id}|${Date.now()}`,
-    cooldownSeconds: 60,
-  }, settings);
-  const updated = await env.DB.prepare(`SELECT * FROM domain_applications WHERE id=?`).bind(id).first<ApplicationRow>();
-  return ok({ application: serializeApplication(updated!, await loadSettings(env)) });
-}
-
-async function cancelDeleteOwnApplication(request: Request, env: Env, id: string): Promise<Response> {
-  const user = await requireUser(env, request);
-  const app = await env.DB.prepare(`
-    SELECT * FROM domain_applications
-    WHERE id=? AND user_id=? AND status='approved' AND (deleted_at IS NULL OR deleted_at='')
-  `).bind(id, user.id).first<ApplicationRow>();
-
-  if (!app || !app.delete_requested_at) {
-    throw new HttpError(404, 'NO_DELETE_REQUEST', '该域名没有可撤销的删除申请');
-  }
-  const requestedAt = parseDate(app.delete_requested_at);
-  if (!requestedAt || Date.now() - requestedAt.getTime() > 12 * 60 * 60 * 1000) {
-    throw new HttpError(403, 'DELETE_CANCEL_EXPIRED', '删除申请只能在提交后 12 小时内撤销');
-  }
-
-  await env.DB.prepare(`
-    UPDATE domain_applications
-    SET delete_requested_at=NULL, delete_requested_by=NULL, updated_at=datetime('now')
-    WHERE id=? AND user_id=?
-  `).bind(id, user.id).run();
-
-  await audit(env, request, user.id, 'application.delete_request_cancel', 'domain_application', id);
-  const updated = await env.DB.prepare(`SELECT * FROM domain_applications WHERE id=?`).bind(id).first<ApplicationRow>();
-  return ok({ application: serializeApplication(updated!, await loadSettings(env)) });
-}
-
-async function deleteOwnApplication(request: Request, env: Env, id: string): Promise<Response> {
-  const user = await requireUser(env, request);
-  const settings = await loadSettings(env);
-  if (!settings.domain.allowUserDeleteInvalid) throw new HttpError(403, 'DELETE_DISABLED', '管理员未开放用户删除无效域名');
-
-  const app = await env.DB.prepare(`
-    SELECT * FROM domain_applications WHERE id=? AND user_id=? AND (deleted_at IS NULL OR deleted_at='')
-  `).bind(id, user.id).first<ApplicationRow>();
-  if (!app) throw new HttpError(404, 'NOT_FOUND', '域名不存在');
-
-  if (!['rejected', 'revoked'].includes(app.status)) {
-    throw new HttpError(403, 'DELETE_ACTIVE_FORBIDDEN', '只能删除已拒绝或已撤销的无效域名');
-  }
-
-  await hardDeleteDomainApplication(env, id);
-  return ok({ deleted: true, purged: true });
-}
-
-
-function messageTargetLabel(row: MessageRow): string {
-  if (row.target_type === 'all') return '全部用户';
-  if (row.target_type === 'role') return row.target_role === 'admin' ? '管理员' : '普通用户';
-  if (row.target_type === 'user') return row.target_username || row.target_user_id || '指定用户';
-  return row.target_type || '未知目标';
-}
-
-function serializeMessage(row: MessageRow) {
-  return {
-    id: row.id,
-    senderUserId: row.sender_user_id || null,
-    senderUsername: row.sender_username || '系统管理员',
-    targetType: row.target_type,
-    targetUserId: row.target_user_id || null,
-    targetUsername: row.target_username || null,
-    targetRole: row.target_role || null,
-    targetLabel: messageTargetLabel(row),
-    title: row.title,
-    body: row.body,
-    level: row.level || 'info',
-    status: row.status || 'sent',
-    createdAt: row.created_at,
-    updatedAt: row.updated_at || null,
-    sentAt: row.sent_at || null,
-    readAt: row.read_at || null,
-    isRead: Boolean(row.read_at),
-  };
-}
-
-function normalizeMessageLevel(value: unknown): string {
-  const level = String(value || 'info').toLowerCase();
-  return ['info', 'success', 'warning', 'danger', 'important', 'system', 'feedback', 'support_reply'].includes(level) ? level : 'info';
-}
-
-function normalizeMessageStatus(value: unknown): string {
-  const status = String(value || 'sent').toLowerCase();
-  return ['sent', 'draft', 'template'].includes(status) ? status : 'sent';
-}
-
-function normalizeTargetType(value: unknown): string {
-  const type = String(value || '').toLowerCase();
-  return ['all', 'user', 'role', 'none'].includes(type) ? type : 'none';
-}
-
-async function sendSystemMessageToUser(env: Env, senderUserId: string | null, targetUserId: string, title: string, body: string, level: string = 'info'): Promise<string> {
-  const id = crypto.randomUUID();
-  await env.DB.prepare(`
-    INSERT INTO system_messages (id, sender_user_id, target_type, target_user_id, target_role, title, body, level, status, sent_at)
-    VALUES (?, ?, 'user', ?, NULL, ?, ?, ?, 'sent', datetime('now'))
-  `).bind(id, senderUserId, targetUserId, cleanText(title, 120) || '系统消息', cleanText(body, 5000) || '您有一条新的系统消息。', normalizeMessageLevel(level)).run();
-  return id;
-}
-
-function domainMessageBody(app: ApplicationRow, actionText: string, note: string): string {
-  const lines = [`域名：${app.fqdn_unicode || app.fqdn_ascii}`, `处理结果：${actionText}`];
-  if (note) lines.push(`管理员留言：${note}`);
-  lines.push('请进入消息中心查看通知；域名管理页面不再单独显示管理员留言。');
-  return lines.join('\n');
-}
-
-async function sendDomainStatusMessage(env: Env, adminId: string, app: ApplicationRow, actionText: string, note: string, level: string = 'info'): Promise<void> {
-  await sendSystemMessageToUser(env, adminId, app.user_id, `域名处理通知：${app.fqdn_unicode || app.fqdn_ascii}`, domainMessageBody(app, actionText, note), level);
-}
-
-async function getReadReceipts(env: Env, messageIds: string[]): Promise<Record<string, Array<{ userId: string; username: string; readAt: string }>>> {
-  const result: Record<string, Array<{ userId: string; username: string; readAt: string }>> = {};
-  const ids = Array.from(new Set(messageIds.filter(Boolean))).slice(0, 500);
-  if (!ids.length) return result;
-  const placeholders = ids.map(() => '?').join(',');
-  const rows = await env.DB.prepare(`
-    SELECT r.message_id, r.user_id, COALESCE(u.username, r.user_id) AS username, r.read_at
-    FROM message_reads r
-    LEFT JOIN users u ON u.id=r.user_id
-    WHERE r.message_id IN (${placeholders})
-    ORDER BY datetime(r.read_at) DESC
-  `).bind(...ids).all<{ message_id: string; user_id: string; username: string; read_at: string }>();
-  for (const row of rows.results || []) {
-    if (!result[row.message_id]) result[row.message_id] = [];
-    result[row.message_id].push({ userId: row.user_id, username: row.username, readAt: row.read_at });
-  }
-  return result;
-}
-
-
-interface OperationLogRow {
-  id: string;
-  actor_user_id?: string | null;
-  actor_username?: string | null;
-  action: string;
-  target_type?: string | null;
-  target_id?: string | null;
-  ip?: string | null;
-  meta_json?: string | null;
-  created_at: string;
-}
-
-async function listOperationLogs(request: Request, env: Env): Promise<Response> {
-  const user = await requireUser(env, request);
-  const settings = await loadSettings(env);
-  const retentionDays = Math.max(1, Math.min(365, Number(settings.security?.auditRetentionDays || 7)));
-  await cleanupOperationLogs(env);
-
-  const isAdmin = user.role === 'admin';
-  const sql = isAdmin ? `
-    SELECT l.*, u.username AS actor_username
-    FROM audit_logs l
-    LEFT JOIN users u ON u.id=l.actor_user_id
-    WHERE datetime(l.created_at) >= datetime('now','-' || ? || ' days')
-      AND (u.status IS NULL OR u.status!='deleted')
-    ORDER BY datetime(l.created_at) DESC
-    LIMIT 1000
-  ` : `
-    SELECT l.*, u.username AS actor_username
-    FROM audit_logs l
-    LEFT JOIN users u ON u.id=l.actor_user_id
-    WHERE l.actor_user_id=?
-      AND datetime(l.created_at) >= datetime('now','-' || ? || ' days')
-      AND (u.status IS NULL OR u.status!='deleted')
-    ORDER BY datetime(l.created_at) DESC
-    LIMIT 500
-  `;
-
-  const rows = isAdmin
-    ? await env.DB.prepare(sql).bind(retentionDays).all<OperationLogRow>()
-    : await env.DB.prepare(sql).bind(user.id, retentionDays).all<OperationLogRow>();
-
-  return ok({ logs: (rows.results || []).map(serializeOperationLog), retentionDays, scope: isAdmin ? 'admin' : 'self' });
-}
-
-async function deleteOperationLogsBatch(request: Request, env: Env): Promise<Response> {
-  const user = await requireUser(env, request);
-  const body = await readJson<Record<string, unknown>>(request, 128 * 1024);
-  const deleteAll = body.all === true;
-  const ids = Array.from(new Set((Array.isArray(body.ids) ? body.ids : [])
-    .map(value => cleanText(value, 80))
-    .filter(Boolean)))
-    .slice(0, 1000);
-  if (!deleteAll && !ids.length) throw new HttpError(400, 'AUDIT_LOG_SELECTION_REQUIRED', '请选择要删除的操作日志');
-
-  let deleted = 0;
-  if (deleteAll) {
-    const result = user.role === 'admin'
-      ? await env.DB.prepare(`DELETE FROM audit_logs`).run()
-      : await env.DB.prepare(`DELETE FROM audit_logs WHERE actor_user_id=?`).bind(user.id).run();
-    deleted = Number(result.meta?.changes || 0);
-  } else {
-    const placeholders = ids.map(() => '?').join(',');
-    const result = user.role === 'admin'
-      ? await env.DB.prepare(`DELETE FROM audit_logs WHERE id IN (${placeholders})`).bind(...ids).run()
-      : await env.DB.prepare(`DELETE FROM audit_logs WHERE actor_user_id=? AND id IN (${placeholders})`).bind(user.id, ...ids).run();
-    deleted = Number(result.meta?.changes || 0);
-  }
-
-  console.info('operation logs deleted', { actorUserId: user.id, role: user.role, deleteAll, requested: ids.length, deleted });
-  return ok({ deleted, all: deleteAll });
-}
-
-function serializeOperationLog(row: OperationLogRow) {
-  let meta: Record<string, unknown> = {};
-  try { meta = row.meta_json ? JSON.parse(row.meta_json) : {}; } catch { meta = {}; }
-  const actionText = operationActionText(row.action);
-  return {
-    id: row.id,
-    actorUserId: row.actor_user_id || null,
-    actorUsername: row.actor_username || (row.actor_user_id ? '未知用户' : '系统'),
-    action: row.action,
-    actionText,
-    description: operationDescription(row.action, row.target_type || '', row.target_id || '', meta),
-    targetType: row.target_type || null,
-    targetId: row.target_id || null,
-    ip: row.ip || null,
-    meta,
-    createdAt: row.created_at,
-  };
-}
-
-function operationActionText(action: string): string {
-  const map: Record<string, string> = {
-    'setup.bootstrap_admin': '初始化管理员',
-    'auth.register': '注册账号',
-    'auth.login': '登录账户',
-    'auth.logout': '退出登录',
-    'auth.login_failed': '登录失败',
-    'auth.password_changed': '修改密码',
-    'account.delete_self': '注销账号',
-    'application.create': '申请域名',
-    'application.dns_update': '更新主解析',
-    'dns_record.create': '添加 DNS 解析',
-    'dns_record.update': '修改 DNS 解析',
-    'dns_record.delete': '删除 DNS 解析',
-    'application.renew': '域名续期',
-    'application.delete_request': '申请删除域名',
-    'application.delete_request_cancel': '撤销删除申请',
-    'application.delete_invalid': '删除无效域名',
-    'application.reject': '拒绝域名申请',
-    'application.approve': '批准域名申请',
-    'application.disable': '禁用域名',
-    'application.enable': '取消禁用域名',
-    'application.control': '管控域名',
-    'application.uncontrol': '取消管控域名',
-    'application.revoke': '撤销域名',
-    'admin.application_delete': '管理员删除域名',
-    'admin.application_delete_approve': '批准删除域名',
-    'admin.application_delete_reject': '拒绝删除域名',
-    'admin.user_create': '管理员创建用户',
-    'admin.user_update': '管理员编辑用户',
-    'admin.settings_site': '修改界面设置',
-    'admin.settings_registration': '修改注册设置',
-    'admin.settings_domain': '修改域名规则',
-    'admin.message_sent': '发送消息',
-    'admin.message_draft': '保存消息草稿',
-    'admin.message_template': '保存消息模板',
-    'admin.message_update': '编辑消息',
-    'admin.message_send': '发送草稿消息',
-    'admin.message_delete': '删除消息',
-    'message.contact_admin': '联系管理员',
-    'message.reply': '回复消息',
-  };
-  return map[action] || action;
-}
-
-function operationDescription(action: string, targetType: string, targetId: string, meta: Record<string, unknown>): string {
-  const fqdn = String(meta.fqdnAscii || meta.fqdn || meta.name || '').trim();
-  const type = String(meta.type || meta.recordType || '').trim();
-  const content = String(meta.content || meta.recordContent || '').trim();
-  if (action === 'application.create' && fqdn) return `提交域名申请：${fqdn}`;
-  if (action === 'application.approve') return `管理员批准域名申请${targetId ? `（ID：${targetId}）` : ''}`;
-  if (action === 'application.reject') return `管理员拒绝域名申请${targetId ? `（ID：${targetId}）` : ''}`;
-  if (action === 'application.enable') return `管理员取消禁用域名${targetId ? `（ID：${targetId}）` : ''}`;
-  if (action === 'application.disable') return `管理员禁用域名并移除解析${targetId ? `（ID：${targetId}）` : ''}`;
-  if (action === 'application.revoke') return `管理员撤销域名并移除解析${targetId ? `（ID：${targetId}）` : ''}`;
-  if (action === 'dns_record.create') return `添加 DNS 解析${fqdn ? `：${fqdn}` : ''}${type ? `（${type}${content ? ` → ${content}` : ''}）` : ''}`;
-  if (action === 'dns_record.update') return `修改 DNS 解析${fqdn ? `：${fqdn}` : ''}${type ? `（${type}${content ? ` → ${content}` : ''}）` : ''}`;
-  if (action === 'dns_record.delete') return `删除 DNS 解析${targetId ? `（ID：${targetId}）` : ''}`;
-  if (action === 'application.delete_request') return `用户提交域名删除申请${targetId ? `（ID：${targetId}）` : ''}`;
-  if (action === 'application.delete_request_cancel') return `用户撤销 12 小时内的域名删除申请${targetId ? `（ID：${targetId}）` : ''}`;
-  if (action === 'application.renew') return `用户提交域名续期${meta.newExpires ? `，新到期时间：${String(meta.newExpires)}` : ''}`;
-  if (action === 'auth.login') return '用户成功登录系统';
-  if (action === 'auth.logout') return '用户退出登录';
-  if (action === 'auth.login_failed') return `登录失败${meta.identity ? `：${String(meta.identity)}` : ''}`;
-  if (action === 'admin.user_create') return `管理员创建用户${meta.username ? `：${String(meta.username)}` : ''}`;
-  if (action === 'admin.user_update') return `管理员更新用户资料、状态或额度${targetId ? `（ID：${targetId}）` : ''}`;
-  if (action.startsWith('admin.message_')) return '管理员处理消息中心内容';
-  if (action.startsWith('admin.settings_')) return '管理员修改系统设置';
-  return `${operationActionText(action)}${targetType ? `（${targetType}${targetId ? `：${targetId}` : ''}）` : ''}`;
-}
-
-
-async function contactAdminMessage(request: Request, env: Env): Promise<Response> {
-  const user = await getAuthUser(env, request);
-  if (!user) throw new HttpError(401, 'UNAUTHORIZED', '请先登录');
-  const body = await readJson<Record<string, unknown>>(request, 128 * 1024);
-  const title = cleanText(body.title, 120);
-  const text = cleanText(body.body ?? body.content, 5000);
-  if (!title) throw new HttpError(400, 'TITLE_REQUIRED', '请填写消息标题');
-  if (!text) throw new HttpError(400, 'BODY_REQUIRED', '请填写消息内容');
-  const id = crypto.randomUUID();
-  await env.DB.prepare(`
-    INSERT INTO system_messages (id, sender_user_id, target_type, target_user_id, target_role, title, body, level, status, sent_at)
-    VALUES (?, ?, 'role', NULL, 'admin', ?, ?, 'feedback', 'sent', datetime('now'))
-  `).bind(id, user.id, title, text).run();
-  await audit(env, request, user.id, 'message.contact_admin', 'message', id, { title });
-  await sendAdminCloudflareEmailSafe(env, 'help_submission', {
-    subject: `【用户帮助】${title}`,
-    text: [
-      '用户通过系统帮助入口提交了信息。',
-      '',
-      `用户名：${user.username}`,
-      `用户 ID：${user.id}`,
-      `邮箱：${user.email || '未填写'}`,
-      `手机号：${user.phone || '未填写'}`,
-      `提交时间：${new Date().toISOString()}`,
-      `客户端 IP：${clientIp(request) || '未知'}`,
-      '',
-      `主题：${title}`,
-      '',
-      text,
-      '',
-      `后台查看：${new URL(request.url).origin}/#/messages`,
-    ].join('\n'),
-    fingerprint: `help|${id}`,
-    cooldownSeconds: 60,
-  });
-  const row = await env.DB.prepare(`SELECT m.*, sender.username AS sender_username FROM system_messages m LEFT JOIN users sender ON sender.id=m.sender_user_id WHERE m.id=?`).bind(id).first<MessageRow>();
-  return ok({ sent: true, movedToMessageCenter: true, message: serializeMessage(row!) });
-}
-
-
-const SUPPORT_TICKET_CATEGORIES = new Set(['general','technical','application']);
-const SUPPORT_TICKET_PRIORITIES = new Set(['low','normal','high','urgent']);
-const SUPPORT_TICKET_STATUSES = new Set(['open','in_progress','waiting_user','resolved','closed']);
-function normalizeSupportCategory(value: unknown): string {
-  const v = cleanText(value, 30).toLowerCase();
-  if (!SUPPORT_TICKET_CATEGORIES.has(v)) throw new HttpError(400, 'INVALID_TICKET_CATEGORY', '请选择有效的问题板块');
-  return v;
-}
-function normalizeSupportPriority(value: unknown): string {
-  const v = cleanText(value, 30).toLowerCase();
-  if (!SUPPORT_TICKET_PRIORITIES.has(v)) throw new HttpError(400, 'INVALID_TICKET_PRIORITY', '请选择有效的优先级');
-  return v;
-}
-function normalizeSupportStatus(value: unknown): string {
-  const v = cleanText(value, 30).toLowerCase();
-  if (!SUPPORT_TICKET_STATUSES.has(v)) throw new HttpError(400, 'INVALID_TICKET_STATUS', '请选择有效的工单状态');
-  return v;
-}
-function supportTicketCategoryLabel(value: string): string {
-  return ({general:'综合板块', technical:'技术板块', application:'申请板块'} as Record<string,string>)[value] || value;
-}
-function supportTicketPriorityLabel(value: string): string {
-  return ({low:'低', normal:'普通', high:'高', urgent:'紧急'} as Record<string,string>)[value] || value;
-}
-function parseSupportClientContext(raw: string | null | undefined): Record<string, unknown> | null {
-  if (!raw) return null;
-  try { const parsed = JSON.parse(raw); return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null; } catch { return null; }
-}
-function serializeSupportTicket(row: SupportTicketRow): Record<string, unknown> {
-  return {
-    id: row.id,
-    userId: row.user_id,
-    username: row.username || null,
-    category: row.category,
-    priority: row.priority,
-    title: row.title,
-    description: row.description,
-    status: row.status,
-    clientContext: parseSupportClientContext(row.client_context_json),
-    createdAt: row.created_at,
-    updatedAt: row.updated_at || row.created_at,
-    lastReplyAt: row.last_reply_at || null,
-    closedAt: row.closed_at || null,
-  };
-}
-function serializeSupportReply(row: SupportTicketReplyRow): Record<string, unknown> {
-  return { id:row.id, ticketId:row.ticket_id, userId:row.user_id, username:row.username || null, isAdmin:Boolean(row.is_admin), body:row.body, createdAt:row.created_at };
-}
-async function getSupportTicketRow(env: Env, id: string): Promise<SupportTicketRow | null> {
-  return env.DB.prepare(`SELECT t.*, u.username FROM support_tickets t LEFT JOIN users u ON u.id=t.user_id WHERE t.id=? LIMIT 1`).bind(id).first<SupportTicketRow>();
-}
-async function requireSupportUser(env: Env, request: Request): Promise<UserRow> {
-  const user = await getAuthUser(env, request);
-  if (!user) throw new HttpError(401, 'UNAUTHORIZED', '请先登录');
-  // 支持中心对“已禁用但仍有有效会话”的用户开放，方便联系管理员；deleted 用户不会被 getAuthUser 返回。
-  return user;
-}
-async function assertSupportTicketAccess(env: Env, request: Request, id: string): Promise<{ user: UserRow; ticket: SupportTicketRow }> {
-  const user = await requireSupportUser(env, request);
-  const ticket = await getSupportTicketRow(env, id);
-  if (!ticket) throw new HttpError(404, 'TICKET_NOT_FOUND', '工单不存在');
-  if (user.role !== 'admin' && ticket.user_id !== user.id) throw new HttpError(403, 'TICKET_FORBIDDEN', '无权访问该工单');
-  return { user, ticket };
-}
-async function listSupportTickets(request: Request, env: Env, url: URL): Promise<Response> {
-  const user = await requireSupportUser(env, request);
-  const status = cleanText(url.searchParams.get('status'), 30).toLowerCase();
-  const category = cleanText(url.searchParams.get('category'), 30).toLowerCase();
-  const priority = cleanText(url.searchParams.get('priority'), 30).toLowerCase();
-  const q = cleanText(url.searchParams.get('q'), 120).toLowerCase();
-  const rows = await (user.role === 'admin'
-    ? env.DB.prepare(`SELECT t.*, u.username FROM support_tickets t LEFT JOIN users u ON u.id=t.user_id ORDER BY datetime(COALESCE(t.updated_at,t.created_at)) DESC LIMIT 1000`).all<SupportTicketRow>()
-    : env.DB.prepare(`SELECT t.*, u.username FROM support_tickets t LEFT JOIN users u ON u.id=t.user_id WHERE t.user_id=? ORDER BY datetime(COALESCE(t.updated_at,t.created_at)) DESC LIMIT 500`).bind(user.id).all<SupportTicketRow>());
-  let tickets = (rows.results || []).filter(t => (!status || t.status === status) && (!category || t.category === category) && (!priority || t.priority === priority));
-  if (q) tickets = tickets.filter(t => `${t.id} ${t.title} ${t.username || ''}`.toLowerCase().includes(q));
-  return ok({ tickets: tickets.map(serializeSupportTicket), scope:user.role === 'admin' ? 'all' : 'own' });
-}
-async function createSupportTicket(request: Request, env: Env): Promise<Response> {
-  const user = await requireSupportUser(env, request);
-  await rateLimit(env, request, `support-ticket:${user.id}`, 10, 3600);
-  const body = await readJson<Record<string, unknown>>(request, 64 * 1024);
-  const category = normalizeSupportCategory(body.category || 'general');
-  const priority = normalizeSupportPriority(body.priority || 'normal');
-  const title = cleanText(body.title, 120);
-  const description = cleanText(body.description, 5000);
-  if (title.length < 4) throw new HttpError(400, 'TICKET_TITLE_TOO_SHORT', '工单标题至少填写 4 个字符');
-  if (description.length < 10) throw new HttpError(400, 'TICKET_DESCRIPTION_TOO_SHORT', '问题描述至少填写 10 个字符');
-  let contextJson: string | null = null;
-  if (body.clientContext && typeof body.clientContext === 'object' && !Array.isArray(body.clientContext)) {
-    const c = body.clientContext as Record<string, unknown>;
-    contextJson = JSON.stringify({ page:cleanText(c.page,120), userAgent:cleanText(c.userAgent,500), language:cleanText(c.language,40), screen:cleanText(c.screen,40), viewport:cleanText(c.viewport,40), generatedAt:cleanText(c.generatedAt,80) });
-  }
-  const id = crypto.randomUUID();
-  await env.DB.prepare(`INSERT INTO support_tickets (id,user_id,category,priority,title,description,status,client_context_json) VALUES (?,?,?,?,?,?,'open',?)`).bind(id,user.id,category,priority,title,description,contextJson).run();
-  await audit(env, request, user.id, 'support.ticket_create', 'support_ticket', id, {category,priority,title});
-  await sendAdminCloudflareEmailSafe(env, 'help_submission', {
-    subject:`【新工单 / ${supportTicketPriorityLabel(priority)}】${title}`,
-    text:[`工单编号：${id}`,`用户：${user.username} (${user.id})`,`板块：${supportTicketCategoryLabel(category)}`,`优先级：${supportTicketPriorityLabel(priority)}`,`提交时间：${new Date().toISOString()}`,'',description,'',`后台查看：${new URL(request.url).origin}/#/support/ticket/${id}`].join('\n'),
-    fingerprint:`ticket-create|${id}`, cooldownSeconds:30,
-  });
-  const row = await getSupportTicketRow(env,id);
-  return ok({ ticket:serializeSupportTicket(row!) });
-}
-async function getSupportTicket(request: Request, env: Env, id: string): Promise<Response> {
-  const { ticket } = await assertSupportTicketAccess(env, request, id);
-  const replies = await env.DB.prepare(`SELECT r.*, u.username FROM support_ticket_replies r LEFT JOIN users u ON u.id=r.user_id WHERE r.ticket_id=? ORDER BY datetime(r.created_at) ASC`).bind(id).all<SupportTicketReplyRow>();
-  return ok({ ticket:serializeSupportTicket(ticket), replies:(replies.results || []).map(serializeSupportReply) });
-}
-async function updateSupportTicket(request: Request, env: Env, id: string): Promise<Response> {
-  const { user, ticket } = await assertSupportTicketAccess(env, request, id);
-  const body = await readJson<Record<string, unknown>>(request, 32 * 1024);
-  if (ticket.status === 'closed' && user.role !== 'admin') throw new HttpError(409,'TICKET_CLOSED','已关闭工单不能再修改');
-  const category = body.category !== undefined ? normalizeSupportCategory(body.category) : ticket.category;
-  const priority = body.priority !== undefined ? normalizeSupportPriority(body.priority) : ticket.priority;
-  let status = ticket.status;
-  if (body.status !== undefined) {
-    if (user.role !== 'admin') throw new HttpError(403,'ADMIN_REQUIRED','只有管理员可以修改工单处理状态');
-    status = normalizeSupportStatus(body.status);
-  }
-  const closedAt = status === 'closed' ? new Date().toISOString() : null;
-  await env.DB.prepare(`UPDATE support_tickets SET category=?, priority=?, status=?, updated_at=datetime('now'), closed_at=? WHERE id=?`).bind(category,priority,status,closedAt,id).run();
-  await audit(env, request, user.id, 'support.ticket_update', 'support_ticket', id, {category,priority,status});
-  const row = await getSupportTicketRow(env,id);
-  return ok({ ticket:serializeSupportTicket(row!) });
-}
-async function replySupportTicket(request: Request, env: Env, id: string): Promise<Response> {
-  const { user, ticket } = await assertSupportTicketAccess(env, request, id);
-  if (ticket.status === 'closed') throw new HttpError(409,'TICKET_CLOSED','工单已关闭，不能继续回复');
-  await rateLimit(env, request, `support-reply:${user.id}`, 40, 3600);
-  const body = await readJson<Record<string, unknown>>(request, 32 * 1024);
-  const text = cleanText(body.body, 5000);
-  if (text.length < 2) throw new HttpError(400,'TICKET_REPLY_REQUIRED','请填写回复内容');
-  const replyId = crypto.randomUUID();
-  const isAdmin = user.role === 'admin' ? 1 : 0;
-  await env.DB.prepare(`INSERT INTO support_ticket_replies (id,ticket_id,user_id,is_admin,body) VALUES (?,?,?,?,?)`).bind(replyId,id,user.id,isAdmin,text).run();
-  const nextStatus = isAdmin ? 'waiting_user' : (ticket.status === 'resolved' || ticket.status === 'waiting_user' ? 'open' : ticket.status);
-  await env.DB.prepare(`UPDATE support_tickets SET status=?, last_reply_at=datetime('now'), updated_at=datetime('now') WHERE id=?`).bind(nextStatus,id).run();
-  await audit(env, request, user.id, 'support.ticket_reply', 'support_ticket', id, {isAdmin:Boolean(isAdmin)});
-  if (isAdmin) {
-    await env.DB.prepare(`INSERT INTO system_messages (id,sender_user_id,target_type,target_user_id,title,body,level,status,sent_at) VALUES (?,?, 'user', ?, ?, ?, 'support_reply', 'sent', datetime('now'))`).bind(crypto.randomUUID(),user.id,ticket.user_id,`工单 ${id.replace(/-/g,'').slice(0,8).toUpperCase()} 有新回复`,text).run();
-  } else {
-    await sendAdminCloudflareEmailSafe(env,'help_submission',{subject:`【工单回复】${ticket.title}`,text:[`工单：${id}`,`用户：${user.username}`,'',text,'',`后台查看：${new URL(request.url).origin}/#/support/ticket/${id}`].join('\n'),fingerprint:`ticket-reply|${replyId}`,cooldownSeconds:15});
-  }
-  const row = await env.DB.prepare(`SELECT r.*, u.username FROM support_ticket_replies r LEFT JOIN users u ON u.id=r.user_id WHERE r.id=?`).bind(replyId).first<SupportTicketReplyRow>();
-  return ok({ reply:serializeSupportReply(row!), status:nextStatus });
-}
-
-async function listOwnMessages(request: Request, env: Env): Promise<Response> {
-  const user = await requireUser(env, request);
-  const rows = await env.DB.prepare(`
-    SELECT m.*,
-      sender.username AS sender_username,
-      target.username AS target_username,
-      r.read_at,
-      CASE
-        WHEN m.target_type='user' AND m.target_user_id IS NOT NULL THEN (
-          SELECT COUNT(*) FROM message_reads rr WHERE rr.message_id=m.id AND rr.user_id=m.target_user_id
-        )
-        WHEN m.target_type='role' AND m.target_role IS NOT NULL THEN (
-          SELECT COUNT(DISTINCT rr.user_id)
-          FROM message_reads rr
-          JOIN users ru ON ru.id=rr.user_id
-          WHERE rr.message_id=m.id AND ru.role=m.target_role AND ru.status!='deleted'
-        )
-        WHEN m.target_type='all' THEN (
-          SELECT COUNT(DISTINCT rr.user_id)
-          FROM message_reads rr
-          JOIN users ru ON ru.id=rr.user_id
-          WHERE rr.message_id=m.id AND ru.status!='deleted'
-        )
-        ELSE 0
-      END AS recipient_read_count
-    FROM system_messages m
-    LEFT JOIN users sender ON sender.id=m.sender_user_id
-    LEFT JOIN users target ON target.id=m.target_user_id
-    LEFT JOIN message_reads r ON r.message_id=m.id AND r.user_id=?
-    LEFT JOIN user_message_deletions hidden ON hidden.message_id=m.id AND hidden.user_id=?
-    WHERE m.status='sent'
-      AND (m.deleted_at IS NULL OR m.deleted_at='')
-      AND hidden.message_id IS NULL
-      AND (
-        m.sender_user_id=?
-        OR (m.target_type='user' AND m.target_user_id=?)
-        OR (
-          (m.target_type='all' OR (m.target_type='role' AND m.target_role=?))
-          AND datetime(COALESCE(m.sent_at, m.created_at)) >= datetime(?)
-        )
-      )
-    ORDER BY COALESCE(m.sent_at, m.created_at) DESC
-    LIMIT 1000
-  `).bind(user.id, user.id, user.id, user.id, user.role, user.created_at).all<MessageRow>();
-  const messages = (rows.results || []).map(row => {
-    const msg = serializeMessage(row) as ReturnType<typeof serializeMessage> & Record<string, unknown>;
-    const sentByMe = row.sender_user_id === user.id;
-    const recipientReadCount = Number((row as any).recipient_read_count || 0);
-    msg.sentByMe = sentByMe;
-    msg.recipientReadCount = recipientReadCount;
-    msg.recipientRead = recipientReadCount > 0;
-    if (sentByMe) {
-      msg.isRead = true;
-      const sentTime = Date.parse(String(row.sent_at || row.created_at || '').replace(' ', 'T') + 'Z');
-      const canWithdraw = Number.isFinite(sentTime) && Date.now() - sentTime <= 15 * 60 * 1000;
-      msg.canWithdraw = canWithdraw;
-      msg.withdrawUntil = Number.isFinite(sentTime) ? new Date(sentTime + 15 * 60 * 1000).toISOString() : null;
-      if (row.target_type === 'role' && row.target_role === 'admin') msg.recipientReadText = recipientReadCount > 0 ? '管理员已读' : '管理员未读';
-      else if (row.target_type === 'role' && row.target_role === 'user') msg.recipientReadText = recipientReadCount > 0 ? '用户已读' : '用户未读';
-      else if (row.target_type === 'all') msg.recipientReadText = recipientReadCount > 0 ? `已有 ${recipientReadCount} 人已读` : '全部未读';
-      else msg.recipientReadText = recipientReadCount > 0 ? '对方已读' : '对方未读';
-    }
-    return msg;
-  });
-  return ok({ messages, unread: messages.filter(m => !m.sentByMe && !m.isRead).length });
-}
-
-async function replyOwnMessage(request: Request, env: Env, id: string): Promise<Response> {
-  const user = await requireUser(env, request);
-  const body = await readJson<Record<string, unknown>>(request, 128 * 1024);
-  const text = cleanText(body.body ?? body.content ?? body.reply, 5000);
-  if (!text) throw new HttpError(400, 'REPLY_REQUIRED', '请填写回复内容');
-
-  const original = await env.DB.prepare(`
-    SELECT m.*, sender.username AS sender_username, target.username AS target_username, r.read_at
-    FROM system_messages m
-    LEFT JOIN users sender ON sender.id=m.sender_user_id
-    LEFT JOIN users target ON target.id=m.target_user_id
-    LEFT JOIN message_reads r ON r.message_id=m.id AND r.user_id=?
-    WHERE m.id=? AND m.status='sent' AND (m.deleted_at IS NULL OR m.deleted_at='')
-      AND (
-        m.sender_user_id=?
-        OR (m.target_type='user' AND m.target_user_id=?)
-        OR (
-          (m.target_type='all' OR (m.target_type='role' AND m.target_role=?))
-          AND datetime(COALESCE(m.sent_at, m.created_at)) >= datetime(?)
-        )
-      )
-  `).bind(user.id, id, user.id, user.id, user.role, user.created_at).first<MessageRow>();
-  if (!original) throw new HttpError(404, 'MESSAGE_NOT_FOUND', '消息不存在或无权回复');
-
-  let targetType = 'user';
-  let targetUserId: string | null = null;
-  let targetRole: string | null = null;
-
-  if (original.sender_user_id && original.sender_user_id !== user.id) {
-    targetType = 'user';
-    targetUserId = original.sender_user_id;
-  } else if (original.target_type === 'user' && original.target_user_id && original.target_user_id !== user.id) {
-    targetType = 'user';
-    targetUserId = original.target_user_id;
-  } else if (original.target_type === 'role' && original.target_role) {
-    targetType = 'role';
-    targetRole = original.target_role;
-  } else {
-    throw new HttpError(400, 'MESSAGE_CANNOT_REPLY', '这条消息无法直接回复');
-  }
-
-  const originalSender = original.sender_username || '系统管理员';
-  const originalTime = original.sent_at || original.created_at || '';
-  const quotedBody = [
-    text,
-    '',
-    '---------- 原信息 ----------',
-    `发送人：${originalSender}`,
-    originalTime ? `时间：${originalTime}` : '',
-    `标题：${original.title}`,
-    '',
-    original.body || ''
-  ].filter(line => line !== '').join('\n');
-
-  const replyId = crypto.randomUUID();
-  await env.DB.prepare(`
-    INSERT INTO system_messages (id, sender_user_id, target_type, target_user_id, target_role, title, body, level, status, sent_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sent', datetime('now'))
-  `).bind(
-    replyId,
-    user.id,
-    targetType,
-    targetUserId,
-    targetRole,
-    cleanText(`回复：${original.title || '消息'}`, 120),
-    cleanText(quotedBody, 5000),
-    user.role === 'admin' ? 'support_reply' : 'feedback'
-  ).run();
-  await env.DB.prepare(`
-    INSERT OR REPLACE INTO message_reads (message_id, user_id, read_at)
-    VALUES (?, ?, datetime('now'))
-  `).bind(replyId, user.id).run();
-  await audit(env, request, user.id, 'message.reply', 'message', replyId, { originalMessageId: id, targetType, targetUserId, targetRole });
-  const row = await env.DB.prepare(`
-    SELECT m.*, sender.username AS sender_username, target.username AS target_username, r.read_at
-    FROM system_messages m
-    LEFT JOIN users sender ON sender.id=m.sender_user_id
-    LEFT JOIN users target ON target.id=m.target_user_id
-    LEFT JOIN message_reads r ON r.message_id=m.id AND r.user_id=?
-    WHERE m.id=?
-  `).bind(user.id, replyId).first<MessageRow>();
-  return ok({ replied: true, message: serializeMessage(row!) });
-}
-
-async function withdrawOwnMessage(request: Request, env: Env, id: string): Promise<Response> {
-  const user = await requireUser(env, request);
-  const message = await env.DB.prepare(`
-    SELECT id, sender_user_id, sent_at, created_at
-    FROM system_messages
-    WHERE id=? AND sender_user_id=? AND status='sent' AND (deleted_at IS NULL OR deleted_at='')
-  `).bind(id, user.id).first<MessageRow>();
-  if (!message) throw new HttpError(404, 'MESSAGE_NOT_FOUND', '消息不存在或无权撤销');
-
-  const allowed = await env.DB.prepare(`
-    SELECT id FROM system_messages
-    WHERE id=? AND sender_user_id=? AND status='sent' AND (deleted_at IS NULL OR deleted_at='')
-      AND datetime(COALESCE(sent_at, created_at)) >= datetime('now','-15 minutes')
-  `).bind(id, user.id).first<{ id: string }>();
-  if (!allowed) throw new HttpError(400, 'WITHDRAW_EXPIRED', '已超过 15 分钟，不能撤销');
-
-  await env.DB.batch([
-    env.DB.prepare(`DELETE FROM message_reads WHERE message_id=?`).bind(id),
-    env.DB.prepare(`DELETE FROM system_messages WHERE id=? AND sender_user_id=?`).bind(id, user.id),
-  ]);
-  return ok({ withdrawn: true });
-}
-
-async function markOwnMessageRead(request: Request, env: Env, id: string): Promise<Response> {
-  const user = await requireUser(env, request);
-  const message = await env.DB.prepare(`
-    SELECT id FROM system_messages
-    WHERE id=? AND status='sent' AND (deleted_at IS NULL OR deleted_at='')
-      AND (
-        (target_type='user' AND target_user_id=?)
-        OR (
-          (target_type='all' OR (target_type='role' AND target_role=?))
-          AND datetime(COALESCE(sent_at, created_at)) >= datetime(?)
-        )
-      )
-  `).bind(id, user.id, user.role, user.created_at).first<{ id: string }>();
-  if (!message) throw new HttpError(404, 'MESSAGE_NOT_FOUND', '消息不存在或无权查看');
-  await env.DB.prepare(`
-    INSERT OR REPLACE INTO message_reads (message_id, user_id, read_at)
-    VALUES (?, ?, datetime('now'))
-  `).bind(id, user.id).run();
-  return ok({ read: true });
-}
-
-async function markOwnMessagesReadBatch(request: Request, env: Env): Promise<Response> {
-  const user = await requireUser(env, request);
-  const body = await readJson<Record<string, unknown>>(request, 64 * 1024);
-  const rawIds = Array.isArray(body.ids) ? body.ids : [];
-  const ids = Array.from(new Set(rawIds.map(x => cleanText(x, 80)).filter(Boolean))).slice(0, 200);
-  if (!ids.length) throw new HttpError(400, 'NO_MESSAGE_IDS', '请选择要标记已读的消息');
-
-  const placeholders = ids.map(() => '?').join(',');
-  const rows = await env.DB.prepare(`
-    SELECT id FROM system_messages
-    WHERE id IN (${placeholders}) AND status='sent' AND (deleted_at IS NULL OR deleted_at='')
-      AND (
-        (target_type='user' AND target_user_id=?)
-        OR (
-          (target_type='all' OR (target_type='role' AND target_role=?))
-          AND datetime(COALESCE(sent_at, created_at)) >= datetime(?)
-        )
-      )
-  `).bind(...ids, user.id, user.role, user.created_at).all<{ id: string }>();
-  const allowed = (rows.results || []).map(x => x.id);
-  if (!allowed.length) throw new HttpError(404, 'MESSAGE_NOT_FOUND', '消息不存在或无权查看');
-
-  await env.DB.batch(allowed.map(id => env.DB.prepare(`
-    INSERT OR REPLACE INTO message_reads (message_id, user_id, read_at)
-    VALUES (?, ?, datetime('now'))
-  `).bind(id, user.id)));
-  return ok({ read: true, count: allowed.length });
-}
-
-async function deleteOwnMessagesBatch(request: Request, env: Env): Promise<Response> {
-  const user = await requireUser(env, request);
-  const body = await readJson<Record<string, unknown>>(request, 64 * 1024);
-  const rawIds = Array.isArray(body.ids) ? body.ids : [];
-  const ids = Array.from(new Set(rawIds.map(value => cleanText(value, 80)).filter(Boolean))).slice(0, 500);
-  if (!ids.length) throw new HttpError(400, 'NO_MESSAGE_IDS', '请选择要删除的消息');
-  const placeholders = ids.map(() => '?').join(',');
-  const rows = await env.DB.prepare(`
-    SELECT id FROM system_messages
-    WHERE id IN (${placeholders})
-      AND status='sent'
-      AND (deleted_at IS NULL OR deleted_at='')
-      AND (
-        sender_user_id=?
-        OR (target_type='user' AND target_user_id=?)
-        OR (
-          (target_type='all' OR (target_type='role' AND target_role=?))
-          AND datetime(COALESCE(sent_at, created_at)) >= datetime(?)
-        )
-      )
-  `).bind(...ids, user.id, user.id, user.role, user.created_at).all<{ id: string }>();
-  const allowed = (rows.results || []).map(row => row.id);
-  if (!allowed.length) throw new HttpError(404, 'MESSAGE_NOT_FOUND', '消息不存在或无权删除');
-  await env.DB.batch(allowed.map(id => env.DB.prepare(`
-    INSERT OR REPLACE INTO user_message_deletions (message_id, user_id, deleted_at)
-    VALUES (?, ?, datetime('now'))
-  `).bind(id, user.id)));
-  await audit(env, request, user.id, 'message.delete_self', 'message', null, { count: allowed.length });
-  return ok({ deleted: true, count: allowed.length });
-}
-
-async function adminListMessages(request: Request, env: Env, url: URL): Promise<Response> {
-  await requireAdmin(env, request);
-  const status = String(url.searchParams.get('status') || '').toLowerCase();
-  const where = status && ['sent','draft','template'].includes(status) ? `AND m.status='${status}'` : '';
-  const rows = await env.DB.prepare(`
-    SELECT m.*, sender.username AS sender_username, target.username AS target_username,
-      (SELECT COUNT(*) FROM message_reads r WHERE r.message_id=m.id) AS read_count
-    FROM system_messages m
-    LEFT JOIN users sender ON sender.id=m.sender_user_id
-    LEFT JOIN users target ON target.id=m.target_user_id
-    WHERE (m.deleted_at IS NULL OR m.deleted_at='') ${where}
-    ORDER BY COALESCE(m.updated_at, m.sent_at, m.created_at) DESC
-    LIMIT 500
-  `).all<any>();
-  const raw = rows.results || [];
-  const receipts = await getReadReceipts(env, raw.map((row: any) => row.id));
-  return ok({ messages: raw.map((row: any) => {
-    const readUsers = receipts[row.id] || [];
-    return { ...serializeMessage(row), readCount: Number(row.read_count || 0), readUsers };
-  }) });
-}
-
-async function buildMessagePayload(env: Env, body: Record<string, unknown>) {
-  const status = normalizeMessageStatus(body.status);
-  const title = cleanText(body.title, 120);
-  const text = cleanText(body.body ?? body.content, 5000);
-  if (!title) throw new HttpError(400, 'TITLE_REQUIRED', '请填写消息标题');
-  if (!text) throw new HttpError(400, 'BODY_REQUIRED', '请填写消息内容');
-  let targetType = normalizeTargetType(body.targetType ?? body.target_type);
-  let targetUserId = cleanText(body.targetUserId ?? body.target_user_id, 80) || null;
-  let targetRole = cleanText(body.targetRole ?? body.target_role, 20) || null;
-
-  // 草稿和模板允许暂时不选择发送对象；真正发送时必须补全对象。
-  if (targetType === 'none' && status === 'sent') {
-    throw new HttpError(400, 'TARGET_REQUIRED', '立即发送前请选择接收对象');
-  }
-  if (targetType === 'all') {
-    targetUserId = null;
-    targetRole = null;
-  } else if (targetType === 'role') {
-    targetUserId = null;
-    targetRole = targetRole === 'admin' ? 'admin' : 'user';
-  } else if (targetType === 'user') {
-    targetRole = null;
-    if (!targetUserId) {
-      if (status === 'sent') throw new HttpError(400, 'TARGET_USER_REQUIRED', '请选择接收用户');
-      targetType = 'none';
-      targetUserId = null;
-    } else {
-      const user = await env.DB.prepare(`SELECT id FROM users WHERE id=? AND status!='deleted'`).bind(targetUserId).first<{ id: string }>();
-      if (!user) throw new HttpError(404, 'TARGET_USER_NOT_FOUND', '接收用户不存在');
-    }
-  }
-  return {
-    title,
-    body: text,
-    targetType,
-    targetUserId,
-    targetRole,
-    level: normalizeMessageLevel(body.level),
-    status,
-  };
-}
-
-async function adminCreateMessage(request: Request, env: Env): Promise<Response> {
-  const admin = await requireAdmin(env, request);
-  const body = await readJson<Record<string, unknown>>(request, 128 * 1024);
-  const payload = await buildMessagePayload(env, body);
-  const id = crypto.randomUUID();
-  const sentAtSql = payload.status === 'sent' ? `datetime('now')` : `NULL`;
-  await env.DB.prepare(`
-    INSERT INTO system_messages (id, sender_user_id, target_type, target_user_id, target_role, title, body, level, status, sent_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ${sentAtSql})
-  `).bind(id, admin.id, payload.targetType, payload.targetUserId, payload.targetRole, payload.title, payload.body, payload.level, payload.status).run();
-  await audit(env, request, admin.id, `admin.message_${payload.status}`, 'message', id, payload);
-  const row = await env.DB.prepare(`SELECT m.*, u.username AS sender_username FROM system_messages m LEFT JOIN users u ON u.id=m.sender_user_id WHERE m.id=?`).bind(id).first<MessageRow>();
-  return ok({ message: serializeMessage(row!) });
-}
-
-async function adminUpdateMessage(request: Request, env: Env, id: string): Promise<Response> {
-  const admin = await requireAdmin(env, request);
-  const existing = await env.DB.prepare(`SELECT * FROM system_messages WHERE id=? AND (deleted_at IS NULL OR deleted_at='')`).bind(id).first<MessageRow>();
-  if (!existing) throw new HttpError(404, 'MESSAGE_NOT_FOUND', '消息不存在');
-  if (existing.status === 'sent') throw new HttpError(409, 'SENT_MESSAGE_LOCKED', '已发送消息不能编辑，可删除后重新发送');
-  const body = await readJson<Record<string, unknown>>(request, 128 * 1024);
-  const payload = await buildMessagePayload(env, body);
-  const status = payload.status === 'sent' ? existing.status : payload.status;
-  await env.DB.prepare(`
-    UPDATE system_messages
-    SET target_type=?, target_user_id=?, target_role=?, title=?, body=?, level=?, status=?, updated_at=datetime('now')
-    WHERE id=?
-  `).bind(payload.targetType, payload.targetUserId, payload.targetRole, payload.title, payload.body, payload.level, status, id).run();
-  await audit(env, request, admin.id, 'admin.message_update', 'message', id, payload);
-  return ok({ updated: true });
-}
-
-async function adminSendMessage(request: Request, env: Env, id: string): Promise<Response> {
-  const admin = await requireAdmin(env, request);
-  const existing = await env.DB.prepare(`SELECT * FROM system_messages WHERE id=? AND (deleted_at IS NULL OR deleted_at='')`).bind(id).first<MessageRow>();
-  if (!existing) throw new HttpError(404, 'MESSAGE_NOT_FOUND', '消息不存在');
-  if (existing.target_type === 'none') throw new HttpError(400, 'TARGET_REQUIRED', '发送草稿前请先编辑并选择接收对象');
-  if (existing.target_type === 'user' && !existing.target_user_id) throw new HttpError(400, 'TARGET_USER_REQUIRED', '发送草稿前请先选择接收用户');
-  await env.DB.prepare(`
-    UPDATE system_messages
-    SET status='sent', sent_at=COALESCE(sent_at, datetime('now')), updated_at=datetime('now')
-    WHERE id=?
-  `).bind(id).run();
-  await audit(env, request, admin.id, 'admin.message_send', 'message', id, {});
-  return ok({ sent: true });
-}
-
-async function adminDeleteMessage(request: Request, env: Env, id: string): Promise<Response> {
-  await requireAdmin(env, request);
-  await env.DB.batch([
-    env.DB.prepare(`DELETE FROM message_reads WHERE message_id=?`).bind(id),
-    env.DB.prepare(`DELETE FROM user_message_deletions WHERE message_id=?`).bind(id),
-    env.DB.prepare(`DELETE FROM system_messages WHERE id=?`).bind(id),
-    env.DB.prepare(`DELETE FROM audit_logs WHERE target_type='message' AND target_id=?`).bind(id),
-  ]);
-  await deleteKnownKvKeys(env, [`message:${id}`, `system_message:${id}`]);
-  return ok({ deleted: true, purged: true });
-}
-
-async function adminOverview(request: Request, env: Env): Promise<Response> {
-  await requireAdmin(env, request);
-  const [users, apps, today] = await Promise.all([
-    env.DB.prepare(`SELECT COUNT(*) AS total, SUM(status='active') AS active FROM users WHERE status!='deleted'`).first<any>(),
-    env.DB.prepare(`
-      SELECT COUNT(*) AS total,
-      SUM(status='pending') AS pending,
-      SUM(status='approved') AS approved,
-      SUM(status='rejected') AS rejected,
-      SUM(status='revoked') AS revoked,
-      SUM(CASE WHEN delete_requested_at IS NOT NULL AND delete_requested_at!='' THEN 1 ELSE 0 END) AS delete_requested
-      FROM domain_applications WHERE (deleted_at IS NULL OR deleted_at='')
-    `).first<any>(),
-    env.DB.prepare(`SELECT COUNT(*) AS count FROM domain_applications WHERE date(created_at)=date('now')`).first<any>(),
-  ]);
-
-  return ok({ overview: { users, applications: apps, today: Number(today?.count || 0) } });
-}
-
-
-function applicationFqdnForDnsImport(app: any): string {
-  const direct = normalizeCloudflareDnsName(app?.fqdn_ascii || app?.fqdn_unicode || '');
-  if (direct) return direct;
-  const prefix = normalizeCloudflareDnsName(app?.prefix_ascii || app?.prefix_unicode || '');
-  const suffix = normalizeCloudflareDnsName(app?.suffix_ascii || app?.suffix_unicode || '');
-  return prefix && suffix ? `${prefix}.${suffix}` : '';
-}
-
-async function adminDiscoverExistingDns(request: Request, env: Env): Promise<Response> {
-  const admin = await requireAdmin(env, request);
-  const settings = await loadSettings(env);
-  const appsResult = await env.DB.prepare(`
-    SELECT a.*, u.username
-    FROM domain_applications a
-    LEFT JOIN users u ON u.id=a.user_id
-    WHERE (a.deleted_at IS NULL OR a.deleted_at='')
-    ORDER BY LENGTH(COALESCE(a.fqdn_ascii,a.fqdn_unicode,'')) DESC,
-             COALESCE(a.fqdn_ascii,a.fqdn_unicode,'') ASC
-    LIMIT 5000
-  `).all<ApplicationRow>();
-  const applications = (appsResult.results || []).map(app => ({
-    ...app,
-    __fqdn: applicationFqdnForDnsImport(app),
-  })).filter(app => app.__fqdn);
-
-  const localResult = await env.DB.prepare(`
-    SELECT application_id, cf_record_id, name, type, content, priority
-    FROM dns_records
-    WHERE (deleted_at IS NULL OR deleted_at='')
-  `).all<any>();
-  const localIds = new Set<string>();
-  const localCfRecordIds = new Set<string>();
-  const localSignatures = new Set<string>();
-  const localDnsCountByApp = new Map<string, number>();
-  for (const row of localResult.results || []) {
-    if (row.application_id) localDnsCountByApp.set(String(row.application_id), (localDnsCountByApp.get(String(row.application_id)) || 0) + 1);
-    if (row.cf_record_id) {
-      localIds.add(`${row.application_id}|${row.cf_record_id}`);
-      localCfRecordIds.add(String(row.cf_record_id));
-    }
-    localSignatures.add(dnsImportSignature(row.application_id, row));
-  }
-
-  const discovered: any[] = [];
-  const skippedRecords: any[] = [];
-  const warnings: string[] = [];
-  const zoneStats: any[] = [];
-  let totalRemoteRecords = 0;
-  let matchedRemoteRecords = 0;
-  let duplicateCount = 0;
-  let unsupportedCount = 0;
-  let unmatchedCount = 0;
-  let scannedZones = 0;
-  const remoteDnsCountByApp = new Map<string, number>();
-
-  const configuredSuffixes = (settings.dns.suffixes || [])
-    .map(item => ({ ...item, __root: normalizeCloudflareDnsName(item.suffixAscii || item.suffix || '') }))
-    .filter(item => item.__root && item.zoneId);
-
-  for (const suffix of configuredSuffixes) {
-    const root = suffix.__root;
-    const token = resolveDnsToken(env, settings, suffix);
-    const stat = {
-      suffix: root,
-      zoneId: suffix.zoneId,
-      systemDomains: 0,
-      cloudflareRecords: 0,
-      matched: 0,
-      importable: 0,
-      duplicate: 0,
-      unsupported: 0,
-      unmatched: 0,
-      error: '',
-    };
-    const suffixApps = applications
-      .filter(app => app.__fqdn === root || app.__fqdn.endsWith(`.${root}`))
-      .sort((a, b) => b.__fqdn.length - a.__fqdn.length);
-    stat.systemDomains = suffixApps.length;
-
-    if (!token) {
-      stat.error = '缺少 Cloudflare API Token';
-      warnings.push(`${root}：缺少 Cloudflare API Token`);
-      zoneStats.push(stat);
-      continue;
+@supports not (zoom: 1) {
+  @media (min-width: 1101px) {
+    .app-shell {
+      min-height: 125vh !important;
     }
 
-    let remoteRecords: any[] = [];
-    try {
-      remoteRecords = await listCloudflareDnsRecords(token, suffix.zoneId);
-      scannedZones += 1;
-      stat.cloudflareRecords = remoteRecords.length;
-      totalRemoteRecords += remoteRecords.length;
-    } catch (error) {
-      stat.error = error instanceof Error ? error.message : 'Cloudflare DNS 查询失败';
-      warnings.push(`${root}：${stat.error}`);
-      zoneStats.push(stat);
-      continue;
-    }
-
-    for (const remote of remoteRecords) {
-      const remoteName = normalizeCloudflareDnsName(remote?.name);
-      if (!remoteName) continue;
-      const app = suffixApps.find(item => remoteName === item.__fqdn || remoteName.endsWith(`.${item.__fqdn}`));
-      if (!app) {
-        unmatchedCount += 1;
-        stat.unmatched += 1;
-        const cfRecordId = String(remote?.id || '').trim();
-        const local = cloudflareDnsRecordToLocal(remote, remoteName);
-        if (!local) {
-          unsupportedCount += 1;
-          stat.unsupported += 1;
-          if (skippedRecords.length < 300) {
-            skippedRecords.push({
-              zone: root,
-              name: remoteName,
-              type: String(remote?.type || '').toUpperCase(),
-              content: String(remote?.content || ''),
-              reason: SUPPORTED_DNS_RECORD_TYPES.includes(String(remote?.type || '').toUpperCase() as DnsRecordType)
-                ? '记录内容无法转换为系统格式'
-                : '系统暂不支持该 DNS 类型',
-            });
-          }
-          continue;
-        }
-        if (!cfRecordId) continue;
-        if (localCfRecordIds.has(cfRecordId)) {
-          duplicateCount += 1;
-          stat.duplicate += 1;
-          continue;
-        }
-        discovered.push({
-          key: `admin:${root}:${cfRecordId}`,
-          applicationId: '',
-          cfRecordId,
-          zoneRoot: root,
-          ownerMode: 'admin',
-          needsAdminDomain: true,
-          domain: remoteName,
-          domainAscii: remoteName,
-          domainStatus: '未登记',
-          username: admin.username || '管理员',
-          host: local.host,
-          name: local.name,
-          type: local.type,
-          content: local.content,
-          priority: local.priority,
-          proxied: Boolean(local.proxied),
-          ttl: local.ttl,
-        });
-        stat.importable += 1;
-        if (discovered.length >= 5000) break;
-        continue;
-      }
-
-      matchedRemoteRecords += 1;
-      stat.matched += 1;
-      remoteDnsCountByApp.set(String(app.id), (remoteDnsCountByApp.get(String(app.id)) || 0) + 1);
-      const local = cloudflareDnsRecordToLocal(remote, app.__fqdn);
-      if (!local) {
-        unsupportedCount += 1;
-        stat.unsupported += 1;
-        if (skippedRecords.length < 300) {
-          skippedRecords.push({
-            zone: root,
-            domain: app.fqdn_unicode || app.__fqdn,
-            name: remoteName,
-            type: String(remote?.type || '').toUpperCase(),
-            content: String(remote?.content || ''),
-            reason: SUPPORTED_DNS_RECORD_TYPES.includes(String(remote?.type || '').toUpperCase() as DnsRecordType)
-              ? '记录内容无法转换为系统格式'
-              : '系统暂不支持该 DNS 类型',
-          });
-        }
-        continue;
-      }
-
-      const cfRecordId = String(remote?.id || '').trim();
-      if (!cfRecordId) continue;
-      if (localIds.has(`${app.id}|${cfRecordId}`) || localSignatures.has(dnsImportSignature(app.id, local))) {
-        duplicateCount += 1;
-        stat.duplicate += 1;
-        continue;
-      }
-
-      discovered.push({
-        key: `${app.id}:${cfRecordId}`,
-        applicationId: app.id,
-        cfRecordId,
-        zoneRoot: root,
-        ownerMode: 'existing',
-        needsAdminDomain: false,
-        domain: app.fqdn_unicode || app.__fqdn,
-        domainAscii: app.__fqdn,
-        domainStatus: app.status || '',
-        username: app.username || '',
-        host: local.host,
-        name: local.name,
-        type: local.type,
-        content: local.content,
-        priority: local.priority,
-        proxied: Boolean(local.proxied),
-        ttl: local.ttl,
-      });
-      stat.importable += 1;
-      if (discovered.length >= 5000) break;
-    }
-    zoneStats.push(stat);
-    if (discovered.length >= 5000) {
-      warnings.push('待同步记录超过 5000 条，本次只显示前 5000 条');
-      break;
+    .sidebar {
+      min-height: 125vh !important;
+      height: 125vh !important;
     }
   }
-
-  if (!configuredSuffixes.length) warnings.push('没有找到已配置 Zone ID 的根域名');
-
-  const domains = applications.map(app => {
-    const rootConfig = configuredSuffixes.find(suffix => app.__fqdn === suffix.__root || app.__fqdn.endsWith(`.${suffix.__root}`));
-    const reviewNote = String(app.review_note || '');
-    return {
-      applicationId: app.id,
-      domain: app.fqdn_unicode || app.__fqdn,
-      domainAscii: app.__fqdn,
-      root: rootConfig?.__root || normalizeCloudflareDnsName(app.suffix_ascii || app.suffix_unicode || ''),
-      username: app.username || '',
-      status: app.status || '',
-      source: reviewNote.includes('从 Cloudflare 已有 DNS 同步到管理员名下') ? 'cloudflare' : 'system',
-      systemDnsCount: localDnsCountByApp.get(String(app.id)) || 0,
-      cloudflareDnsCount: remoteDnsCountByApp.get(String(app.id)) || 0,
-    };
-  }).sort((a, b) => a.root.localeCompare(b.root) || a.domainAscii.localeCompare(b.domainAscii));
-
-  return ok({
-    records: discovered,
-    domains,
-    skippedRecords,
-    warnings: Array.from(new Set(warnings)).slice(0, 50),
-    scannedDomains: applications.length,
-    configuredZones: configuredSuffixes.length,
-    scannedZones,
-    totalRemoteRecords,
-    matchedRemoteRecords,
-    duplicateCount,
-    unsupportedCount,
-    unmatchedCount,
-    zoneStats,
-  });
-}
-
-async function adminImportExistingDns(request: Request, env: Env): Promise<Response> {
-  const admin = await requireAdmin(env, request);
-  const body = await readJson<Record<string, unknown>>(request, 256 * 1024);
-  const rawSelections = Array.isArray(body.records) ? body.records : [];
-  const selections = Array.from(new Map(rawSelections.map((value: any) => {
-    const applicationId = cleanText(value?.applicationId, 80);
-    const cfRecordId = cleanText(value?.cfRecordId, 120);
-    const ownerMode = cleanText(value?.ownerMode, 20) === 'admin' ? 'admin' : 'existing';
-    const zoneRoot = normalizeCloudflareDnsName(value?.zoneRoot || '');
-    const domainAscii = normalizeCloudflareDnsName(value?.domainAscii || value?.domain || '');
-    const identity = applicationId || `${ownerMode}:${zoneRoot}:${domainAscii}`;
-    return [`${identity}|${cfRecordId}`, { applicationId, cfRecordId, ownerMode, zoneRoot, domainAscii }];
-  })).values()).filter(item => item.cfRecordId && (item.applicationId || (item.ownerMode === 'admin' && item.zoneRoot && item.domainAscii))).slice(0, 1000);
-  if (!selections.length) throw new HttpError(400, 'DNS_IMPORT_SELECTION_REQUIRED', '请选择要同步的 DNS 记录');
-
-  const existingSelections = selections.filter(item => item.applicationId);
-  const appIds = Array.from(new Set(existingSelections.map(item => item.applicationId)));
-  const appMap = new Map<string, ApplicationRow>();
-  if (appIds.length) {
-    const placeholders = appIds.map(() => '?').join(',');
-    const appResult = await env.DB.prepare(`
-      SELECT a.*, u.username
-      FROM domain_applications a
-      LEFT JOIN users u ON u.id=a.user_id
-      WHERE a.id IN (${placeholders})
-        AND (a.deleted_at IS NULL OR a.deleted_at='')
-    `).bind(...appIds).all<ApplicationRow>();
-    for (const app of appResult.results || []) appMap.set(app.id, app);
-  }
-
-  const settings = await loadSettings(env);
-  const suffixConfigs = (settings.dns.suffixes || [])
-    .map(item => ({ item, root: normalizeCloudflareDnsName(item.suffixAscii || item.suffix || '') }))
-    .filter(entry => entry.root)
-    .sort((a, b) => b.root.length - a.root.length);
-
-  const grouped = new Map<string, typeof selections>();
-  for (const selection of selections) {
-    let root = selection.zoneRoot;
-    if (selection.applicationId) {
-      const app = appMap.get(selection.applicationId);
-      if (!app) continue;
-      const appFqdn = applicationFqdnForDnsImport(app);
-      const match = suffixConfigs.find(entry => appFqdn === entry.root || appFqdn.endsWith(`.${entry.root}`));
-      root = match?.root || normalizeCloudflareDnsName(app.suffix_ascii || app.suffix_unicode || '');
-    }
-    if (!root) continue;
-    const list = grouped.get(root) || [];
-    list.push(selection);
-    grouped.set(root, list);
-  }
-
-  async function ensureAdminImportedApplication(root: string, fqdn: string, remote: any): Promise<ApplicationRow> {
-    const normalizedFqdn = normalizeCloudflareDnsName(fqdn);
-    if (!normalizedFqdn || !(normalizedFqdn === root || normalizedFqdn.endsWith(`.${root}`))) {
-      throw new Error(`记录 ${fqdn || '—'} 不属于根域名 ${root}`);
-    }
-    const existing = await env.DB.prepare(`
-      SELECT * FROM domain_applications
-      WHERE fqdn_ascii=? COLLATE NOCASE
-        AND (deleted_at IS NULL OR deleted_at='')
-      ORDER BY CASE status WHEN 'approved' THEN 0 ELSE 1 END, created_at DESC
-      LIMIT 1
-    `).bind(normalizedFqdn).first<ApplicationRow>();
-    if (existing) return existing;
-
-    const prefix = normalizedFqdn === root ? '@' : normalizedFqdn.slice(0, -(root.length + 1));
-    const suffixCfg = suffixConfigs.find(entry => entry.root === root)?.item;
-    const id = crypto.randomUUID();
-    const now = new Date().toISOString();
-    const remoteType = String(remote?.type || suffixCfg?.defaultType || 'CNAME').toUpperCase();
-    const remoteContent = String(remote?.content || '').trim();
-    await env.DB.prepare(`
-      INSERT INTO domain_applications (
-        id,user_id,prefix_unicode,prefix_ascii,suffix_unicode,suffix_ascii,fqdn_unicode,fqdn_ascii,
-        record_type,record_content,proxied,ttl,status,review_note,reviewed_at,reviewed_by,expires_at,updated_at
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-    `).bind(
-      id, admin.id, prefix, prefix, suffixCfg?.suffix || root, suffixCfg?.suffixAscii || root,
-      normalizedFqdn, normalizedFqdn, remoteType, remoteContent,
-      Boolean(remote?.proxied) ? 1 : 0, clamp(Number(remote?.ttl || suffixCfg?.ttl || 1), 1, 86400),
-      'approved', '从 Cloudflare 已有 DNS 同步到管理员名下', now, admin.id, null, now,
-    ).run();
-    const created = await env.DB.prepare(`SELECT * FROM domain_applications WHERE id=?`).bind(id).first<ApplicationRow>();
-    if (!created) throw new Error(`无法建立管理员域名 ${normalizedFqdn}`);
-    return created;
-  }
-
-  let imported = 0;
-  let skipped = 0;
-  let createdAdminDomains = 0;
-  const errors: string[] = [];
-  const touchedApps = new Set<string>();
-  const createdDomainIds = new Set<string>();
-
-  for (const [suffixAscii, suffixSelections] of grouped.entries()) {
-    const suffix = settings.dns.suffixes.find(item => normalizeCloudflareDnsName(item.suffixAscii || item.suffix || '') === suffixAscii);
-    if (!suffix) {
-      skipped += suffixSelections.length;
-      errors.push(`${suffixAscii}：根域名配置不存在`);
-      continue;
-    }
-    const token = resolveDnsToken(env, settings, suffix);
-    if (!token || !suffix.zoneId) {
-      skipped += suffixSelections.length;
-      errors.push(`${suffixAscii}：缺少 Cloudflare API Token 或 Zone ID`);
-      continue;
-    }
-    let remoteRecords: any[];
-    try {
-      remoteRecords = await listCloudflareDnsRecords(token, suffix.zoneId);
-    } catch (error) {
-      skipped += suffixSelections.length;
-      errors.push(`${suffixAscii}：${error instanceof Error ? error.message : 'Cloudflare DNS 查询失败'}`);
-      continue;
-    }
-    const remoteMap = new Map(remoteRecords.map(record => [String(record?.id || ''), record]));
-
-    for (const selection of suffixSelections) {
-      const remote = remoteMap.get(selection.cfRecordId);
-      if (!remote) {
-        skipped += 1;
-        errors.push(`${suffixAscii}：Cloudflare 记录 ${selection.cfRecordId} 已不存在`);
-        continue;
-      }
-      let app: ApplicationRow | undefined;
-      if (selection.applicationId) app = appMap.get(selection.applicationId);
-      if (!app && selection.ownerMode === 'admin') {
-        const remoteName = normalizeCloudflareDnsName(remote?.name || selection.domainAscii);
-        const before = await env.DB.prepare(`SELECT id FROM domain_applications WHERE fqdn_ascii=? COLLATE NOCASE AND (deleted_at IS NULL OR deleted_at='') LIMIT 1`).bind(remoteName).first<{id:string}>();
-        try {
-          app = await ensureAdminImportedApplication(suffixAscii, remoteName, remote);
-          if (!before && app?.id && !createdDomainIds.has(app.id)) {
-            createdDomainIds.add(app.id);
-            createdAdminDomains += 1;
-          }
-          appMap.set(app.id, app);
-        } catch (error) {
-          skipped += 1;
-          errors.push(error instanceof Error ? error.message : `${remoteName}：建立管理员域名失败`);
-          continue;
-        }
-      }
-      if (!app) {
-        skipped += 1;
-        continue;
-      }
-
-      const appFqdn = applicationFqdnForDnsImport(app);
-      const local = cloudflareDnsRecordToLocal(remote, appFqdn);
-      if (!local) {
-        skipped += 1;
-        errors.push(`${appFqdn}：记录 ${String(remote?.name || '')} 无法转换为系统格式`);
-        continue;
-      }
-      const duplicate = await env.DB.prepare(`
-        SELECT id FROM dns_records
-        WHERE (deleted_at IS NULL OR deleted_at='')
-          AND (
-            cf_record_id=?
-            OR (application_id=? AND name=? COLLATE NOCASE AND type=? AND content=? AND COALESCE(priority,-1)=?)
-          )
-        LIMIT 1
-      `).bind(selection.cfRecordId, app.id, local.name, local.type, local.content, local.priority ?? -1).first<{ id: string }>();
-      if (duplicate) {
-        skipped += 1;
-        continue;
-      }
-      const id = crypto.randomUUID();
-      await env.DB.prepare(`
-        INSERT INTO dns_records (
-          id,application_id,user_id,host,name,type,content,priority,proxied,ttl,cf_record_id,status,error_message
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NULL)
-      `).bind(
-        id, app.id, app.user_id, local.host, local.name, local.type, local.content,
-        local.priority, local.proxied, local.ttl, selection.cfRecordId, 'active',
-      ).run();
-      imported += 1;
-      touchedApps.add(app.id);
-    }
-  }
-
-  for (const applicationId of touchedApps) await syncApplicationDnsSummary(env, applicationId);
-  await audit(env, request, admin.id, 'admin.dns_import_existing', 'dns_record', null, {
-    requested: selections.length,
-    imported,
-    skipped,
-    applications: touchedApps.size,
-    createdAdminDomains,
-    errors: errors.slice(0, 10),
-  });
-  return ok({ imported, skipped, applications: touchedApps.size, createdAdminDomains, errors: errors.slice(0, 20) });
-}
-
-
-async function adminUnlinkDomains(request: Request, env: Env): Promise<Response> {
-  const admin = await requireAdmin(env, request);
-  const body = await readJson<Record<string, unknown>>(request, 128 * 1024);
-  const ids = Array.from(new Set((Array.isArray(body.applicationIds) ? body.applicationIds : [])
-    .map(value => cleanText(value, 80))
-    .filter(Boolean))).slice(0, 500);
-  if (!ids.length) throw new HttpError(400, 'DOMAIN_UNLINK_SELECTION_REQUIRED', '请选择要取消同步的域名');
-
-  const placeholders = ids.map(() => '?').join(',');
-  const appsResult = await env.DB.prepare(`
-    SELECT id,fqdn_unicode,fqdn_ascii,user_id,status
-    FROM domain_applications
-    WHERE id IN (${placeholders})
-      AND (deleted_at IS NULL OR deleted_at='')
-  `).bind(...ids).all<any>();
-  const apps = appsResult.results || [];
-  if (!apps.length) throw new HttpError(404, 'DOMAIN_UNLINK_NOT_FOUND', '所选域名已经不在域名系统中');
-
-  const actualIds = apps.map(app => String(app.id));
-  const actualPlaceholders = actualIds.map(() => '?').join(',');
-  const dnsCountRow = await env.DB.prepare(`
-    SELECT COUNT(*) AS count FROM dns_records
-    WHERE application_id IN (${actualPlaceholders})
-      AND (deleted_at IS NULL OR deleted_at='')
-  `).bind(...actualIds).first<any>();
-  const removedDnsRecords = Number(dnsCountRow?.count || 0);
-  const now = new Date().toISOString();
-
-  // Important: this action only removes the system-side representation. It must never call
-  // Cloudflare DNS delete/update APIs, so the remote records remain untouched.
-  await env.DB.batch([
-    env.DB.prepare(`
-      UPDATE dns_records
-      SET deleted_at=?, status='deleted', updated_at=?
-      WHERE application_id IN (${actualPlaceholders})
-        AND (deleted_at IS NULL OR deleted_at='')
-    `).bind(now, now, ...actualIds),
-    env.DB.prepare(`
-      UPDATE domain_applications
-      SET deleted_at=?, updated_at=?, delete_requested_at=NULL, delete_requested_by=NULL
-      WHERE id IN (${actualPlaceholders})
-        AND (deleted_at IS NULL OR deleted_at='')
-    `).bind(now, now, ...actualIds),
-  ]);
-
-  await audit(env, request, admin.id, 'admin.domain_unlink_from_system', 'domain_application', null, {
-    applicationIds: actualIds,
-    domains: apps.map(app => app.fqdn_unicode || app.fqdn_ascii || app.id).slice(0, 100),
-    removedDomains: apps.length,
-    removedLocalDnsRecords: removedDnsRecords,
-    cloudflareDnsUntouched: true,
-  });
-
-  return ok({
-    removedDomains: apps.length,
-    removedLocalDnsRecords: removedDnsRecords,
-    cloudflareDnsUntouched: true,
-  });
-}
-
-async function adminApplications(request: Request, env: Env, url: URL): Promise<Response> {
-  await requireAdmin(env, request);
-  const settings = await loadSettings(env);
-  const status = url.searchParams.get('status') || 'all';
-  const limit = clamp(Number(url.searchParams.get('limit') || 500), 1, 1000);
-  const rows = status === 'all'
-    ? await env.DB.prepare(`
-        SELECT a.*,u.username, ${applicationDnsProjection('a')} FROM domain_applications a
-        LEFT JOIN users u ON u.id=a.user_id
-        WHERE (a.deleted_at IS NULL OR a.deleted_at='')
-        ORDER BY CASE a.status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END, a.created_at DESC
-        LIMIT ?
-      `).bind(limit).all<ApplicationRow>()
-    : await env.DB.prepare(`
-        SELECT a.*,u.username, ${applicationDnsProjection('a')} FROM domain_applications a
-        LEFT JOIN users u ON u.id=a.user_id
-        WHERE a.status=? AND (a.deleted_at IS NULL OR a.deleted_at='')
-        ORDER BY a.created_at DESC
-        LIMIT ?
-      `).bind(status, limit).all<ApplicationRow>();
-
-  return ok({ applications: (rows.results || []).map(x => serializeApplication(x, settings)) });
-}
-
-async function adminReviewApplication(request: Request, env: Env, id: string, action: string): Promise<Response> {
-  const admin = await requireAdmin(env, request);
-  const body = await readJson<Record<string, unknown>>(request);
-  const note = cleanText(body.note, 1000);
-  const settings = await loadSettings(env);
-
-  const app = await env.DB.prepare(`
-    SELECT * FROM domain_applications WHERE id=? AND (deleted_at IS NULL OR deleted_at='')
-  `).bind(id).first<ApplicationRow>();
-  if (!app) throw new HttpError(404, 'NOT_FOUND', '申请不存在');
-
-  if (action === 'delete') {
-    if (app.status === 'approved' && app.dns_record_id) throw new HttpError(409, 'REVOKE_FIRST', '正常域名请先撤销 DNS 后再删除');
-    await hardDeleteDomainApplication(env, id);
-    return ok({ deleted: true, purged: true });
-  }
-
-  if (action === 'reject-delete') {
-    if (!app.delete_requested_at) throw new HttpError(409, 'NO_DELETE_REQUEST', '该域名没有删除申请');
-    await env.DB.prepare(`
-      UPDATE domain_applications
-      SET delete_requested_at=NULL, delete_requested_by=NULL, review_note=?, reviewed_at=datetime('now'), reviewed_by=?, updated_at=datetime('now')
-      WHERE id=?
-    `).bind(note, admin.id, id).run();
-    await audit(env, request, admin.id, 'admin.application_delete_reject', 'domain_application', id, { note });
-    await sendDomainStatusMessage(env, admin.id, app, '删除申请已被拒绝', note || '管理员拒绝了该域名删除申请。', 'warning');
-    return ok({ deleteRejected: true });
-  }
-
-  if (action === 'approve-delete') {
-    if (!app.delete_requested_at) throw new HttpError(409, 'NO_DELETE_REQUEST', '该域名没有删除申请');
-    const suffix = settings.dns.suffixes.find(x => x.suffixAscii === app.suffix_ascii);
-    if (!suffix) throw new HttpError(409, 'SUFFIX_MISSING', '该后缀配置不存在');
-
-    const deleteResult = await deleteAllDnsRecordsForApp(env, app, suffix);
-    const warningText = deleteResult.warnings.length ? `
-注意：Cloudflare 清理提示：${deleteResult.warnings.join('；')}` : '';
-
-    await sendDomainStatusMessage(env, admin.id, app, '删除申请已批准', (note || '管理员已批准删除申请，域名和关联 DNS 记录已移除。') + warningText, 'success');
-    await hardDeleteDomainApplication(env, id);
-    return ok({ deleted: true, purged: true });
-  }
-
-  if (action === 'reject') {
-    if (!['pending', 'processing'].includes(app.status)) throw new HttpError(409, 'INVALID_STATE', '只有待审核申请可以拒绝');
-    await env.DB.prepare(`
-      UPDATE domain_applications
-      SET status='rejected',review_note=?,reviewed_at=datetime('now'),reviewed_by=?,error_message=NULL
-      WHERE id=?
-    `).bind(note, admin.id, id).run();
-    await audit(env, request, admin.id, 'application.reject', 'domain_application', id, { note });
-    await sendDomainStatusMessage(env, admin.id, app, '域名申请已被拒绝', note || '管理员拒绝了该域名申请。', 'warning');
-    return ok({ status: 'rejected' });
-  }
-
-  const suffix = settings.dns.suffixes.find(x => x.suffixAscii === app.suffix_ascii);
-  if (!suffix) throw new HttpError(409, 'SUFFIX_MISSING', '该后缀配置不存在');
-
-  if (action === 'approve') {
-    if (app.status !== 'pending') throw new HttpError(409, 'INVALID_STATE', '只有待审核申请可以批准');
-    const expires = new Date(Date.now() + settings.domain.validDays * DAY).toISOString();
-
-    await env.DB.prepare(`
-      UPDATE domain_applications
-      SET status='approved',review_note=?,reviewed_at=datetime('now'),reviewed_by=?,expires_at=?,error_message=NULL,updated_at=datetime('now')
-      WHERE id=?
-    `).bind(note || '已批准，DNS 可后续在域名管理中添加', admin.id, expires, id).run();
-
-    let synced = 0;
-    try { synced = await syncPendingDnsRecordsForApp(env, app, suffix, admin.id); }
-    catch (error) {
-      const message = error instanceof Error ? error.message.slice(0, 1000) : 'DNS 同步失败';
-      await env.DB.prepare(`UPDATE domain_applications SET error_message=?,updated_at=datetime('now') WHERE id=?`).bind(message, id).run();
-    }
-
-    await audit(env, request, admin.id, 'application.approve', 'domain_application', id, { syncedDnsRecords: synced });
-    await sendDomainStatusMessage(env, admin.id, app, '域名申请已通过', note || '管理员已批准该域名，您现在可以进入域名管理添加 DNS 解析。', 'success');
-    return ok({ status: 'approved', syncedDnsRecords: synced });
-  }
-
-  if (action === 'disable') {
-    if (app.status !== 'approved') throw new HttpError(409, 'INVALID_STATE', '只有正常域名可以禁用');
-    const deleteResult = await deleteAllDnsRecordsForApp(env, app, suffix);
-    const warningText = deleteResult.warnings.length ? `；Cloudflare 清理提示：${deleteResult.warnings.join('；')}` : '';
-
-    // D1 旧表的 status 字段有 CHECK 约束：只允许 pending / processing / approved / rejected / revoking / revoked / error。
-    // 所以这里不能写入 status='disabled'，用 status='revoked' + review_note 前缀标记为“已禁用”。
-    const disableNote = `【已禁用】${note || '管理员已禁用该域名，DNS 记录已移除。'}${warningText}`;
-    await env.DB.prepare(`
-      UPDATE domain_applications
-      SET status='revoked',review_note=?,reviewed_at=datetime('now'),reviewed_by=?,dns_record_id=NULL,error_message=NULL,updated_at=datetime('now')
-      WHERE id=?
-    `).bind(disableNote, admin.id, id).run();
-    await audit(env, request, admin.id, 'application.disable', 'domain_application', id, { note, warnings: deleteResult.warnings });
-    await sendDomainStatusMessage(env, admin.id, app, '域名已被禁用', note || '管理员已禁用该域名，DNS 记录已移除。', 'danger');
-    return ok({ status: 'revoked', statusText: '已禁用', warnings: deleteResult.warnings });
-  }
-
-  if (action === 'enable') {
-    const disabledByAdmin = app.status === 'revoked' && String(app.review_note || '').startsWith('【已禁用】');
-    if (!disabledByAdmin) throw new HttpError(409, 'NOT_DISABLED_DOMAIN', '该域名当前不是管理员禁用状态');
-    const expires = app.expires_at || new Date(Date.now() + settings.domain.validDays * DAY).toISOString();
-    await env.DB.prepare(`
-      UPDATE domain_applications
-      SET status='approved',review_note=?,reviewed_at=datetime('now'),reviewed_by=?,expires_at=?,error_message=NULL,updated_at=datetime('now')
-      WHERE id=?
-    `).bind(note || '管理员已取消禁用，您可以重新添加 DNS 解析。', admin.id, expires, id).run();
-    await audit(env, request, admin.id, 'application.enable', 'domain_application', id, { note });
-    await sendDomainStatusMessage(env, admin.id, app, '域名已取消禁用', note || '管理员已取消禁用该域名，域名恢复正常；DNS 记录需要重新添加。', 'success');
-    return ok({ status: 'approved', statusText: '正常' });
-  }
-
-  if (action === 'control') {
-    if (app.status !== 'approved') throw new HttpError(409, 'INVALID_STATE', '只有正常域名可以管控');
-    if (app.controlled_at) throw new HttpError(409, 'ALREADY_CONTROLLED', '该域名已经处于管控状态');
-    await env.DB.prepare(`
-      UPDATE domain_applications
-      SET controlled_at=datetime('now'),controlled_by=?,review_note=?,reviewed_at=datetime('now'),reviewed_by=?,updated_at=datetime('now')
-      WHERE id=?
-    `).bind(admin.id, note || '管理员已管控该域名；用户只允许删除 DNS 或申请删除域名。', admin.id, id).run();
-    await audit(env, request, admin.id, 'application.control', 'domain_application', id, { note });
-    await sendDomainStatusMessage(env, admin.id, app, '域名已被管控', note || '管理员已管控该域名，您只可以删除 DNS 解析或申请删除该域名。', 'warning');
-    return ok({ controlled: true, status: app.status, statusText: '正常' });
-  }
-
-  if (action === 'uncontrol') {
-    if (!app.controlled_at) throw new HttpError(409, 'NOT_CONTROLLED', '该域名当前不是管控状态');
-    await env.DB.prepare(`
-      UPDATE domain_applications
-      SET controlled_at=NULL,controlled_by=NULL,review_note=?,reviewed_at=datetime('now'),reviewed_by=?,updated_at=datetime('now')
-      WHERE id=?
-    `).bind(note || '管理员已取消管控。', admin.id, id).run();
-    await audit(env, request, admin.id, 'application.uncontrol', 'domain_application', id, { note });
-    await sendDomainStatusMessage(env, admin.id, app, '域名已取消管控', note || '管理员已取消管控，您可以继续正常管理 DNS 解析。', 'success');
-    return ok({ controlled: false, status: app.status, statusText: '正常' });
-  }
-
-  if (action === 'revoke') {
-    if (app.status !== 'approved') throw new HttpError(409, 'INVALID_STATE', '只有正常域名可以撤销');
-    const deleteResult = await deleteAllDnsRecordsForApp(env, app, suffix);
-    const warningText = deleteResult.warnings.length ? `；Cloudflare 清理提示：${deleteResult.warnings.join('；')}` : '';
-
-    await env.DB.prepare(`
-      UPDATE domain_applications
-      SET status='revoked',review_note=?,reviewed_at=datetime('now'),reviewed_by=?,dns_record_id=NULL
-      WHERE id=?
-    `).bind((note || '') + warningText, admin.id, id).run();
-    await audit(env, request, admin.id, 'application.revoke', 'domain_application', id, { note, warnings: deleteResult.warnings });
-    await sendDomainStatusMessage(env, admin.id, app, '域名已被撤销', note || '管理员已撤销该域名，DNS 记录已移除。', 'warning');
-    return ok({ status: 'revoked' });
-  }
-
-  throw new HttpError(400, 'INVALID_ACTION', '未知操作');
-}
-
-async function adminUsers(request: Request, env: Env): Promise<Response> {
-  await requireAdmin(env, request);
-  const settings = await loadSettings(env);
-  const rows = await env.DB.prepare(`
-    SELECT u.id,u.username,u.email,u.role,u.status,u.domain_quota,u.created_at,u.last_login_at,
-      COUNT(a.id) AS application_count,
-      SUM(CASE WHEN a.status='approved' THEN 1 ELSE 0 END) AS approved_count
-    FROM users u
-    LEFT JOIN domain_applications a ON a.user_id=u.id AND (a.deleted_at IS NULL OR a.deleted_at='')
-    WHERE u.status!='deleted'
-    GROUP BY u.id
-    ORDER BY u.created_at DESC
-    LIMIT 500
-  `).all<any>();
-
-  return ok({ users: (rows.results || []).map(u => ({
-    id: u.id,
-    username: u.username,
-    email: u.email,
-    role: u.role,
-    status: u.status,
-    domainQuota: Math.max(0, Number(u.domain_quota ?? settings.domain.defaultQuota)),
-    createdAt: u.created_at,
-    lastLoginAt: u.last_login_at,
-    applicationCount: Number(u.application_count || 0),
-    approvedCount: Number(u.approved_count || 0),
-  })) });
-}
-
-
-interface RegistrationKeyColumnInfo {
-  name: string;
-  notnull?: number;
-  dflt_value?: string | null;
-  pk?: number;
-}
-
-async function registrationKeyColumnInfo(env: Env): Promise<RegistrationKeyColumnInfo[]> {
-  const rows = await env.DB.prepare(`PRAGMA table_info(registration_keys)`).all<RegistrationKeyColumnInfo>();
-  return (rows.results || []).map(row => ({ ...row, name: String(row.name || '').toLowerCase() })).filter(row => row.name);
-}
-
-async function registrationKeyColumnNames(env: Env): Promise<Set<string>> {
-  return new Set((await registrationKeyColumnInfo(env)).map(row => row.name));
-}
-
-async function validateRegistrationKey(env: Env, rawCode: unknown): Promise<{ id: string; role?: string | null }> {
-  const code = cleanText(rawCode, 120);
-  if (!code) throw new HttpError(400, 'REGISTRATION_KEY_REQUIRED', '请输入注册码');
-  const row = await env.DB.prepare(`
-    SELECT id, code, role, max_uses, used_count, expires_at, status
-    FROM registration_keys
-    WHERE code=? COLLATE NOCASE AND status='active'
-    LIMIT 1
-  `).bind(code).first<any>();
-  if (!row) throw new HttpError(403, 'REGISTRATION_KEY_INVALID', '注册码不存在或已停用');
-  if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) {
-    throw new HttpError(403, 'REGISTRATION_KEY_EXPIRED', '注册码已过期');
-  }
-  const maxUses = Number(row.max_uses || 0);
-  const used = Number(row.used_count || 0);
-  if (maxUses > 0 && used >= maxUses) throw new HttpError(403, 'REGISTRATION_KEY_USED_UP', '注册码使用次数已用完');
-  return { id: row.id, role: row.role };
-}
-
-async function consumeRegistrationKey(env: Env, keyId: string, userId: string, username: string): Promise<void> {
-  await env.DB.batch([
-    env.DB.prepare(`UPDATE registration_keys SET used_count=COALESCE(used_count,0)+1 WHERE id=?`).bind(keyId),
-    env.DB.prepare(`INSERT INTO registration_key_usages (id, key_id, user_id, username) VALUES (?, ?, ?, ?)`).bind(crypto.randomUUID(), keyId, userId, username),
-  ]);
-}
-
-async function adminListRegistrationKeys(request: Request, env: Env): Promise<Response> {
-  await requireAdmin(env, request);
-  const rows = await env.DB.prepare(`
-    SELECT k.*, (SELECT COUNT(*) FROM registration_key_usages u WHERE u.key_id=k.id) AS usage_count
-    FROM registration_keys k
-    WHERE status!='deleted'
-    ORDER BY datetime(created_at) DESC
-    LIMIT 500
-  `).all<any>();
-  return ok({ keys: (rows.results || []).map(k => ({
-    id: k.id,
-    code: k.code,
-    role: k.role || 'user',
-    maxUses: Number(k.max_uses || 0),
-    usedCount: Number(k.usage_count || k.used_count || 0),
-    expiresAt: k.expires_at || '',
-    status: k.status || 'active',
-    createdAt: k.created_at || '',
-  })) });
-}
-
-function randomRegistrationCode(length = 8): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
-  const arr = new Uint8Array(Math.max(4, Math.min(64, length)));
-  crypto.getRandomValues(arr);
-  return Array.from(arr).map(n => chars[n % chars.length]).join('');
-}
-
-async function adminCreateRegistrationKey(request: Request, env: Env): Promise<Response> {
-  const admin = await requireAdmin(env, request);
-  const body = await readJson<Record<string, unknown>>(request);
-  const codeLength = clamp(Number(body.codeLength || 8), 4, 64);
-  const code = cleanText(body.code, 120) || randomRegistrationCode(codeLength);
-  if (!/^[A-Za-z0-9_-]{4,120}$/.test(code)) throw new HttpError(400, 'INVALID_CODE', '注册码只能包含字母、数字、下划线或连字符，至少 4 位');
-  const role = body.role === 'admin' ? 'admin' : 'user';
-  const maxUses = clamp(Number(body.maxUses || 0), 0, 999999);
-  const expiresAt = cleanText(body.expiresAt, 80);
-  const duplicate = await env.DB.prepare(`SELECT id FROM registration_keys WHERE code=? COLLATE NOCASE AND status!='deleted'`).bind(code).first<any>();
-  if (duplicate) throw new HttpError(409, 'CODE_EXISTS', '注册码已存在');
-  const id = crypto.randomUUID();
-  const columnInfo = await registrationKeyColumnInfo(env);
-  const columns = new Set(columnInfo.map(column => column.name));
-  const keyHash = await sha256(code);
-  const insertColumns = ['id'];
-  const values: unknown[] = [id];
-  const placeholders = ['?'];
-  const add = (name: string, value: unknown, expression = '?') => {
-    if (!columns.has(name)) return;
-    insertColumns.push(name);
-    placeholders.push(expression);
-    if (expression === '?') values.push(value);
-  };
-  // 旧版表的 name 字段为 NOT NULL；新版表使用 code。两种结构都同时兼容。
-  add('name', code);
-  add('code', code);
-  add('key_hash', keyHash);
-  add('hash', keyHash);
-  add('role', role);
-  add('max_uses', maxUses);
-  add('used_count', 0);
-  add('expires_at', expiresAt || null);
-  add('status', 'active');
-  add('created_by', admin.id);
-  add('created_at', null, "datetime('now')");
-  const alreadyAdded = new Set(insertColumns.map(name => name.toLowerCase()));
-  for (const column of columnInfo) {
-    if (alreadyAdded.has(column.name) || column.pk || !column.notnull || column.dflt_value != null) continue;
-    if (column.name.includes('hash')) add(column.name, keyHash);
-    else if (column.name.includes('name') || column.name.includes('code') || column.name.includes('key')) add(column.name, code);
-    else if (column.name.includes('count') || column.name.includes('uses') || column.name.includes('enabled')) add(column.name, 0);
-    else if (column.name.includes('status')) add(column.name, 'active');
-    else if (column.name.includes('role')) add(column.name, role);
-    else if (column.name.includes('created') || column.name.includes('updated')) add(column.name, null, "datetime('now')");
-    else add(column.name, '');
-    alreadyAdded.add(column.name);
-  }
-  await env.DB.prepare(`INSERT INTO registration_keys (${insertColumns.join(', ')}) VALUES (${placeholders.join(', ')})`).bind(...values).run();
-  await audit(env, request, admin.id, 'admin.registration_key_create', 'registration_key', id, { code, role, maxUses, expiresAt });
-  return ok({ key: { id, code, role, maxUses, usedCount: 0, expiresAt, status: 'active' } });
-}
-
-async function adminDeleteRegistrationKey(request: Request, env: Env, keyId: string): Promise<Response> {
-  const admin = await requireAdmin(env, request);
-  const row = await env.DB.prepare(`SELECT id,code FROM registration_keys WHERE id=? AND status!='deleted'`).bind(keyId).first<any>();
-  if (!row) throw new HttpError(404, 'NOT_FOUND', '注册码不存在');
-  await env.DB.prepare(`UPDATE registration_keys SET status='deleted' WHERE id=?`).bind(keyId).run();
-  await audit(env, request, admin.id, 'admin.registration_key_delete', 'registration_key', keyId, { code: row.code });
-  return ok({ deleted: true });
-}
-
-async function adminRegistrationKeyUsages(request: Request, env: Env, keyId: string): Promise<Response> {
-  await requireAdmin(env, request);
-  const key = await env.DB.prepare(`SELECT id,code FROM registration_keys WHERE id=?`).bind(keyId).first<any>();
-  if (!key) throw new HttpError(404, 'NOT_FOUND', '注册码不存在');
-  const rows = await env.DB.prepare(`
-    SELECT u.*, usr.email, usr.phone
-    FROM registration_key_usages u
-    LEFT JOIN users usr ON usr.id=u.user_id
-    WHERE u.key_id=?
-    ORDER BY datetime(u.used_at) DESC
-    LIMIT 500
-  `).bind(keyId).all<any>();
-  return ok({ key: { id: key.id, code: key.code }, usages: (rows.results || []).map(u => ({
-    id: u.id,
-    username: u.username || u.email || u.phone || u.user_id || '—',
-    userId: u.user_id || '',
-    usedAt: u.used_at || '',
-  })) });
-}
-
-
-async function adminAnalytics(request: Request, env: Env, url: URL): Promise<Response> {
-  await requireAdmin(env, request);
-  const range = normalizeAnalyticsRange(url);
-  const bucketFormat = range.bucket === 'hour' ? "%Y-%m-%d %H:00" : "%Y-%m-%d";
-  const startSql = sqlDate(range.start);
-  const endSql = sqlDate(range.end);
-  const prevStartSql = sqlDate(range.prevStart);
-  const prevEndSql = sqlDate(range.prevEnd);
-
-  const [
-    userTotals, domainTotals, dnsTotals, messageTotals, auditTotals, keyTotals,
-    userStatusRows, userRoleRows, domainStatusRows, suffixRows, dnsTypeRows, dnsStatusRows, dnsProxyRows,
-    messageLevelRows, messageTargetRows, auditCategoryRows, expiryRows, funnelRows, approvalRows,
-    topUsersRows, topSuffixRows, failureRows, recentAuditRows, recentAppRows, heatmapRows,
-    usersTrendRows, createdRows, approvedRows, rejectedRows, dnsAddedRows, dnsRemovedRows,
-    messagesTrendRows, loginSuccessRows, loginFailureRows, errorTrendRows
-  ] = await Promise.all([
-    env.DB.prepare(`
-      SELECT
-        COUNT(*) AS total,
-        SUM(CASE WHEN status='active' THEN 1 ELSE 0 END) AS active,
-        SUM(CASE WHEN status='disabled' THEN 1 ELSE 0 END) AS disabled,
-        SUM(CASE WHEN role='admin' AND status!='deleted' THEN 1 ELSE 0 END) AS admins,
-        SUM(CASE WHEN datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) THEN 1 ELSE 0 END) AS current,
-        SUM(CASE WHEN datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) THEN 1 ELSE 0 END) AS previous,
-        SUM(CASE WHEN last_login_at IS NOT NULL AND datetime(last_login_at)>=datetime(?) AND datetime(last_login_at)<datetime(?) THEN 1 ELSE 0 END) AS logged_in_period
-      FROM users WHERE status!='deleted'
-    `).bind(startSql,endSql,prevStartSql,prevEndSql,startSql,endSql).first<any>(),
-    env.DB.prepare(`
-      SELECT
-        COUNT(*) AS total,
-        SUM(CASE WHEN status='approved' AND (deleted_at IS NULL OR deleted_at='') AND (expires_at IS NULL OR datetime(expires_at)>datetime('now')) THEN 1 ELSE 0 END) AS active,
-        SUM(CASE WHEN status='pending' AND (deleted_at IS NULL OR deleted_at='') THEN 1 ELSE 0 END) AS pending,
-        SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) AS approved,
-        SUM(CASE WHEN status='rejected' THEN 1 ELSE 0 END) AS rejected,
-        SUM(CASE WHEN status='revoked' THEN 1 ELSE 0 END) AS revoked,
-        SUM(CASE WHEN controlled_at IS NOT NULL AND controlled_at!='' THEN 1 ELSE 0 END) AS controlled,
-        SUM(CASE WHEN delete_requested_at IS NOT NULL AND delete_requested_at!='' THEN 1 ELSE 0 END) AS delete_requested,
-        SUM(CASE WHEN expires_at IS NOT NULL AND datetime(expires_at)<=datetime('now') AND (deleted_at IS NULL OR deleted_at='') THEN 1 ELSE 0 END) AS expired,
-        SUM(CASE WHEN expires_at IS NOT NULL AND datetime(expires_at)>datetime('now') AND datetime(expires_at)<=datetime('now','+7 days') AND (deleted_at IS NULL OR deleted_at='') THEN 1 ELSE 0 END) AS expiring_7d,
-        SUM(CASE WHEN datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) THEN 1 ELSE 0 END) AS current,
-        SUM(CASE WHEN datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) THEN 1 ELSE 0 END) AS previous
-      FROM domain_applications
-    `).bind(startSql,endSql,prevStartSql,prevEndSql).first<any>(),
-    env.DB.prepare(`
-      SELECT
-        COUNT(*) AS total,
-        SUM(CASE WHEN (deleted_at IS NULL OR deleted_at='') THEN 1 ELSE 0 END) AS active,
-        SUM(CASE WHEN status='pending' AND (deleted_at IS NULL OR deleted_at='') THEN 1 ELSE 0 END) AS pending,
-        SUM(CASE WHEN (status='failed' OR error_message IS NOT NULL AND error_message!='') AND (deleted_at IS NULL OR deleted_at='') THEN 1 ELSE 0 END) AS errors,
-        SUM(CASE WHEN proxied=1 AND (deleted_at IS NULL OR deleted_at='') THEN 1 ELSE 0 END) AS proxied,
-        SUM(CASE WHEN datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) THEN 1 ELSE 0 END) AS current,
-        SUM(CASE WHEN datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) THEN 1 ELSE 0 END) AS previous
-      FROM dns_records
-    `).bind(startSql,endSql,prevStartSql,prevEndSql).first<any>(),
-    env.DB.prepare(`
-      SELECT
-        COUNT(*) AS total,
-        SUM(CASE WHEN datetime(COALESCE(sent_at,created_at))>=datetime(?) AND datetime(COALESCE(sent_at,created_at))<datetime(?) THEN 1 ELSE 0 END) AS current,
-        SUM(CASE WHEN datetime(COALESCE(sent_at,created_at))>=datetime(?) AND datetime(COALESCE(sent_at,created_at))<datetime(?) THEN 1 ELSE 0 END) AS previous,
-        SUM(CASE WHEN level IN ('warning','error','danger') THEN 1 ELSE 0 END) AS important
-      FROM system_messages WHERE status='sent' AND (deleted_at IS NULL OR deleted_at='')
-    `).bind(startSql,endSql,prevStartSql,prevEndSql).first<any>(),
-    env.DB.prepare(`
-      SELECT
-        COUNT(*) AS total,
-        SUM(CASE WHEN datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) THEN 1 ELSE 0 END) AS current,
-        SUM(CASE WHEN datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) THEN 1 ELSE 0 END) AS previous,
-        SUM(CASE WHEN (action LIKE '%failed%' OR action LIKE '%error%' OR action LIKE '%denied%' OR action LIKE '%blocked%') AND datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) THEN 1 ELSE 0 END) AS errors,
-        SUM(CASE WHEN action='auth.login' AND datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) THEN 1 ELSE 0 END) AS logins,
-        SUM(CASE WHEN (action LIKE '%login%failed%' OR action LIKE '%auth%failed%') AND datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) THEN 1 ELSE 0 END) AS login_failures
-      FROM audit_logs
-    `).bind(startSql,endSql,prevStartSql,prevEndSql,startSql,endSql,startSql,endSql,startSql,endSql).first<any>(),
-    env.DB.prepare(`
-      SELECT COUNT(*) AS total,
-        SUM(CASE WHEN status='active' THEN 1 ELSE 0 END) AS active,
-        SUM(CASE WHEN max_uses>0 AND used_count>=max_uses THEN 1 ELSE 0 END) AS exhausted,
-        SUM(CASE WHEN expires_at IS NOT NULL AND datetime(expires_at)<datetime('now') THEN 1 ELSE 0 END) AS expired,
-        SUM(used_count) AS used
-      FROM registration_keys WHERE status!='deleted'
-    `).first<any>(),
-
-    env.DB.prepare(`SELECT status, COUNT(*) AS count FROM users WHERE status!='deleted' GROUP BY status ORDER BY count DESC`).all<any>(),
-    env.DB.prepare(`SELECT role, COUNT(*) AS count FROM users WHERE status!='deleted' GROUP BY role ORDER BY count DESC`).all<any>(),
-    env.DB.prepare(`SELECT status, COUNT(*) AS count FROM domain_applications GROUP BY status ORDER BY count DESC`).all<any>(),
-    env.DB.prepare(`SELECT suffix_ascii AS suffix, COUNT(*) AS count FROM domain_applications GROUP BY suffix_ascii ORDER BY count DESC LIMIT 12`).all<any>(),
-    env.DB.prepare(`SELECT UPPER(type) AS type, COUNT(*) AS count FROM dns_records WHERE (deleted_at IS NULL OR deleted_at='') GROUP BY UPPER(type) ORDER BY count DESC`).all<any>(),
-    env.DB.prepare(`SELECT status, COUNT(*) AS count FROM dns_records WHERE (deleted_at IS NULL OR deleted_at='') GROUP BY status ORDER BY count DESC`).all<any>(),
-    env.DB.prepare(`SELECT CASE WHEN proxied=1 THEN 'proxied' ELSE 'dns_only' END AS proxy, COUNT(*) AS count FROM dns_records WHERE (deleted_at IS NULL OR deleted_at='') GROUP BY proxy`).all<any>(),
-    env.DB.prepare(`SELECT level, COUNT(*) AS count FROM system_messages WHERE status='sent' AND (deleted_at IS NULL OR deleted_at='') GROUP BY level ORDER BY count DESC`).all<any>(),
-    env.DB.prepare(`SELECT target_type AS target, COUNT(*) AS count FROM system_messages WHERE status='sent' AND (deleted_at IS NULL OR deleted_at='') GROUP BY target_type ORDER BY count DESC`).all<any>(),
-    env.DB.prepare(`
-      SELECT CASE
-        WHEN action LIKE 'auth.%' OR action LIKE '%login%' THEN 'auth'
-        WHEN action LIKE '%dns%' OR action LIKE '%cf_api%' THEN 'dns'
-        WHEN action LIKE '%domain%' OR action LIKE '%application%' THEN 'domain'
-        WHEN action LIKE '%message%' OR action LIKE '%email%' THEN 'message'
-        WHEN action LIKE '%user%' OR action LIKE '%registration%' THEN 'user'
-        WHEN action LIKE '%settings%' OR action LIKE '%config%' THEN 'settings'
-        ELSE 'other' END AS category, COUNT(*) AS count
-      FROM audit_logs WHERE datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?)
-      GROUP BY category ORDER BY count DESC
-    `).bind(startSql,endSql).all<any>(),
-    env.DB.prepare(`
-      SELECT CASE
-        WHEN expires_at IS NULL OR expires_at='' THEN 'no_expiry'
-        WHEN datetime(expires_at)<=datetime('now') THEN 'expired'
-        WHEN datetime(expires_at)<=datetime('now','+7 days') THEN 'within_7d'
-        WHEN datetime(expires_at)<=datetime('now','+30 days') THEN 'within_30d'
-        WHEN datetime(expires_at)<=datetime('now','+90 days') THEN 'within_90d'
-        ELSE 'after_90d' END AS bucket, COUNT(*) AS count
-      FROM domain_applications WHERE status='approved' AND (deleted_at IS NULL OR deleted_at='')
-      GROUP BY bucket
-    `).all<any>(),
-    env.DB.prepare(`
-      SELECT
-        (SELECT COUNT(*) FROM users WHERE status!='deleted') AS users,
-        (SELECT COUNT(DISTINCT user_id) FROM domain_applications) AS applicants,
-        (SELECT COUNT(DISTINCT user_id) FROM domain_applications WHERE status='approved' AND (deleted_at IS NULL OR deleted_at='')) AS approved_users,
-        (SELECT COUNT(DISTINCT user_id) FROM dns_records WHERE (deleted_at IS NULL OR deleted_at='')) AS dns_users,
-        (SELECT COUNT(*) FROM domain_applications) AS applications,
-        (SELECT COUNT(*) FROM domain_applications WHERE status='approved') AS approved_applications,
-        (SELECT COUNT(DISTINCT application_id) FROM dns_records WHERE (deleted_at IS NULL OR deleted_at='')) AS configured_applications
-    `).first<any>(),
-    env.DB.prepare(`
-      SELECT
-        SUM(CASE WHEN datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) THEN 1 ELSE 0 END) AS submitted,
-        SUM(CASE WHEN status='approved' AND datetime(COALESCE(reviewed_at,created_at))>=datetime(?) AND datetime(COALESCE(reviewed_at,created_at))<datetime(?) THEN 1 ELSE 0 END) AS approved,
-        SUM(CASE WHEN status='rejected' AND datetime(COALESCE(reviewed_at,created_at))>=datetime(?) AND datetime(COALESCE(reviewed_at,created_at))<datetime(?) THEN 1 ELSE 0 END) AS rejected,
-        AVG(CASE WHEN reviewed_at IS NOT NULL THEN (julianday(reviewed_at)-julianday(created_at))*24 END) AS avg_review_hours,
-        AVG(CASE WHEN status='pending' THEN (julianday('now')-julianday(created_at))*24 END) AS avg_pending_hours
-      FROM domain_applications
-    `).bind(startSql,endSql,startSql,endSql,startSql,endSql).first<any>(),
-
-    env.DB.prepare(`
-      SELECT u.id,u.username,u.email,u.status,u.last_login_at,
-        (SELECT COUNT(*) FROM domain_applications a WHERE a.user_id=u.id) AS domains,
-        (SELECT COUNT(*) FROM domain_applications a WHERE a.user_id=u.id AND a.status='approved' AND (a.deleted_at IS NULL OR a.deleted_at='')) AS active_domains,
-        (SELECT COUNT(*) FROM dns_records d WHERE d.user_id=u.id AND (d.deleted_at IS NULL OR d.deleted_at='')) AS dns_records
-      FROM users u WHERE u.status!='deleted'
-      ORDER BY active_domains DESC,dns_records DESC,domains DESC LIMIT 15
-    `).all<any>(),
-    env.DB.prepare(`
-      SELECT suffix_ascii AS suffix,
-        COUNT(*) AS total,
-        SUM(CASE WHEN status='approved' AND (deleted_at IS NULL OR deleted_at='') THEN 1 ELSE 0 END) AS active,
-        SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,
-        SUM(CASE WHEN status='rejected' THEN 1 ELSE 0 END) AS rejected
-      FROM domain_applications GROUP BY suffix_ascii ORDER BY total DESC LIMIT 15
-    `).all<any>(),
-    env.DB.prepare(`
-      SELECT action,COUNT(*) AS count,MAX(created_at) AS latest
-      FROM audit_logs
-      WHERE (action LIKE '%failed%' OR action LIKE '%error%' OR action LIKE '%denied%' OR action LIKE '%blocked%')
-        AND datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?)
-      GROUP BY action ORDER BY count DESC LIMIT 15
-    `).bind(startSql,endSql).all<any>(),
-    env.DB.prepare(`
-      SELECT l.id,l.action,l.target_type,l.target_id,l.ip,l.created_at,u.username
-      FROM audit_logs l LEFT JOIN users u ON u.id=l.actor_user_id
-      WHERE datetime(l.created_at)>=datetime(?) AND datetime(l.created_at)<datetime(?)
-      ORDER BY datetime(l.created_at) DESC LIMIT 30
-    `).bind(startSql,endSql).all<any>(),
-    env.DB.prepare(`
-      SELECT a.id,a.fqdn_unicode,a.fqdn_ascii,a.status,a.record_type,a.created_at,a.reviewed_at,a.error_message,u.username
-      FROM domain_applications a LEFT JOIN users u ON u.id=a.user_id
-      ORDER BY datetime(a.created_at) DESC LIMIT 20
-    `).all<any>(),
-    env.DB.prepare(`
-      SELECT CAST(strftime('%w',created_at) AS INTEGER) AS weekday,
-             CAST(strftime('%H',created_at) AS INTEGER) AS hour,
-             COUNT(*) AS count
-      FROM audit_logs WHERE datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?)
-      GROUP BY weekday,hour
-    `).bind(startSql,endSql).all<any>(),
-
-    env.DB.prepare(`SELECT strftime('${bucketFormat}',created_at) AS bucket,COUNT(*) AS count FROM users WHERE datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) GROUP BY bucket`).bind(startSql,endSql).all<any>(),
-    env.DB.prepare(`SELECT strftime('${bucketFormat}',created_at) AS bucket,COUNT(*) AS count FROM domain_applications WHERE datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) GROUP BY bucket`).bind(startSql,endSql).all<any>(),
-    env.DB.prepare(`SELECT strftime('${bucketFormat}',reviewed_at) AS bucket,COUNT(*) AS count FROM domain_applications WHERE status='approved' AND reviewed_at IS NOT NULL AND datetime(reviewed_at)>=datetime(?) AND datetime(reviewed_at)<datetime(?) GROUP BY bucket`).bind(startSql,endSql).all<any>(),
-    env.DB.prepare(`SELECT strftime('${bucketFormat}',COALESCE(deleted_at,reviewed_at,created_at)) AS bucket,COUNT(*) AS count FROM domain_applications WHERE (status IN ('rejected','revoked','deleted') OR deleted_at IS NOT NULL) AND datetime(COALESCE(deleted_at,reviewed_at,created_at))>=datetime(?) AND datetime(COALESCE(deleted_at,reviewed_at,created_at))<datetime(?) GROUP BY bucket`).bind(startSql,endSql).all<any>(),
-    env.DB.prepare(`SELECT strftime('${bucketFormat}',created_at) AS bucket,COUNT(*) AS count FROM dns_records WHERE datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) GROUP BY bucket`).bind(startSql,endSql).all<any>(),
-    env.DB.prepare(`SELECT strftime('${bucketFormat}',deleted_at) AS bucket,COUNT(*) AS count FROM dns_records WHERE deleted_at IS NOT NULL AND deleted_at!='' AND datetime(deleted_at)>=datetime(?) AND datetime(deleted_at)<datetime(?) GROUP BY bucket`).bind(startSql,endSql).all<any>(),
-    env.DB.prepare(`SELECT strftime('${bucketFormat}',COALESCE(sent_at,created_at)) AS bucket,COUNT(*) AS count FROM system_messages WHERE status='sent' AND datetime(COALESCE(sent_at,created_at))>=datetime(?) AND datetime(COALESCE(sent_at,created_at))<datetime(?) GROUP BY bucket`).bind(startSql,endSql).all<any>(),
-    env.DB.prepare(`SELECT strftime('${bucketFormat}',created_at) AS bucket,COUNT(*) AS count FROM audit_logs WHERE action='auth.login' AND datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) GROUP BY bucket`).bind(startSql,endSql).all<any>(),
-    env.DB.prepare(`SELECT strftime('${bucketFormat}',created_at) AS bucket,COUNT(*) AS count FROM audit_logs WHERE (action LIKE '%login%failed%' OR action LIKE '%auth%failed%') AND datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) GROUP BY bucket`).bind(startSql,endSql).all<any>(),
-    env.DB.prepare(`SELECT strftime('${bucketFormat}',created_at) AS bucket,COUNT(*) AS count FROM audit_logs WHERE (action LIKE '%failed%' OR action LIKE '%error%' OR action LIKE '%denied%' OR action LIKE '%blocked%') AND datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?) GROUP BY bucket`).bind(startSql,endSql).all<any>(),
-  ]);
-
-  const buckets = buildAnalyticsBuckets(range.start,range.end,range.bucket);
-  const growthTrend = mergeMultiTrend(buckets,[
-    {key:'users',rows:usersTrendRows.results||[]},
-    {key:'applications',rows:createdRows.results||[]},
-    {key:'approved',rows:approvedRows.results||[]},
-    {key:'dns',rows:dnsAddedRows.results||[]},
-    {key:'messages',rows:messagesTrendRows.results||[]},
-  ]);
-  const domainTrend = mergeMultiTrend(buckets,[
-    {key:'created',rows:createdRows.results||[]},
-    {key:'approved',rows:approvedRows.results||[]},
-    {key:'rejected',rows:rejectedRows.results||[]},
-  ]);
-  const dnsTrend = mergeMultiTrend(buckets,[
-    {key:'added',rows:dnsAddedRows.results||[]},
-    {key:'removed',rows:dnsRemovedRows.results||[]},
-  ]);
-  const operationTrend = mergeMultiTrend(buckets,[
-    {key:'logins',rows:loginSuccessRows.results||[]},
-    {key:'loginFailures',rows:loginFailureRows.results||[]},
-    {key:'errors',rows:errorTrendRows.results||[]},
-  ]);
-
-  const submitted=Number(approvalRows?.submitted||0);
-  const approved=Number(approvalRows?.approved||0);
-  const rejected=Number(approvalRows?.rejected||0);
-  const decided=approved+rejected;
-  const readReceipts=await env.DB.prepare(`SELECT COUNT(*) AS count,COUNT(DISTINCT user_id) AS readers FROM message_reads WHERE datetime(read_at)>=datetime(?) AND datetime(read_at)<datetime(?)`).bind(startSql,endSql).first<any>();
-
-  const [
-    loginRecencyRows, userStageRows, dnsTypeHealthRows, messageLevelReadRows,
-    topActorRows, topIpRows, deviceTypeRows, reviewerRows, domainAgeRows, riskFlagRows
-  ] = await Promise.all([
-    env.DB.prepare(`
-      SELECT CASE
-        WHEN last_login_at IS NULL OR last_login_at='' THEN 'never'
-        WHEN datetime(last_login_at)>=datetime('now','-1 day') THEN 'today'
-        WHEN datetime(last_login_at)>=datetime('now','-7 days') THEN 'within_7d'
-        WHEN datetime(last_login_at)>=datetime('now','-30 days') THEN 'within_30d'
-        ELSE 'older_30d' END AS bucket, COUNT(*) AS count
-      FROM users WHERE status!='deleted' GROUP BY bucket ORDER BY count DESC
-    `).all<any>(),
-    env.DB.prepare(`
-      SELECT stage,COUNT(*) AS count FROM (
-        SELECT u.id,CASE
-          WHEN EXISTS(SELECT 1 FROM dns_records d WHERE d.user_id=u.id AND (d.deleted_at IS NULL OR d.deleted_at='')) THEN 'configured_dns'
-          WHEN EXISTS(SELECT 1 FROM domain_applications a WHERE a.user_id=u.id AND a.status='approved' AND (a.deleted_at IS NULL OR a.deleted_at='')) THEN 'approved_domain'
-          WHEN EXISTS(SELECT 1 FROM domain_applications a WHERE a.user_id=u.id AND (a.deleted_at IS NULL OR a.deleted_at='')) THEN 'applied'
-          ELSE 'registered_only' END AS stage
-        FROM users u WHERE u.status!='deleted'
-      ) GROUP BY stage ORDER BY count DESC
-    `).all<any>(),
-    env.DB.prepare(`
-      SELECT UPPER(type) AS type,
-        COUNT(*) AS total,
-        SUM(CASE WHEN status!='pending' AND status!='failed' AND (error_message IS NULL OR error_message='') THEN 1 ELSE 0 END) AS normal,
-        SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,
-        SUM(CASE WHEN status='failed' OR (error_message IS NOT NULL AND error_message!='') THEN 1 ELSE 0 END) AS errors,
-        SUM(CASE WHEN proxied=1 THEN 1 ELSE 0 END) AS proxied,
-        SUM(CASE WHEN proxied!=1 OR proxied IS NULL THEN 1 ELSE 0 END) AS dns_only
-      FROM dns_records WHERE (deleted_at IS NULL OR deleted_at='')
-      GROUP BY UPPER(type) ORDER BY total DESC
-    `).all<any>(),
-    env.DB.prepare(`
-      SELECT m.level,COUNT(DISTINCT m.id) AS sent,COUNT(r.user_id) AS receipts,COUNT(DISTINCT r.user_id) AS readers
-      FROM system_messages m LEFT JOIN message_reads r ON r.message_id=m.id
-      WHERE m.status='sent' AND (m.deleted_at IS NULL OR m.deleted_at='')
-        AND datetime(COALESCE(m.sent_at,m.created_at))>=datetime(?) AND datetime(COALESCE(m.sent_at,m.created_at))<datetime(?)
-      GROUP BY m.level ORDER BY sent DESC
-    `).bind(startSql,endSql).all<any>(),
-    env.DB.prepare(`
-      SELECT COALESCE(NULLIF(u.username,''),'系统') AS label,COUNT(*) AS count,MAX(l.created_at) AS latest
-      FROM audit_logs l LEFT JOIN users u ON u.id=l.actor_user_id
-      WHERE datetime(l.created_at)>=datetime(?) AND datetime(l.created_at)<datetime(?)
-      GROUP BY COALESCE(NULLIF(u.username,''),'系统') ORDER BY count DESC LIMIT 12
-    `).bind(startSql,endSql).all<any>(),
-    env.DB.prepare(`
-      SELECT COALESCE(NULLIF(ip,''),'未知 IP') AS label,COUNT(*) AS count,MAX(created_at) AS latest
-      FROM audit_logs WHERE datetime(created_at)>=datetime(?) AND datetime(created_at)<datetime(?)
-      GROUP BY COALESCE(NULLIF(ip,''),'未知 IP') ORDER BY count DESC LIMIT 12
-    `).bind(startSql,endSql).all<any>(),
-    env.DB.prepare(`
-      SELECT COALESCE(NULLIF(device_type,''),'unknown') AS device,COUNT(*) AS count,COUNT(DISTINCT user_id) AS users
-      FROM sessions
-      WHERE datetime(COALESCE(last_seen_at,created_at))>=datetime(?) AND datetime(COALESCE(last_seen_at,created_at))<datetime(?)
-      GROUP BY COALESCE(NULLIF(device_type,''),'unknown') ORDER BY count DESC
-    `).bind(startSql,endSql).all<any>(),
-    env.DB.prepare(`
-      SELECT COALESCE(NULLIF(u.username,''),'系统') AS reviewer,COUNT(*) AS reviewed,
-        SUM(CASE WHEN a.status='approved' THEN 1 ELSE 0 END) AS approved,
-        SUM(CASE WHEN a.status='rejected' THEN 1 ELSE 0 END) AS rejected,
-        AVG(MAX(0,(julianday(a.reviewed_at)-julianday(a.created_at))*24)) AS avg_hours
-      FROM domain_applications a LEFT JOIN users u ON u.id=a.reviewed_by
-      WHERE a.reviewed_at IS NOT NULL AND datetime(a.reviewed_at)>=datetime(?) AND datetime(a.reviewed_at)<datetime(?)
-      GROUP BY COALESCE(NULLIF(u.username,''),'系统') ORDER BY reviewed DESC LIMIT 12
-    `).bind(startSql,endSql).all<any>(),
-    env.DB.prepare(`
-      SELECT CASE
-        WHEN julianday('now')-julianday(created_at)<7 THEN 'age_7d'
-        WHEN julianday('now')-julianday(created_at)<30 THEN 'age_30d'
-        WHEN julianday('now')-julianday(created_at)<90 THEN 'age_90d'
-        WHEN julianday('now')-julianday(created_at)<365 THEN 'age_1y'
-        ELSE 'age_over_1y' END AS bucket,COUNT(*) AS count
-      FROM domain_applications WHERE status='approved' AND (deleted_at IS NULL OR deleted_at='')
-      GROUP BY bucket ORDER BY count DESC
-    `).all<any>(),
-    env.DB.prepare(`
-      SELECT 'controlled' AS flag,COUNT(*) AS count FROM domain_applications WHERE controlled_at IS NOT NULL AND controlled_at!='' AND (deleted_at IS NULL OR deleted_at='')
-      UNION ALL SELECT 'delete_requested',COUNT(*) FROM domain_applications WHERE delete_requested_at IS NOT NULL AND delete_requested_at!='' AND (deleted_at IS NULL OR deleted_at='')
-      UNION ALL SELECT 'dns_error',COUNT(*) FROM dns_records WHERE (status='failed' OR (error_message IS NOT NULL AND error_message!='')) AND (deleted_at IS NULL OR deleted_at='')
-      UNION ALL SELECT 'disabled_users',COUNT(*) FROM users WHERE status='disabled'
-    `).all<any>(),
-  ]);
-
-  return ok({analytics:{
-    generatedAt:new Date().toISOString(),
-    range:{preset:range.preset,days:range.days,start:range.start.toISOString(),end:range.end.toISOString(),bucket:range.bucket,label:range.label,previousStart:range.prevStart.toISOString(),previousEnd:range.prevEnd.toISOString()},
-    metrics:{
-      users:metric(Number(userTotals?.total||0),0,Number(userTotals?.current||0),Number(userTotals?.previous||0)),
-      activeUsers:{total:Number(userTotals?.active||0),loggedInPeriod:Number(userTotals?.logged_in_period||0),disabled:Number(userTotals?.disabled||0),admins:Number(userTotals?.admins||0)},
-      domains:metric(Number(domainTotals?.total||0),0,Number(domainTotals?.current||0),Number(domainTotals?.previous||0)),
-      activeDomains:{total:Number(domainTotals?.active||0),pending:Number(domainTotals?.pending||0),controlled:Number(domainTotals?.controlled||0),expired:Number(domainTotals?.expired||0),expiring7d:Number(domainTotals?.expiring_7d||0),deleteRequested:Number(domainTotals?.delete_requested||0)},
-      dns:metric(Number(dnsTotals?.active||0),Math.max(0,Number(dnsTotals?.total||0)-Number(dnsTotals?.active||0)),Number(dnsTotals?.current||0),Number(dnsTotals?.previous||0)),
-      dnsHealth:{pending:Number(dnsTotals?.pending||0),errors:Number(dnsTotals?.errors||0),proxied:Number(dnsTotals?.proxied||0)},
-      messages:metric(Number(messageTotals?.total||0),0,Number(messageTotals?.current||0),Number(messageTotals?.previous||0)),
-      messageHealth:{important:Number(messageTotals?.important||0)},
-      audit:metric(Number(auditTotals?.total||0),0,Number(auditTotals?.current||0),Number(auditTotals?.previous||0)),
-      security:{errors:Number(auditTotals?.errors||0),logins:Number(auditTotals?.logins||0),loginFailures:Number(auditTotals?.login_failures||0)},
-      registrationKeys:{total:Number(keyTotals?.total||0),active:Number(keyTotals?.active||0),exhausted:Number(keyTotals?.exhausted||0),expired:Number(keyTotals?.expired||0),used:Number(keyTotals?.used||0)},
-    },
-    approval:{submitted,approved,rejected,pending:Number(domainTotals?.pending||0),approvalRate:decided?Math.round(approved/decided*1000)/10:0,avgReviewHours:Math.round(Number(approvalRows?.avg_review_hours||0)*10)/10,avgPendingHours:Math.round(Number(approvalRows?.avg_pending_hours||0)*10)/10},
-    messageEngagement:{sent:Number(messageTotals?.current||0),readReceipts:Number(readReceipts?.count||0),readers:Number(readReceipts?.readers||0)},
-    funnel:{users:Number(funnelRows?.users||0),applicants:Number(funnelRows?.applicants||0),approvedUsers:Number(funnelRows?.approved_users||0),dnsUsers:Number(funnelRows?.dns_users||0),applications:Number(funnelRows?.applications||0),approvedApplications:Number(funnelRows?.approved_applications||0),configuredApplications:Number(funnelRows?.configured_applications||0)},
-    trends:{growth:growthTrend,domains:domainTrend,dns:dnsTrend,operations:operationTrend},
-    distributions:{
-      userStatus:userStatusRows.results||[],userRole:userRoleRows.results||[],domainStatus:domainStatusRows.results||[],suffix:suffixRows.results||[],
-      dnsType:dnsTypeRows.results||[],dnsStatus:dnsStatusRows.results||[],dnsProxy:dnsProxyRows.results||[],messageLevel:messageLevelRows.results||[],
-      messageTarget:messageTargetRows.results||[],auditCategory:auditCategoryRows.results||[],expiry:expiryRows.results||[],
-      loginRecency:loginRecencyRows.results||[],userStage:userStageRows.results||[],dnsTypeHealth:dnsTypeHealthRows.results||[],
-      messageLevelRead:messageLevelReadRows.results||[],deviceType:deviceTypeRows.results||[],domainAge:domainAgeRows.results||[],riskFlags:riskFlagRows.results||[]
-    },
-    rankings:{
-      users:topUsersRows.results||[],suffixes:topSuffixRows.results||[],failures:failureRows.results||[],
-      actors:topActorRows.results||[],ips:topIpRows.results||[],reviewers:reviewerRows.results||[]
-    },
-    recent:{audit:recentAuditRows.results||[],applications:recentAppRows.results||[]},
-    heatmap:heatmapRows.results||[],
-  }});
-}
-
-type AnalyticsRange = { preset: string; start: Date; end: Date; prevStart: Date; prevEnd: Date; days: number; bucket: 'hour' | 'day'; label: string };
-function normalizeAnalyticsRange(url: URL): AnalyticsRange {
-  const now = new Date();
-  const preset = String(url.searchParams.get('range') || url.searchParams.get('days') || '30d').toLowerCase();
-  let start: Date;
-  let end = now;
-  let label = '最近30天';
-  let bucket: 'hour' | 'day' = 'day';
-
-  if (preset === 'custom') {
-    const rawStart = url.searchParams.get('start') || '';
-    const rawEnd = url.searchParams.get('end') || '';
-    start = rawStart ? new Date(rawStart) : new Date(now.getTime() - 30 * DAY);
-    end = rawEnd ? new Date(rawEnd) : now;
-    if (Number.isNaN(start.getTime())) start = new Date(now.getTime() - 30 * DAY);
-    if (Number.isNaN(end.getTime())) end = now;
-    if (end <= start) end = new Date(start.getTime() + DAY);
-    const diffHours = (end.getTime() - start.getTime()) / (60 * 60 * 1000);
-    bucket = diffHours <= 72 ? 'hour' : 'day';
-    label = '自定义';
-  } else {
-    const map: Record<string, { ms: number; label: string; bucket: 'hour' | 'day' }> = {
-      '12h': { ms: 12 * 60 * 60 * 1000, label: '最近12小时', bucket: 'hour' },
-      '1d': { ms: DAY, label: '最近1天', bucket: 'hour' },
-      '3d': { ms: 3 * DAY, label: '最近3天', bucket: 'hour' },
-      '7d': { ms: 7 * DAY, label: '最近7天', bucket: 'day' },
-      '7': { ms: 7 * DAY, label: '最近7天', bucket: 'day' },
-      '30d': { ms: 30 * DAY, label: '最近30天', bucket: 'day' },
-      '30': { ms: 30 * DAY, label: '最近30天', bucket: 'day' },
-      '90d': { ms: 90 * DAY, label: '最近90天', bucket: 'day' },
-      '90': { ms: 90 * DAY, label: '最近90天', bucket: 'day' },
-    };
-    const picked = map[preset] || map['30d'];
-    start = new Date(now.getTime() - picked.ms);
-    bucket = picked.bucket;
-    label = picked.label;
-  }
-  const span = end.getTime() - start.getTime();
-  const prevEnd = new Date(start.getTime());
-  const prevStart = new Date(start.getTime() - span);
-  return { preset, start, end, prevStart, prevEnd, days: Math.max(1, Math.ceil(span / DAY)), bucket, label };
-}
-function sqlDate(date: Date): string {
-  return date.toISOString().slice(0, 19).replace('T', ' ');
-}
-function bucketKey(date: Date, bucket: 'hour' | 'day'): string {
-  const iso = date.toISOString();
-  return bucket === 'hour' ? iso.slice(0, 13).replace('T', ' ') + ':00' : iso.slice(0, 10);
-}
-function buildAnalyticsBuckets(start: Date, end: Date, bucket: 'hour' | 'day'): string[] {
-  const step = bucket === 'hour' ? 60 * 60 * 1000 : DAY;
-  const out: string[] = [];
-  let cursor = new Date(start.getTime());
-  if (bucket === 'hour') cursor.setUTCMinutes(0, 0, 0);
-  else cursor.setUTCHours(0, 0, 0, 0);
-  while (cursor < end && out.length < 220) {
-    out.push(bucketKey(cursor, bucket));
-    cursor = new Date(cursor.getTime() + step);
-  }
-  return out;
-}
-function mergeMultiTrend(buckets: string[], series: Array<{ key: string; rows: any[] }>) {
-  const map = new Map<string, any>();
-  for (const bucket of buckets) map.set(bucket, { day: bucket, bucket });
-  for (const item of series) {
-    for (const bucket of buckets) map.get(bucket)[item.key] = 0;
-    for (const row of item.rows || []) {
-      const key = String(row.bucket || row.day || '');
-      if (!map.has(key)) map.set(key, { day: key, bucket: key });
-      map.get(key)[item.key] = Number(row.count || 0);
-    }
-  }
-  return Array.from(map.values()).sort((a,b) => String(a.bucket).localeCompare(String(b.bucket)));
-}
-function metric(total: number, deleted: number, current: number, previous: number) {
-  let pct: number | null = null;
-  let direction = 'flat';
-  if (previous > 0) {
-    pct = Math.round(((current - previous) / previous) * 1000) / 10;
-    direction = pct > 0 ? 'up' : pct < 0 ? 'down' : 'flat';
-  } else if (current > 0) {
-    direction = 'up';
-  }
-  return { total, deleted, current, previous, pct, direction, noPrevious: previous === 0 };
-}
-
-function mergeDnsTrend(addRows: any[], removeRows: any[]) {
-  const map = new Map<string, any>();
-  for (const r of addRows) map.set(r.day, { day: r.day, added: Number(r.added || 0), removed: 0 });
-  for (const r of removeRows) {
-    const item = map.get(r.day) || { day: r.day, added: 0, removed: 0 };
-    item.removed = Number(r.removed || 0);
-    map.set(r.day, item);
-  }
-  return Array.from(map.values()).sort((a,b) => String(a.day).localeCompare(String(b.day)));
-}
-
-async function adminCreateUser(request: Request, env: Env): Promise<Response> {
-  const admin = await requireAdmin(env, request);
-  const body = await readJson<Record<string, unknown>>(request);
-  const settings = await loadSettings(env);
-
-  await verifyHumanChallenge(env, request, body, 'admin_create', env.TURNSTILE_ACTION_REGISTER || 'register');
-
-  const username = normalizeUsername(body.username);
-  const email = normalizeOptionalEmailStrict(body.email);
-  const phone = normalizeOptionalPhone(body.phone);
-  if (!email && !phone) throw new HttpError(400, 'CONTACT_REQUIRED', '手机号和邮箱至少填写一个');
-  const password = validatePassword(body.password);
-  const role: Role = body.role === 'admin' ? 'admin' : 'user';
-  const status = ['active', 'disabled'].includes(String(body.status)) ? String(body.status) as UserStatus : 'active';
-  const quota = Math.max(0, Math.floor(Number(body.domainQuota ?? settings.domain.defaultQuota) || 0));
-
-  const duplicate = await env.DB.prepare(`
-    SELECT id FROM users
-    WHERE username=? COLLATE NOCASE
-      OR (? IS NOT NULL AND email=? COLLATE NOCASE)
-      OR (? IS NOT NULL AND phone=? COLLATE NOCASE)
-    LIMIT 1
-  `).bind(username, email, email, phone, phone).first<{ id: string }>();
-  if (duplicate) throw new HttpError(409, 'USER_EXISTS', '账号或邮箱/手机号已被使用');
-
-  const { hash, salt } = await hashPassword(password);
-  const id = crypto.randomUUID();
-
-  await env.DB.prepare(`
-    INSERT INTO users (id, username, email, phone, password_hash, password_salt, role, status, domain_quota, permissions_json)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).bind(id, username, email, phone, hash, salt, role, status, quota, JSON.stringify({ canApply: true })).run();
-
-  await audit(env, request, admin.id, 'admin.user_create', 'user', id, { username, email, phone: phone ? 'set' : 'empty', role, status, quota });
-  const user = await env.DB.prepare(`SELECT * FROM users WHERE id=?`).bind(id).first<UserRow>();
-  return ok({ user: serializeUser(user!) });
-}
-
-async function adminUpdateUser(request: Request, env: Env, id: string): Promise<Response> {
-  const admin = await requireAdmin(env, request);
-  const body = await readJson<Record<string, unknown>>(request);
-  const target = await env.DB.prepare(`SELECT * FROM users WHERE id=? AND status!='deleted'`).bind(id).first<UserRow>();
-  if (!target) throw new HttpError(404, 'NOT_FOUND', '用户不存在');
-
-  const role = body.role === 'admin' ? 'admin' : 'user';
-  const status = ['active', 'disabled'].includes(String(body.status)) ? String(body.status) : target.status;
-  const quota = Math.max(0, Math.floor(Number(body.domainQuota ?? target.domain_quota ?? 3) || 0));
-
-  if (id === admin.id && (role !== 'admin' || status !== 'active')) {
-    throw new HttpError(400, 'CANNOT_DISABLE_SELF', '不能降级或禁用当前管理员');
-  }
-
-  await env.DB.prepare(`
-    UPDATE users SET role=?,status=?,domain_quota=?,updated_at=datetime('now') WHERE id=?
-  `).bind(role, status, quota, id).run();
-
-  await audit(env, request, admin.id, 'admin.user_update', 'user', id, { role, status, quota });
-  return ok({ updated: true });
-}
-
-
-async function adminHelpSettings(request: Request, env: Env): Promise<Response> {
-  await requireAdmin(env, request);
-  const settings = await loadSettings(env);
-  return ok({ help: settings.help });
-}
-
-async function adminUpdateHelpSettings(request: Request, env: Env): Promise<Response> {
-  const admin = await requireAdmin(env, request);
-  const body = await readJson<Record<string, unknown>>(request, 512 * 1024);
-  const settings = await loadSettings(env);
-  settings.help = { categories: sanitizeHelpCategories((body as any).categories) };
-  await env.APP_KV.put(SETTINGS_KEY, JSON.stringify(settings));
-  await audit(env, request, admin.id, 'admin.settings_help', 'setting', 'help');
-  return ok({ help: settings.help });
-}
-
-function defaultHelpSettings(): { categories: HelpCategorySetting[] } {
-  return { categories: [
-    { key:'faq', title:'常见问题', subtitle:'账号、注册、审核、登录、额度、语言、消息等常见问题', items: [] },
-    { key:'dns', title:'DNS 记录说明', subtitle:'A / AAAA / CNAME / TXT / MX / NS、代理、TTL、生效时间、第三方平台配置', items: [] },
-    { key:'domain', title:'域名管理问题', subtitle:'解析管理、删除撤销、续期、禁用、管理员处理、手机端操作等问题', items: [] },
-  ] };
-}
-
-function sanitizeHelpCategories(value: unknown): HelpCategorySetting[] {
-  const defaults = defaultHelpSettings().categories;
-  const raw = Array.isArray(value) ? value : [];
-  return defaults.map((def, index) => {
-    const found = raw.find((x: any) => x && (x.key === def.key || x.title === def.title)) || raw[index] || def;
-    const itemsRaw = Array.isArray((found as any).items) ? (found as any).items : [];
-    const items = itemsRaw.slice(0, 200).map((item: any, itemIndex: number) => ({
-      id: cleanText(item?.id || `${def.key}-${itemIndex + 1}`, 80) || `${def.key}-${itemIndex + 1}`,
-      q: cleanText(item?.q || item?.question || '', 200),
-      a: cleanHtmlText(item?.a || item?.answer || '', 8000),
-    })).filter((item: HelpItemSetting) => item.q);
-    return {
-      key: cleanText((found as any).key || def.key, 30) || def.key,
-      title: cleanText((found as any).title || def.title, 80) || def.title,
-      subtitle: cleanText((found as any).subtitle || def.subtitle || '', 180),
-      items,
-    };
-  });
-}
-
-function cleanHtmlText(value: unknown, max = 8000): string {
-  const raw = String(value ?? '').slice(0, max);
-  return raw
-    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
-    .replace(/on\w+\s*=\s*(['"]).*?\1/gi, '')
-    .trim();
-}
-
-function adminSettingsView(settings: AppSettings, env: Env): any {
-  const safeSettings: any = JSON.parse(JSON.stringify(settings));
-  safeSettings.registration.turnstileSecretConfigured = Boolean(settings.registration.turnstileSecret || env.TURNSTILE_SECRET);
-  safeSettings.registration.turnstileSecret = '';
-  safeSettings.registration.emailApiKeyConfigured = Boolean(settings.registration.emailApiKey || env.RESEND_API_KEY);
-  safeSettings.registration.emailApiKey = '';
-  safeSettings.registration.emailRuntimeEnvironment = resolveEmailRuntimeEnvironment(env);
-  safeSettings.registration.cloudflareAdminEmailConfigured = Boolean(env.SEB);
-  safeSettings.registration.cloudflareAdminEmail = resolveCloudflareAdminEmail(env, settings);
-  safeSettings.registration.cloudflareAdminEmailFrom = resolveCloudflareAdminSender(env, settings).fromEmail;
-  safeSettings.registration.cloudflareEmailApiTokenConfigured = Boolean(settings.registration.cloudflareEmailApiToken || env.CF_EMAIL_ROUTING_API_TOKEN);
-  safeSettings.registration.cloudflareEmailApiToken = '';
-  safeSettings.registration.cloudflareEmailAccountId = env.CF_ACCOUNT_ID || settings.registration.cloudflareEmailAccountId || '';
-  safeSettings.registration.cloudflareVerifiedRecipients = sanitizeEmailRecipientList(settings.registration.cloudflareVerifiedRecipients || []);
-  safeSettings.registration.cloudflareRecipientsSyncedAt = settings.registration.cloudflareRecipientsSyncedAt || '';
-  safeSettings.registration.cloudflareWorkerApiConfigured = Boolean(env.CF_WORKERS_API_TOKEN);
-  safeSettings.registration.cloudflareWorkerScriptName = cleanText(env.CF_WORKER_SCRIPT_NAME || 'storage', 80) || 'storage';
-  safeSettings.dns.cfApiTokenConfigured = Boolean(settings.dns.cfApiToken || env.CF_API_TOKEN);
-  safeSettings.dns.cfApiToken = '';
-  safeSettings.dns.suffixes = (safeSettings.dns.suffixes || []).map((x: any) => ({
-    ...x,
-    cfApiTokenConfigured: Boolean((settings.dns.suffixes || []).find(s => s.suffixAscii === x.suffixAscii || s.suffix === x.suffix)?.cfApiToken),
-    cfApiToken: '',
-  }));
-  return safeSettings;
-}
-
-async function adminSettings(request: Request, env: Env): Promise<Response> {
-  await requireAdmin(env, request);
-  return ok({ settings: adminSettingsView(await loadSettings(env), env) });
-}
-
-type AdminSettingGroup = 'site' | 'registration' | 'domain' | 'dns' | 'blacklist' | 'notification' | 'security' | 'automation';
-
-async function adminUpdateSettings(request: Request, env: Env, group: AdminSettingGroup): Promise<Response> {
-  const admin = await requireAdmin(env, request);
-  const body = await readJson<Record<string, unknown>>(request, 1024 * 1024);
-  const settings = await loadSettings(env);
-
-  if (group === 'site') {
-    settings.site = {
-      ...settings.site,
-      title: cleanText(body.title, 80) || settings.site.title,
-      subtitle: cleanText(body.subtitle, 140),
-      footer: cleanText(body.footer, 300),
-      copyright: cleanText(body.copyright, 1000),
-      faviconUrl: cleanText(body.faviconUrl, 500),
-      headerThirdPartyJs: cleanText(body.headerThirdPartyJs, 20000),
-      maintenanceMode: asBoolean(body.maintenanceMode, false),
-      maintenanceMessage: cleanText(body.maintenanceMessage, 1000),
-      themeMode: ['light','dark','system'].includes(String(body.themeMode)) ? String(body.themeMode) : 'light',
-      noticeStartAt: cleanText(body.noticeStartAt, 80),
-      noticeEndAt: cleanText(body.noticeEndAt, 80),
-      accent: normalizeHexColor(body.accent, '#4f63f6'),
-      accent2: normalizeHexColor(body.accent2, '#7c4dff'),
-      logoText: cleanText(body.logoText, 12) || 'free',
-      logoImageUrl: cleanText(body.logoImageUrl, 500),
-      icp: cleanText(body.icp, 200),
-      homepageNotice: cleanText(body.homepageNotice, 5000),
-      publicHomepageEnabled: asBoolean(body.publicHomepageEnabled, true),
-      publicHomepageLayout: ['brand','compact','data'].includes(String(body.publicHomepageLayout || 'brand')) ? String(body.publicHomepageLayout || 'brand') as any : 'brand',
-      publicHomepageBadge: cleanText(body.publicHomepageBadge, 120),
-      publicHomepageTitle: cleanText(body.publicHomepageTitle, 120),
-      publicHomepageHighlight: cleanText(body.publicHomepageHighlight, 80),
-      publicHomepageDescription: cleanText(body.publicHomepageDescription, 500),
-      publicHomepagePrimaryText: cleanText(body.publicHomepagePrimaryText, 40),
-      publicHomepagePrimaryHref: Object.prototype.hasOwnProperty.call(body, 'publicHomepagePrimaryHref') ? cleanText(body.publicHomepagePrimaryHref, 300) : (settings.site.publicHomepagePrimaryHref || ''),
-      publicHomepageSecondaryText: cleanText(body.publicHomepageSecondaryText, 40),
-      publicHomepageSecondaryHref: Object.prototype.hasOwnProperty.call(body, 'publicHomepageSecondaryHref') ? cleanText(body.publicHomepageSecondaryHref, 300) : (settings.site.publicHomepageSecondaryHref || '#/available'),
-      publicHomepageSearchEyebrow: Object.prototype.hasOwnProperty.call(body, 'publicHomepageSearchEyebrow') ? cleanText(body.publicHomepageSearchEyebrow, 50) : (settings.site.publicHomepageSearchEyebrow || '实时查询'),
-      publicHomepageSearchTitle: Object.prototype.hasOwnProperty.call(body, 'publicHomepageSearchTitle') ? cleanText(body.publicHomepageSearchTitle, 80) : (settings.site.publicHomepageSearchTitle || '先确认，再申请'),
-      publicHomepageSearchNote: Object.prototype.hasOwnProperty.call(body, 'publicHomepageSearchNote') ? cleanText(body.publicHomepageSearchNote, 300) : (settings.site.publicHomepageSearchNote || '查询只返回当前可用状态，不公开域名归属或账户信息。'),
-      publicHomepageStatsUsersLabel: Object.prototype.hasOwnProperty.call(body, 'publicHomepageStatsUsersLabel') ? cleanText(body.publicHomepageStatsUsersLabel, 40) : (settings.site.publicHomepageStatsUsersLabel || '活跃用户'),
-      publicHomepageStatsDomainsLabel: Object.prototype.hasOwnProperty.call(body, 'publicHomepageStatsDomainsLabel') ? cleanText(body.publicHomepageStatsDomainsLabel, 40) : (settings.site.publicHomepageStatsDomainsLabel || '正常域名'),
-      publicHomepageStatsDnsLabel: Object.prototype.hasOwnProperty.call(body, 'publicHomepageStatsDnsLabel') ? cleanText(body.publicHomepageStatsDnsLabel, 40) : (settings.site.publicHomepageStatsDnsLabel || 'DNS 记录'),
-      publicHomepageStatsSuffixesLabel: Object.prototype.hasOwnProperty.call(body, 'publicHomepageStatsSuffixesLabel') ? cleanText(body.publicHomepageStatsSuffixesLabel, 40) : (settings.site.publicHomepageStatsSuffixesLabel || '开放根域名'),
-      publicHomepageFeaturesTitle: Object.prototype.hasOwnProperty.call(body, 'publicHomepageFeaturesTitle') ? cleanText(body.publicHomepageFeaturesTitle, 120) : (settings.site.publicHomepageFeaturesTitle || '一个入口，完成域名日常管理'),
-      publicHomepageFeaturesDescription: Object.prototype.hasOwnProperty.call(body, 'publicHomepageFeaturesDescription') ? cleanText(body.publicHomepageFeaturesDescription, 400) : (settings.site.publicHomepageFeaturesDescription || '首页负责查询与了解服务，登录后进入控制台处理申请、审核状态与 DNS。'),
-      publicHomepageDomainsTitle: Object.prototype.hasOwnProperty.call(body, 'publicHomepageDomainsTitle') ? cleanText(body.publicHomepageDomainsTitle, 120) : (settings.site.publicHomepageDomainsTitle || '现在可以申请的后缀'),
-      publicHomepageDomainsDescription: Object.prototype.hasOwnProperty.call(body, 'publicHomepageDomainsDescription') ? cleanText(body.publicHomepageDomainsDescription, 400) : (settings.site.publicHomepageDomainsDescription || '这里只展示开放入口，不用公开用户域名或账户数据。'),
-      publicHomepageProcessTitle: Object.prototype.hasOwnProperty.call(body, 'publicHomepageProcessTitle') ? cleanText(body.publicHomepageProcessTitle, 120) : (settings.site.publicHomepageProcessTitle || '操作路径一眼看懂'),
-      publicHomepageProcessDescription: Object.prototype.hasOwnProperty.call(body, 'publicHomepageProcessDescription') ? cleanText(body.publicHomepageProcessDescription, 400) : (settings.site.publicHomepageProcessDescription || '查询、申请、审核、解析各自独立，减少误操作。'),
-      publicHomepageInfrastructureTitle: Object.prototype.hasOwnProperty.call(body, 'publicHomepageInfrastructureTitle') ? cleanText(body.publicHomepageInfrastructureTitle, 120) : (settings.site.publicHomepageInfrastructureTitle || '系统怎么工作'),
-      publicHomepageInfrastructureDescription: Object.prototype.hasOwnProperty.call(body, 'publicHomepageInfrastructureDescription') ? cleanText(body.publicHomepageInfrastructureDescription, 400) : (settings.site.publicHomepageInfrastructureDescription || '公开页面、业务控制台和 Cloudflare DNS 分工明确，避免把内部配置暴露到前台。'),
-      publicHomepageFaqTitle: Object.prototype.hasOwnProperty.call(body, 'publicHomepageFaqTitle') ? cleanText(body.publicHomepageFaqTitle, 120) : (settings.site.publicHomepageFaqTitle || '第一次使用？先看这些'),
-      publicHomepageFaqDescription: Object.prototype.hasOwnProperty.call(body, 'publicHomepageFaqDescription') ? cleanText(body.publicHomepageFaqDescription, 400) : (settings.site.publicHomepageFaqDescription || '把最容易遇到的问题留在首页，详细内容放到独立知识库。'),
-      publicHomepageSectionOrder: Object.prototype.hasOwnProperty.call(body, 'publicHomepageSectionOrder') ? cleanText(body.publicHomepageSectionOrder, 120) : (settings.site.publicHomepageSectionOrder || 'features,domains,faq'),
-      publicHomepageCtaEyebrow: Object.prototype.hasOwnProperty.call(body, 'publicHomepageCtaEyebrow') ? cleanText(body.publicHomepageCtaEyebrow, 50) : (settings.site.publicHomepageCtaEyebrow || '下一步'),
-      publicHomepageCtaTitle: Object.prototype.hasOwnProperty.call(body, 'publicHomepageCtaTitle') ? cleanText(body.publicHomepageCtaTitle, 120) : (settings.site.publicHomepageCtaTitle || '从查询一个名称开始'),
-      publicHomepageCtaDescription: Object.prototype.hasOwnProperty.call(body, 'publicHomepageCtaDescription') ? cleanText(body.publicHomepageCtaDescription, 500) : (settings.site.publicHomepageCtaDescription || '不需要登录即可先确认可用性；需要申请时再进入账户流程。'),
-      publicHomepageCtaPrimaryText: Object.prototype.hasOwnProperty.call(body, 'publicHomepageCtaPrimaryText') ? cleanText(body.publicHomepageCtaPrimaryText, 40) : (settings.site.publicHomepageCtaPrimaryText || '查询域名'),
-      publicHomepageCtaPrimaryHref: Object.prototype.hasOwnProperty.call(body, 'publicHomepageCtaPrimaryHref') ? cleanText(body.publicHomepageCtaPrimaryHref, 300) : (settings.site.publicHomepageCtaPrimaryHref || '#/available'),
-      publicHomepageCtaSecondaryText: Object.prototype.hasOwnProperty.call(body, 'publicHomepageCtaSecondaryText') ? cleanText(body.publicHomepageCtaSecondaryText, 40) : (settings.site.publicHomepageCtaSecondaryText || '阅读知识库'),
-      publicHomepageCtaSecondaryHref: Object.prototype.hasOwnProperty.call(body, 'publicHomepageCtaSecondaryHref') ? cleanText(body.publicHomepageCtaSecondaryHref, 300) : (settings.site.publicHomepageCtaSecondaryHref || '#/knowledge'),
-      publicHomepageShowSearch: asBoolean(body.publicHomepageShowSearch, true),
-      publicHomepageShowStats: asBoolean(body.publicHomepageShowStats, true),
-      publicHomepageShowFeatures: asBoolean(body.publicHomepageShowFeatures, true),
-      publicHomepageShowDomains: asBoolean(body.publicHomepageShowDomains, true),
-      publicHomepageShowProcess: false,
-      publicHomepageShowInfrastructure: false,
-      publicHomepageShowFaq: asBoolean(body.publicHomepageShowFaq, true),
-      publicHomepageShowCta: asBoolean(body.publicHomepageShowCta, true),
-      publicHomepageSearchPlaceholder: Object.prototype.hasOwnProperty.call(body, 'publicHomepageSearchPlaceholder') ? cleanText(body.publicHomepageSearchPlaceholder, 120) : (settings.site.publicHomepageSearchPlaceholder || '输入您想要的域名前缀，例如 myblog'),
-      publicHomepageSearchButtonText: Object.prototype.hasOwnProperty.call(body, 'publicHomepageSearchButtonText') ? cleanText(body.publicHomepageSearchButtonText, 30) : (settings.site.publicHomepageSearchButtonText || '查询'),
-      publicNavShowHome: asBoolean(body.publicNavShowHome, true),
-      publicNavShowAvailable: asBoolean(body.publicNavShowAvailable, true),
-      publicNavShowKnowledge: asBoolean(body.publicNavShowKnowledge, true),
-      publicNavShowFeatured: asBoolean(body.publicNavShowFeatured, true),
-      publicNavShowNavigation: asBoolean(body.publicNavShowNavigation, true),
-      publicNavHomeLabel: Object.prototype.hasOwnProperty.call(body, 'publicNavHomeLabel') ? cleanText(body.publicNavHomeLabel, 40) : (settings.site.publicNavHomeLabel || '首页'),
-      publicNavAvailableLabel: Object.prototype.hasOwnProperty.call(body, 'publicNavAvailableLabel') ? cleanText(body.publicNavAvailableLabel, 40) : (settings.site.publicNavAvailableLabel || '可用域名'),
-      publicNavKnowledgeLabel: Object.prototype.hasOwnProperty.call(body, 'publicNavKnowledgeLabel') ? cleanText(body.publicNavKnowledgeLabel, 40) : (settings.site.publicNavKnowledgeLabel || '知识库'),
-      publicNavFeaturedLabel: Object.prototype.hasOwnProperty.call(body, 'publicNavFeaturedLabel') ? cleanText(body.publicNavFeaturedLabel, 40) : (settings.site.publicNavFeaturedLabel || '优质站点'),
-      publicNavNavigationLabel: Object.prototype.hasOwnProperty.call(body, 'publicNavNavigationLabel') ? cleanText(body.publicNavNavigationLabel, 40) : (settings.site.publicNavNavigationLabel || '导航'),
-      publicBrandTitle: Object.prototype.hasOwnProperty.call(body, 'publicBrandTitle') ? cleanText(body.publicBrandTitle, 100) : (settings.site.publicBrandTitle || ''),
-      publicHeaderShowBrand: asBoolean(body.publicHeaderShowBrand, true),
-      publicHeaderShowLanguage: asBoolean(body.publicHeaderShowLanguage, true),
-      publicHeaderShowAccountActions: asBoolean(body.publicHeaderShowAccountActions, true),
-      publicHeaderDashboardText: Object.prototype.hasOwnProperty.call(body, 'publicHeaderDashboardText') ? cleanText(body.publicHeaderDashboardText, 40) : (settings.site.publicHeaderDashboardText || '进入控制台'),
-      publicHeaderLoginText: Object.prototype.hasOwnProperty.call(body, 'publicHeaderLoginText') ? cleanText(body.publicHeaderLoginText, 40) : (settings.site.publicHeaderLoginText || '登录'),
-      publicHeaderRegisterText: Object.prototype.hasOwnProperty.call(body, 'publicHeaderRegisterText') ? cleanText(body.publicHeaderRegisterText, 40) : (settings.site.publicHeaderRegisterText || '注册'),
-      publicDomainCheckEmptyText: Object.prototype.hasOwnProperty.call(body, 'publicDomainCheckEmptyText') ? cleanText(body.publicDomainCheckEmptyText, 120) : (settings.site.publicDomainCheckEmptyText || '请输入域名前缀'),
-      publicDomainCheckCheckingText: Object.prototype.hasOwnProperty.call(body, 'publicDomainCheckCheckingText') ? cleanText(body.publicDomainCheckCheckingText, 120) : (settings.site.publicDomainCheckCheckingText || '正在检查域名是否可注册...'),
-      publicDomainCheckAvailableText: Object.prototype.hasOwnProperty.call(body, 'publicDomainCheckAvailableText') ? cleanText(body.publicDomainCheckAvailableText, 120) : (settings.site.publicDomainCheckAvailableText || '此域名可注册。'),
-      publicDomainCheckUnavailableText: Object.prototype.hasOwnProperty.call(body, 'publicDomainCheckUnavailableText') ? cleanText(body.publicDomainCheckUnavailableText, 120) : (settings.site.publicDomainCheckUnavailableText || '此域名暂不可注册。'),
-      publicDomainCheckFailureText: Object.prototype.hasOwnProperty.call(body, 'publicDomainCheckFailureText') ? cleanText(body.publicDomainCheckFailureText, 160) : (settings.site.publicDomainCheckFailureText || '查询失败，请稍后重试'),
-      publicDomainCheckApplyText: Object.prototype.hasOwnProperty.call(body, 'publicDomainCheckApplyText') ? cleanText(body.publicDomainCheckApplyText, 40) : (settings.site.publicDomainCheckApplyText || '立即申请'),
-      publicDomainCheckRegisterApplyText: Object.prototype.hasOwnProperty.call(body, 'publicDomainCheckRegisterApplyText') ? cleanText(body.publicDomainCheckRegisterApplyText, 40) : (settings.site.publicDomainCheckRegisterApplyText || '注册后申请'),
-      publicHomepageShowBadge: asBoolean(body.publicHomepageShowBadge, true),
-      publicHomepageShowHighlight: asBoolean(body.publicHomepageShowHighlight, true),
-      publicHomepageShowDescription: asBoolean(body.publicHomepageShowDescription, true),
-      publicHomepageShowPrimaryButton: asBoolean(body.publicHomepageShowPrimaryButton, true),
-      publicHomepageShowSecondaryButton: asBoolean(body.publicHomepageShowSecondaryButton, true),
-      publicHomepageStatsShowUsers: asBoolean(body.publicHomepageStatsShowUsers, true),
-      publicHomepageStatsShowDomains: asBoolean(body.publicHomepageStatsShowDomains, true),
-      publicHomepageStatsShowDns: asBoolean(body.publicHomepageStatsShowDns, true),
-      publicHomepageStatsShowSuffixes: asBoolean(body.publicHomepageStatsShowSuffixes, true),
-      publicHomepageFeature1Show: asBoolean(body.publicHomepageFeature1Show, true),
-      publicHomepageFeature1Icon: cleanText(body.publicHomepageFeature1Icon, 12) || '∞',
-      publicHomepageFeature1Title: cleanText(body.publicHomepageFeature1Title, 80) || '免费使用',
-      publicHomepageFeature1Description: cleanText(body.publicHomepageFeature1Description, 300) || '提供可申请的免费二级域名，注册、审核与 DNS 管理集中在一个系统完成。',
-      publicHomepageFeature2Show: asBoolean(body.publicHomepageFeature2Show, true),
-      publicHomepageFeature2Icon: cleanText(body.publicHomepageFeature2Icon, 12) || '⚡',
-      publicHomepageFeature2Title: cleanText(body.publicHomepageFeature2Title, 80) || '快速上线',
-      publicHomepageFeature2Description: cleanText(body.publicHomepageFeature2Description, 300) || '域名审核通过后即可配置解析，不需要在多个后台之间反复切换。',
-      publicHomepageFeature3Show: asBoolean(body.publicHomepageFeature3Show, true),
-      publicHomepageFeature3Icon: cleanText(body.publicHomepageFeature3Icon, 12) || '◎',
-      publicHomepageFeature3Title: cleanText(body.publicHomepageFeature3Title, 80) || '完整 DNS 控制',
-      publicHomepageFeature3Description: cleanText(body.publicHomepageFeature3Description, 300) || '按管理员开放策略支持常见 DNS 记录类型。',
-      publicHomepageFeature4Show: asBoolean(body.publicHomepageFeature4Show, true),
-      publicHomepageFeature4Icon: cleanText(body.publicHomepageFeature4Icon, 12) || '☁',
-      publicHomepageFeature4Title: cleanText(body.publicHomepageFeature4Title, 80) || 'Cloudflare 驱动',
-      publicHomepageFeature4Description: cleanText(body.publicHomepageFeature4Description, 300) || 'DNS 写入由 Cloudflare API 完成，可代理记录可按系统策略开启代理。',
-      publicHomepageFeature5Show: asBoolean(body.publicHomepageFeature5Show, true),
-      publicHomepageFeature5Icon: cleanText(body.publicHomepageFeature5Icon, 12) || '⌁',
-      publicHomepageFeature5Title: cleanText(body.publicHomepageFeature5Title, 80) || '多根域名',
-      publicHomepageFeature5Description: cleanText(body.publicHomepageFeature5Description, 300) || '可以从多个当前开放的根域名中选择合适的后缀。',
-      publicHomepageFeature6Show: asBoolean(body.publicHomepageFeature6Show, true),
-      publicHomepageFeature6Icon: cleanText(body.publicHomepageFeature6Icon, 12) || '✓',
-      publicHomepageFeature6Title: cleanText(body.publicHomepageFeature6Title, 80) || '可追踪管理',
-      publicHomepageFeature6Description: cleanText(body.publicHomepageFeature6Description, 300) || '域名状态、DNS、续期、消息与操作记录都可在控制台查看。',
-      publicHomepageDomainsLimit: clamp(Number(body.publicHomepageDomainsLimit || 6), 1, 24),
-      publicHomepageDomainsStatusText: cleanText(body.publicHomepageDomainsStatusText, 80) || '当前开放申请',
-      publicHomepageDomainsLinkText: cleanText(body.publicHomepageDomainsLinkText, 40) || '立即查询',
-      publicHomepageDomainsViewAllText: cleanText(body.publicHomepageDomainsViewAllText, 40) || '查看全部',
-      publicHomepageFaqLimit: clamp(Number(body.publicHomepageFaqLimit || 4), 1, 7),
-      publicHomepageFaqViewAllText: cleanText(body.publicHomepageFaqViewAllText, 40) || '查看全部',
-      publicHomepageCtaShowPrimaryButton: asBoolean(body.publicHomepageCtaShowPrimaryButton, true),
-      publicHomepageCtaShowSecondaryButton: asBoolean(body.publicHomepageCtaShowSecondaryButton, true),
-      publicAvailableShowHero: asBoolean(body.publicAvailableShowHero, true),
-      publicAvailableShowSearchDescription: asBoolean(body.publicAvailableShowSearchDescription, true),
-      publicAvailableEmptySuffixesText: cleanText(body.publicAvailableEmptySuffixesText, 160) || '当前暂无开放申请的根域名。',
-      publicKnowledgeShowHero: asBoolean(body.publicKnowledgeShowHero, true),
-      publicKnowledgeShowSearch: asBoolean(body.publicKnowledgeShowSearch, true),
-      publicKnowledgeShowCategorySubtitle: asBoolean(body.publicKnowledgeShowCategorySubtitle, true),
-      publicKnowledgeNoResultsText: cleanText(body.publicKnowledgeNoResultsText, 120) || '没有找到匹配内容。',
-      publicFeaturedShowHero: asBoolean(body.publicFeaturedShowHero, true),
-      publicFeaturedShowCardBadge: asBoolean(body.publicFeaturedShowCardBadge, true),
-      publicFeaturedShowCardStatus: asBoolean(body.publicFeaturedShowCardStatus, true),
-      publicFeaturedShowCardButton: asBoolean(body.publicFeaturedShowCardButton, true),
-      publicFeaturedEmptyText: cleanText(body.publicFeaturedEmptyText, 160) || '当前暂无开放申请的根域名。',
-      publicNavigationShowHero: asBoolean(body.publicNavigationShowHero, true),
-      publicNavigationShowBackButton: asBoolean(body.publicNavigationShowBackButton, true),
-      publicNavigationShowDescriptions: asBoolean(body.publicNavigationShowDescriptions, true),
-      publicNavigationShowNumbers: asBoolean(body.publicNavigationShowNumbers, true),
-      publicNavigationShowArrows: asBoolean(body.publicNavigationShowArrows, true),
-      publicFooterEnabled: asBoolean(body.publicFooterEnabled, true),
-      publicFooterShowBrand: asBoolean(body.publicFooterShowBrand, true),
-      publicFooterServicesTitle: cleanText(body.publicFooterServicesTitle, 50) || '服务',
-      publicFooterInfoTitle: cleanText(body.publicFooterInfoTitle, 50) || '信息',
-      publicFooterStartTitle: cleanText(body.publicFooterStartTitle, 50) || '开始使用',
-      publicFooterCopyrightText: Object.prototype.hasOwnProperty.call(body, 'publicFooterCopyrightText') ? cleanText(body.publicFooterCopyrightText, 500) : (settings.site.publicFooterCopyrightText || ''),
-      publicFooterShowIcp: asBoolean(body.publicFooterShowIcp, true),
-      publicAvailableBadge: Object.prototype.hasOwnProperty.call(body, 'publicAvailableBadge') ? cleanText(body.publicAvailableBadge, 80) : (settings.site.publicAvailableBadge || 'DOMAIN AVAILABILITY'),
-      publicAvailableTitle: Object.prototype.hasOwnProperty.call(body, 'publicAvailableTitle') ? cleanText(body.publicAvailableTitle, 120) : (settings.site.publicAvailableTitle || '可用域名'),
-      publicAvailableDescription: Object.prototype.hasOwnProperty.call(body, 'publicAvailableDescription') ? cleanText(body.publicAvailableDescription, 500) : (settings.site.publicAvailableDescription || '可查询本站二级域名是否可注册。输入前缀并选择根域名，即可实时检查。'),
-      publicAvailableSearchEyebrow: Object.prototype.hasOwnProperty.call(body, 'publicAvailableSearchEyebrow') ? cleanText(body.publicAvailableSearchEyebrow, 50) : (settings.site.publicAvailableSearchEyebrow || '即时查询'),
-      publicAvailableSearchTitle: Object.prototype.hasOwnProperty.call(body, 'publicAvailableSearchTitle') ? cleanText(body.publicAvailableSearchTitle, 120) : (settings.site.publicAvailableSearchTitle || '查找你想要的二级域名'),
-      publicAvailableSearchDescription: Object.prototype.hasOwnProperty.call(body, 'publicAvailableSearchDescription') ? cleanText(body.publicAvailableSearchDescription, 600) : (settings.site.publicAvailableSearchDescription || '查询会同时检查系统内的域名占用状态和对应 Cloudflare DNS 精确记录。提交申请时系统会再次检查。'),
-      publicAvailableSearchPlaceholder: Object.prototype.hasOwnProperty.call(body, 'publicAvailableSearchPlaceholder') ? cleanText(body.publicAvailableSearchPlaceholder, 120) : (settings.site.publicAvailableSearchPlaceholder || '输入您想要的域名前缀，例如 myblog'),
-      publicAvailableSearchButtonText: Object.prototype.hasOwnProperty.call(body, 'publicAvailableSearchButtonText') ? cleanText(body.publicAvailableSearchButtonText, 30) : (settings.site.publicAvailableSearchButtonText || '查询'),
-      publicAvailableShowGuide: asBoolean(body.publicAvailableShowGuide, true),
-      publicAvailableGuideAvailableTitle: Object.prototype.hasOwnProperty.call(body, 'publicAvailableGuideAvailableTitle') ? cleanText(body.publicAvailableGuideAvailableTitle, 80) : (settings.site.publicAvailableGuideAvailableTitle || '结果为“可注册”'),
-      publicAvailableGuideAvailableText: Object.prototype.hasOwnProperty.call(body, 'publicAvailableGuideAvailableText') ? cleanText(body.publicAvailableGuideAvailableText, 500) : (settings.site.publicAvailableGuideAvailableText || '表示当前未发现同名占用，可以登录或注册后提交申请；最终状态以提交时实时检查和管理员规则为准。'),
-      publicAvailableGuideUnavailableTitle: Object.prototype.hasOwnProperty.call(body, 'publicAvailableGuideUnavailableTitle') ? cleanText(body.publicAvailableGuideUnavailableTitle, 80) : (settings.site.publicAvailableGuideUnavailableTitle || '结果为“不可注册”'),
-      publicAvailableGuideUnavailableText: Object.prototype.hasOwnProperty.call(body, 'publicAvailableGuideUnavailableText') ? cleanText(body.publicAvailableGuideUnavailableText, 500) : (settings.site.publicAvailableGuideUnavailableText || '通常表示域名已经被系统、Cloudflare DNS 或当前规则占用/限制。可以更换前缀或选择其他根域名。'),
-      publicKnowledgeBadge: Object.prototype.hasOwnProperty.call(body, 'publicKnowledgeBadge') ? cleanText(body.publicKnowledgeBadge, 80) : (settings.site.publicKnowledgeBadge || 'KNOWLEDGE BASE'),
-      publicKnowledgeTitle: Object.prototype.hasOwnProperty.call(body, 'publicKnowledgeTitle') ? cleanText(body.publicKnowledgeTitle, 120) : (settings.site.publicKnowledgeTitle || '知识库'),
-      publicKnowledgeDescription: Object.prototype.hasOwnProperty.call(body, 'publicKnowledgeDescription') ? cleanText(body.publicKnowledgeDescription, 500) : (settings.site.publicKnowledgeDescription || '独立整理的二级域名申请、DNS、续期、安全与故障排查说明。'),
-      publicKnowledgeSearchPlaceholder: Object.prototype.hasOwnProperty.call(body, 'publicKnowledgeSearchPlaceholder') ? cleanText(body.publicKnowledgeSearchPlaceholder, 120) : (settings.site.publicKnowledgeSearchPlaceholder || '搜索标题或内容关键字...'),
-      publicKnowledgeShowArticleCount: asBoolean(body.publicKnowledgeShowArticleCount, true),
-      publicFeaturedBadge: Object.prototype.hasOwnProperty.call(body, 'publicFeaturedBadge') ? cleanText(body.publicFeaturedBadge, 80) : (settings.site.publicFeaturedBadge || 'FEATURED DOMAINS'),
-      publicFeaturedTitle: Object.prototype.hasOwnProperty.call(body, 'publicFeaturedTitle') ? cleanText(body.publicFeaturedTitle, 120) : (settings.site.publicFeaturedTitle || '优质站点'),
-      publicFeaturedDescription: Object.prototype.hasOwnProperty.call(body, 'publicFeaturedDescription') ? cleanText(body.publicFeaturedDescription, 500) : (settings.site.publicFeaturedDescription || '展示目前可用、并由管理员开放申请的根域名。'),
-      publicFeaturedCardBadgeText: Object.prototype.hasOwnProperty.call(body, 'publicFeaturedCardBadgeText') ? cleanText(body.publicFeaturedCardBadgeText, 30) : (settings.site.publicFeaturedCardBadgeText || '免费'),
-      publicFeaturedCardStatusText: Object.prototype.hasOwnProperty.call(body, 'publicFeaturedCardStatusText') ? cleanText(body.publicFeaturedCardStatusText, 40) : (settings.site.publicFeaturedCardStatusText || '开放申请'),
-      publicFeaturedCardButtonText: Object.prototype.hasOwnProperty.call(body, 'publicFeaturedCardButtonText') ? cleanText(body.publicFeaturedCardButtonText, 40) : (settings.site.publicFeaturedCardButtonText || '立即申请'),
-      publicFeaturedCardFallbackDescription: Object.prototype.hasOwnProperty.call(body, 'publicFeaturedCardFallbackDescription') ? cleanText(body.publicFeaturedCardFallbackDescription, 400) : (settings.site.publicFeaturedCardFallbackDescription || '免费二级域名，可用于合规的个人项目、学习、展示与测试。'),
-      publicFeaturedShowQueryHelper: asBoolean(body.publicFeaturedShowQueryHelper, true),
-      publicFeaturedQueryTitle: Object.prototype.hasOwnProperty.call(body, 'publicFeaturedQueryTitle') ? cleanText(body.publicFeaturedQueryTitle, 100) : (settings.site.publicFeaturedQueryTitle || '先查再申请'),
-      publicFeaturedQueryDescription: Object.prototype.hasOwnProperty.call(body, 'publicFeaturedQueryDescription') ? cleanText(body.publicFeaturedQueryDescription, 400) : (settings.site.publicFeaturedQueryDescription || '如果已经想好前缀，可以先到“可用域名”确认完整二级域名是否可注册。'),
-      publicFeaturedQueryButtonText: Object.prototype.hasOwnProperty.call(body, 'publicFeaturedQueryButtonText') ? cleanText(body.publicFeaturedQueryButtonText, 40) : (settings.site.publicFeaturedQueryButtonText || '去查询'),
-      publicNavigationBadge: Object.prototype.hasOwnProperty.call(body, 'publicNavigationBadge') ? cleanText(body.publicNavigationBadge, 80) : (settings.site.publicNavigationBadge || 'FLORE DIRECTORY'),
-      publicNavigationTitle: Object.prototype.hasOwnProperty.call(body, 'publicNavigationTitle') ? cleanText(body.publicNavigationTitle, 120) : (settings.site.publicNavigationTitle || '站点导航'),
-      publicNavigationDescription: Object.prototype.hasOwnProperty.call(body, 'publicNavigationDescription') ? cleanText(body.publicNavigationDescription, 500) : (settings.site.publicNavigationDescription || '按使用场景找到入口，快速进入查询、知识库、账户与规则页面。'),
-      publicNavigationBackText: Object.prototype.hasOwnProperty.call(body, 'publicNavigationBackText') ? cleanText(body.publicNavigationBackText, 40) : (settings.site.publicNavigationBackText || '返回首页'),
-      publicNavigationGroupStart: Object.prototype.hasOwnProperty.call(body, 'publicNavigationGroupStart') ? cleanText(body.publicNavigationGroupStart, 50) : (settings.site.publicNavigationGroupStart || '开始'),
-      publicNavigationGroupTools: Object.prototype.hasOwnProperty.call(body, 'publicNavigationGroupTools') ? cleanText(body.publicNavigationGroupTools, 50) : (settings.site.publicNavigationGroupTools || '工具'),
-      publicNavigationGroupUser: Object.prototype.hasOwnProperty.call(body, 'publicNavigationGroupUser') ? cleanText(body.publicNavigationGroupUser, 80) : (settings.site.publicNavigationGroupUser || '用户中心（需登录）'),
-      publicNavigationGroupRequirements: Object.prototype.hasOwnProperty.call(body, 'publicNavigationGroupRequirements') ? cleanText(body.publicNavigationGroupRequirements, 50) : (settings.site.publicNavigationGroupRequirements || '要求'),
-      publicFooterSubtitle: Object.prototype.hasOwnProperty.call(body, 'publicFooterSubtitle') ? cleanText(body.publicFooterSubtitle, 300) : (settings.site.publicFooterSubtitle || settings.site.subtitle || ''),
-      publicFooterShowPowered: asBoolean(body.publicFooterShowPowered, true),
-      notFoundText: cleanText(body.notFoundText, 500) || '页面不存在或已移动',
-      defaultLanguage: String(body.defaultLanguage || 'zh') === 'en' ? 'en' : 'zh',
-      showQuota: asBoolean(body.showQuota, true),
-      showExpiryReminder: asBoolean(body.showExpiryReminder, true),
-    };
-  }
-
-  if (group === 'registration') {
-    settings.registration = {
-      ...settings.registration,
-      enabled: asBoolean(body.enabled, true),
-      autoActivate: asBoolean(body.autoActivate, true),
-      blockTempEmail: asBoolean(body.blockTempEmail, false),
-      maxAccountsPerIp: clamp(Number(body.maxAccountsPerIp || 0), 0, 10000),
-      ipRegisterCooldownMinutes: clamp(Number(body.ipRegisterCooldownMinutes || 0), 0, 10080),
-      turnstileRegisterEnabled: String(body.humanVerificationMode || settings.registration.humanVerificationMode || 'turnstile_fallback') !== 'image',
-      defaultStatus: String(body.defaultStatus || 'auto') === 'manual' ? 'manual' : 'auto',
-      disabledMessage: cleanText(body.disabledMessage, 500) || '当前暂未开放用户注册',
-      turnstileSiteKey: cleanText(body.turnstileSiteKey, 300),
-      turnstileSecret: Object.prototype.hasOwnProperty.call(body, 'turnstileSecret')
-        ? cleanText(body.turnstileSecret, 500)
-        : (settings.registration.turnstileSecret || ''),
-      humanVerificationMode: ['image','turnstile','turnstile_fallback'].includes(String(body.humanVerificationMode || 'turnstile_fallback')) ? String(body.humanVerificationMode || 'turnstile_fallback') as any : 'turnstile_fallback',
-      captchaBackgroundEnabled: asBoolean(body.captchaBackgroundEnabled, true),
-      captchaBackgroundMode: String(body.captchaBackgroundMode || 'random') === 'upload' ? 'upload' : 'random',
-      captchaBackgroundImage: Object.prototype.hasOwnProperty.call(body, 'captchaBackgroundImage')
-        ? sanitizeCaptchaBackgroundImage(body.captchaBackgroundImage)
-        : (settings.registration.captchaBackgroundImage || ''),
-      captchaNoiseLinesEnabled: asBoolean(body.captchaNoiseLinesEnabled, true),
-      captchaNoiseLinesMin: clamp(Number(body.captchaNoiseLinesMin ?? 2), 0, 20),
-      captchaNoiseLinesMax: clamp(Number(body.captchaNoiseLinesMax ?? 5), 0, 20),
-      captchaNoiseLineColorMode: String(body.captchaNoiseLineColorMode || 'random') === 'fixed' ? 'fixed' : 'random',
-      captchaNoiseLineFixedColor: normalizeHexColor(body.captchaNoiseLineFixedColor, '#64748b'),
-      captchaCharset: sanitizeCaptchaCharset(body.captchaCharset),
-      captchaLength: clamp(Number(body.captchaLength || 4), 3, 8),
-      emailDomainBlacklist: cleanText(body.emailDomainBlacklist, 10000),
-      emailVerificationEnabled: asBoolean(body.emailVerificationEnabled, false),
-      emailApiKey: asBoolean((body as any).clearEmailApiKey, false)
-        ? ''
-        : (cleanText((body as any).emailApiKey, 2000) || settings.registration.emailApiKey || ''),
-      emailFrom: cleanText(body.emailFrom, 320),
-      emailFromName: cleanText(body.emailFromName, 120) || '域名注册中心',
-      emailCodeExpiryMinutes: clamp(Number(body.emailCodeExpiryMinutes || 10), 2, 60),
-      emailCodeLength: clamp(Number(body.emailCodeLength || 6), 4, 12),
-      emailCodeCharset: sanitizeEmailCodeCharset(body.emailCodeCharset),
-      emailAllowedEnvironments: cleanText(body.emailAllowedEnvironments, 500) || '*',
-      emailRegistrationSceneEnabled: asBoolean(body.emailRegistrationSceneEnabled, true),
-      emailTestSceneEnabled: asBoolean(body.emailTestSceneEnabled, true),
-      emailFixedRecipients: sanitizeEmailRecipientList(body.emailFixedRecipients).join('\n'),
-      emailRegistrationRecipientMode: String(body.emailRegistrationRecipientMode || 'user') === 'user_bcc_fixed' ? 'user_bcc_fixed' : 'user',
-      emailTestRecipientMode: ['manual','admin','fixed'].includes(String(body.emailTestRecipientMode || 'manual')) ? String(body.emailTestRecipientMode || 'manual') as any : 'manual',
-      cloudflareEmailAccountId: cleanText(body.cloudflareEmailAccountId, 64) || settings.registration.cloudflareEmailAccountId || '',
-      cloudflareEmailApiToken: asBoolean((body as any).clearCloudflareEmailApiToken, false)
-        ? ''
-        : (cleanText((body as any).cloudflareEmailApiToken, 2000) || settings.registration.cloudflareEmailApiToken || ''),
-      cloudflareAdminRecipient: normalizeOptionalEmailStrict(body.cloudflareAdminRecipient) || settings.registration.cloudflareAdminRecipient || '',
-      cloudflareVerifiedRecipients: sanitizeEmailRecipientList(settings.registration.cloudflareVerifiedRecipients || []),
-      cloudflareRecipientsSyncedAt: settings.registration.cloudflareRecipientsSyncedAt || '',
-      emailRegistrationSubjectTemplate: cleanText(body.emailRegistrationSubjectTemplate, 300) || '【{{siteName}}】注册验证码',
-      emailRegistrationTextTemplate: cleanText(body.emailRegistrationTextTemplate, 12000) || '您的注册验证码是 {{code}}，{{expiryMinutes}} 分钟内有效。若非本人操作，请忽略本邮件。',
-      emailRegistrationHtmlTemplate: cleanHtmlText(body.emailRegistrationHtmlTemplate, 30000),
-      emailTestSubjectTemplate: cleanText(body.emailTestSubjectTemplate, 300) || '【{{siteName}}】邮件服务测试',
-      emailTestTextTemplate: cleanText(body.emailTestTextTemplate, 12000) || '邮件服务连接正常，这是一封管理员测试邮件。',
-      emailTestHtmlTemplate: cleanHtmlText(body.emailTestHtmlTemplate, 30000),
-      dailyDomainApplyLimit: clamp(Number(body.dailyDomainApplyLimit || 0), 0, 10000),
-      failedRegisterBanThreshold: clamp(Number(body.failedRegisterBanThreshold || 0), 0, 1000),
-      failedRegisterBanMinutes: clamp(Number(body.failedRegisterBanMinutes || 0), 0, 10080),
-      blockVpnProxy: asBoolean(body.blockVpnProxy, false),
-      requireRegistrationKey: asBoolean(body.requireRegistrationKey, false),
-    };
-    if ((settings.registration.captchaNoiseLinesMin || 0) > (settings.registration.captchaNoiseLinesMax || 0)) {
-      const value = settings.registration.captchaNoiseLinesMin || 0;
-      settings.registration.captchaNoiseLinesMin = settings.registration.captchaNoiseLinesMax || 0;
-      settings.registration.captchaNoiseLinesMax = value;
-    }
-  }
-
-  if (group === 'domain') {
-    settings.domain = {
-      ...settings.domain,
-      defaultQuota: clamp(Number(body.defaultQuota || 3), 0, 999999),
-      validDays: clamp(Number(body.validDays || 365), 1, 3650),
-      renewWindowDays: clamp(Number(body.renewWindowDays || 60), 1, 3650),
-      allowUserDeleteInvalid: asBoolean(body.allowUserDeleteInvalid, true),
-      allowDnsEditAfterApproved: asBoolean(body.allowDnsEditAfterApproved, true),
-      prefixMinLength: clamp(Number(body.prefixMinLength || 2), 1, 63),
-      prefixMaxLength: clamp(Number(body.prefixMaxLength || 36), 1, 63),
-      prefixBlacklistText: cleanText(body.prefixBlacklistText, 10000),
-      allowNumericPrefix: asBoolean(body.allowNumericPrefix, true),
-      allowUnderscorePrefix: asBoolean(body.allowUnderscorePrefix, false),
-      selfRenewEnabled: asBoolean(body.selfRenewEnabled, true),
-      expiryReminderDays: clamp(Number(body.expiryReminderDays || 30), 0, 3650),
-      expiredDnsCleanupDays: clamp(Number(body.expiredDnsCleanupDays || 30), 0, 3650),
-      allowUserDeleteActive: asBoolean(body.allowUserDeleteActive, true),
-      allowDomainTransfer: asBoolean(body.allowDomainTransfer, false),
-      maxDnsRecordsPerDomain: clamp(Number(body.maxDnsRecordsPerDomain || 20), 1, 1000),
-      approvalMode: ['auto','manual','risk'].includes(String(body.approvalMode || 'manual')) ? String(body.approvalMode || 'manual') as any : 'manual',
-      platformMaxDomains: clamp(Number(body.platformMaxDomains || 9999), 1, 9999999),
-      normalUserQuota: clamp(Number(body.normalUserQuota || body.defaultQuota || 3), 0, 999999),
-      normalUserValidDays: clamp(Number(body.normalUserValidDays || body.validDays || 365), 1, 3650),
-      whitelistUserQuota: clamp(Number(body.whitelistUserQuota || body.defaultQuota || 10), 0, 999999),
-      whitelistUserValidDays: clamp(Number(body.whitelistUserValidDays || body.validDays || 365), 1, 3650),
-      lockAfterExpireDays: clamp(Number(body.lockAfterExpireDays || 0), 0, 3650),
-      hardDeleteAfterExpireDays: clamp(Number(body.hardDeleteAfterExpireDays || 30), 0, 3650),
-      blockedPrefixText: cleanText(body.blockedPrefixText, 10000),
-      adminOnlyPrefixText: cleanText(body.adminOnlyPrefixText, 10000),
-    };
-    if ((settings.domain.prefixMinLength || 2) > (settings.domain.prefixMaxLength || 36)) {
-      const min = settings.domain.prefixMinLength || 2;
-      settings.domain.prefixMinLength = settings.domain.prefixMaxLength || 36;
-      settings.domain.prefixMaxLength = min;
-    }
-  }
-
-  if (group === 'dns') {
-    const suffixesInput = Array.isArray((body as any).suffixes) ? (body as any).suffixes : parseJsonArray(body.suffixesJson);
-    const recordTypePolicies = sanitizeDnsRecordTypePolicies(
-      (body as any).recordTypePolicies,
-      settings.dns.recordTypePolicies,
-      settings.dns.allowMxRecords !== false,
-    );
-    const suffixes = sanitizeDnsSuffixes(suffixesInput, settings.dns.suffixes);
-    const globallyOpenTypes = new Set(recordTypePolicies.filter(policy => policy.allowUserAdd).map(policy => policy.type));
-    if (!globallyOpenTypes.size) throw new HttpError(400, 'DNS_TYPE_POLICY_EMPTY', '至少开放一种 DNS 类型供用户添加');
-    for (const suffix of suffixes) {
-      const effectiveTypes = suffix.allowedTypes.filter(type => globallyOpenTypes.has(type as DnsRecordType));
-      if (!effectiveTypes.length) throw new HttpError(400, 'DNS_SUFFIX_TYPE_EMPTY', `根域名 ${suffix.suffix} 至少需要包含一种全局开放的 DNS 类型`);
-      if (!effectiveTypes.includes(suffix.defaultType)) throw new HttpError(400, 'DNS_DEFAULT_TYPE_CLOSED', `根域名 ${suffix.suffix} 的默认类型必须在全局策略中开放`);
-    }
-    settings.dns = {
-      ...settings.dns,
-      defaultProxied: asBoolean(body.defaultProxied, settings.dns.defaultProxied ?? false),
-      allowMxRecords: recordTypePolicies.find(policy => policy.type === 'MX')?.allowUserAdd !== false,
-      blockWildcardRecords: asBoolean(body.blockWildcardRecords, settings.dns.blockWildcardRecords ?? true),
-      cnameTargetBlacklist: cleanText(body.cnameTargetBlacklist, 10000),
-      cfApiToken: asBoolean((body as any).clearCfApiToken, false) ? '' : (cleanText((body as any).cfApiToken, 2000) || settings.dns.cfApiToken || ''),
-      reservedPrefixes: sanitizeStringList(body.reservedPrefixes || settings.dns.reservedPrefixes.join('\n')).slice(0, 500),
-      recordTypePolicies,
-      suffixes,
-    };
-  }
-
-  if (group === 'blacklist') {
-    settings.blacklist = {
-      prefixes: sanitizeStringList(body.prefixes).slice(0, 2000),
-      ips: sanitizeStringList(body.ips).slice(0, 2000),
-      emails: sanitizeStringList(body.emails).slice(0, 2000),
-      registration: sanitizeBlacklistRecords((body as any).registration),
-      access: sanitizeBlacklistRecords((body as any).access),
-      userIds: sanitizeBlacklistRecords((body as any).userIds),
-    };
-  }
-
-  if (group === 'notification') {
-    settings.notification = {
-      events: sanitizeNotificationEvents((body as any).events),
-      expiryTemplate: cleanText(body.expiryTemplate, 5000) || '您的域名即将到期，请及时续期。',
-      templates: sanitizeTemplateMap((body as any).templates),
-      userTargets: sanitizeTemplateMap((body as any).userTargets),
-      adminTargets: sanitizeTemplateMap((body as any).adminTargets),
-      rateLimitPerHour: clamp(Number(body.rateLimitPerHour || 60), 0, 10000),
-    };
-  }
-
-  if (group === 'security') {
-    settings.security = {
-      adminSessionTimeoutHours: clamp(Number(body.adminSessionTimeoutHours || 24), 1, 24 * 365),
-      adminIpWhitelist: cleanText(body.adminIpWhitelist, 10000),
-      auditRetentionDays: clamp(Number(body.auditRetentionDays || 7), 1, 3650),
-      failedLoginLockThreshold: clamp(Number(body.failedLoginLockThreshold || 0), 0, 1000),
-      failedLoginLockMinutes: clamp(Number(body.failedLoginLockMinutes || 0), 0, 10080),
-      adminPath: cleanText(body.adminPath, 120),
-      rolesPermissions: cleanText(body.rolesPermissions, 20000),
-      auditRecordItems: cleanText(body.auditRecordItems, 10000),
-    };
-  }
-
-  if (group === 'automation') {
-    settings.automation = {
-      enabled: asBoolean(body.enabled, false),
-      scanCycleMinutes: clamp(Number(body.scanCycleMinutes || 60), 5, 1440),
-      checkExpiringDomains: asBoolean(body.checkExpiringDomains, true),
-      cleanupExpiredDns: asBoolean(body.cleanupExpiredDns, true),
-      cronExpression: cleanText(body.cronExpression, 120),
-      notifyAdminOnFailure: asBoolean(body.notifyAdminOnFailure, true),
-      dnsCleanupProtectionDays: clamp(Number(body.dnsCleanupProtectionDays || 7), 1, 3650),
-      taskLogs: Array.isArray((body as any).taskLogs) ? (body as any).taskLogs.slice(0, 50) : (settings.automation?.taskLogs || []),
-    };
-  }
-
-  await env.APP_KV.put(SETTINGS_KEY, JSON.stringify(settings));
-  await audit(env, request, admin.id, `admin.settings_${group}`, 'setting', group);
-  return ok({ settings: adminSettingsView(settings, env) });
-}
-
-async function loadSettings(env: Env): Promise<AppSettings> {
-  const defaults = defaultSettings(env);
-  let saved: Partial<AppSettings> = {};
-  try {
-    const raw = await env.APP_KV.get(SETTINGS_KEY);
-    if (raw) saved = JSON.parse(raw);
-  } catch {}
-
-  const site = { ...defaults.site, ...(saved.site || {}) };
-  const registration = { ...defaults.registration, ...(saved.registration || {}) };
-  const domain = { ...defaults.domain, ...(saved.domain || {}) };
-  const dnsSaved = (saved as any).dns || {};
-  const hadSavedRecordTypePolicies = Array.isArray(dnsSaved.recordTypePolicies);
-  let sanitizedSuffixes = sanitizeDnsSuffixes(dnsSaved.suffixes, defaults.dns.suffixes);
-  // v98 migration: older KV settings did not have a global DNS-type policy table.
-  // On the first load after upgrading, merge newly configured DNS_ALLOWED_TYPES
-  // into every existing root-domain card so Worker variables and the editor stay aligned.
-  if (!hadSavedRecordTypePolicies) {
-    const envTypes = defaults.dns.recordTypePolicies.filter(policy => policy.allowUserAdd).map(policy => policy.type);
-    sanitizedSuffixes = sanitizedSuffixes.map(item => ({
-      ...item,
-      allowedTypes: Array.from(new Set([...item.allowedTypes, ...envTypes])),
-    }));
-  }
-  const dns = {
-    ...defaults.dns,
-    ...dnsSaved,
-    reservedPrefixes: sanitizeStringList(dnsSaved.reservedPrefixes || defaults.dns.reservedPrefixes).slice(0, 500),
-    recordTypePolicies: sanitizeDnsRecordTypePolicies(
-      dnsSaved.recordTypePolicies,
-      defaults.dns.recordTypePolicies,
-      typeof dnsSaved.allowMxRecords === 'boolean' ? dnsSaved.allowMxRecords : undefined,
-    ),
-    suffixes: sanitizedSuffixes,
-  };
-
-  return {
-    site,
-    registration,
-    domain,
-    help: { categories: Array.isArray((saved as any).help?.categories) ? sanitizeHelpCategories((saved as any).help.categories) : defaults.help.categories },
-    dns,
-    blacklist: {
-      prefixes: sanitizeStringList((saved as any).blacklist?.prefixes),
-      ips: sanitizeStringList((saved as any).blacklist?.ips),
-      emails: sanitizeStringList((saved as any).blacklist?.emails),
-      registration: sanitizeBlacklistRecords((saved as any).blacklist?.registration),
-      access: sanitizeBlacklistRecords((saved as any).blacklist?.access),
-      userIds: sanitizeBlacklistRecords((saved as any).blacklist?.userIds),
-    },
-    notification: {
-      events: sanitizeNotificationEvents((saved as any).notification?.events),
-      expiryTemplate: cleanText((saved as any).notification?.expiryTemplate, 5000) || defaults.notification!.expiryTemplate,
-      templates: sanitizeTemplateMap((saved as any).notification?.templates || defaults.notification?.templates),
-      userTargets: sanitizeTemplateMap((saved as any).notification?.userTargets || defaults.notification?.userTargets),
-      adminTargets: sanitizeTemplateMap((saved as any).notification?.adminTargets || defaults.notification?.adminTargets),
-      rateLimitPerHour: clamp(Number((saved as any).notification?.rateLimitPerHour || defaults.notification?.rateLimitPerHour || 60), 0, 10000),
-    },
-    security: {
-      ...defaults.security!,
-      ...((saved as any).security || {}),
-      auditRetentionDays: clamp(Number((saved as any).security?.auditRetentionDays || defaults.security!.auditRetentionDays), 1, 3650),
-      failedLoginLockThreshold: clamp(Number((saved as any).security?.failedLoginLockThreshold || 0), 0, 1000),
-      failedLoginLockMinutes: clamp(Number((saved as any).security?.failedLoginLockMinutes || 0), 0, 10080),
-      adminPath: cleanText((saved as any).security?.adminPath, 120),
-      rolesPermissions: cleanText((saved as any).security?.rolesPermissions, 20000),
-      auditRecordItems: cleanText((saved as any).security?.auditRecordItems, 10000),
-    },
-    automation: {
-      ...defaults.automation!,
-      ...((saved as any).automation || {}),
-      scanCycleMinutes: clamp(Number((saved as any).automation?.scanCycleMinutes || defaults.automation!.scanCycleMinutes), 5, 1440),
-      dnsCleanupProtectionDays: clamp(Number((saved as any).automation?.dnsCleanupProtectionDays || defaults.automation?.dnsCleanupProtectionDays || 7), 1, 3650),
-    },
-  };
-}
-
-function defaultSettings(env: Env): AppSettings {
-  const suffix = normalizeSuffix(env.DNS_SUFFIX || 'flore.top');
-  const allowedTypes = sanitizeDnsRecordTypes(
-    env.DNS_ALLOWED_TYPES || 'CNAME,A,AAAA,TXT,MX',
-    ['CNAME', 'A', 'AAAA', 'TXT', 'MX'],
-  );
-
-  const reserved = String(env.DNS_RESERVED_PREFIXES || 'www,api,admin,apply,storage,mail,smtp,imap,pop,ftp,cdn,static,status,support')
-    .split(',')
-    .map(x => x.trim().toLowerCase())
-    .filter(Boolean);
-
-  return {
-    site: {
-      title: '免费二级域名注册中心',
-      subtitle: '快速注册并管理您的专属免费域名',
-      footer: '请勿申请违法、侵权、仿冒或误导性域名。',
-      copyright: '',
-      faviconUrl: '',
-      headerThirdPartyJs: '',
-      maintenanceMode: false,
-      maintenanceMessage: '系统维护中，请稍后再试。',
-      themeMode: 'light',
-      noticeStartAt: '',
-      noticeEndAt: '',
-      accent: '#4f63f6',
-      accent2: '#7c4dff',
-      logoText: 'free',
-      logoImageUrl: '',
-      icp: '',
-      homepageNotice: '',
-      publicHomepageEnabled: true,
-      publicHomepageLayout: 'brand',
-      publicHomepageBadge: 'FLORE · FREE SUBDOMAIN SERVICE',
-      publicHomepageTitle: '给你的项目一个清晰地址',
-      publicHomepageHighlight: '从这里开始',
-      publicHomepageDescription: '查询可用二级域名、提交申请并管理 DNS。公开官网负责信息与查询，控制台负责账户和域名管理。',
-      publicHomepagePrimaryText: '开始申请',
-      publicHomepagePrimaryHref: '',
-      publicHomepageSecondaryText: '先查域名',
-      publicHomepageSecondaryHref: '#/available',
-      publicHomepageSearchEyebrow: '实时查询',
-      publicHomepageSearchTitle: '先确认，再申请',
-      publicHomepageSearchNote: '查询只返回当前可用状态，不公开域名归属或账户信息。',
-      publicHomepageStatsUsersLabel: '活跃用户',
-      publicHomepageStatsDomainsLabel: '正常域名',
-      publicHomepageStatsDnsLabel: 'DNS 记录',
-      publicHomepageStatsSuffixesLabel: '开放根域名',
-      publicHomepageFeaturesTitle: '一个入口，完成域名日常管理',
-      publicHomepageFeaturesDescription: '首页负责查询与了解服务，登录后进入控制台处理申请、审核状态与 DNS。',
-      publicHomepageDomainsTitle: '现在可以申请的后缀',
-      publicHomepageDomainsDescription: '这里只展示开放入口，不用公开用户域名或账户数据。',
-      publicHomepageProcessTitle: '操作路径一眼看懂',
-      publicHomepageProcessDescription: '查询、申请、审核、解析各自独立，减少误操作。',
-      publicHomepageInfrastructureTitle: '系统怎么工作',
-      publicHomepageInfrastructureDescription: '公开页面、业务控制台和 Cloudflare DNS 分工明确，避免把内部配置暴露到前台。',
-      publicHomepageFaqTitle: '第一次使用？先看这些',
-      publicHomepageFaqDescription: '把最容易遇到的问题留在首页，详细内容放到独立知识库。',
-      publicHomepageSectionOrder: 'features,domains,faq',
-      publicHomepageCtaEyebrow: '下一步',
-      publicHomepageCtaTitle: '从查询一个名称开始',
-      publicHomepageCtaDescription: '不需要登录即可先确认可用性；需要申请时再进入账户流程。',
-      publicHomepageCtaPrimaryText: '查询域名',
-      publicHomepageCtaPrimaryHref: '#/available',
-      publicHomepageCtaSecondaryText: '阅读知识库',
-      publicHomepageCtaSecondaryHref: '#/knowledge',
-      publicHomepageShowSearch: true,
-      publicHomepageShowStats: true,
-      publicHomepageShowFeatures: true,
-      publicHomepageShowDomains: true,
-      publicHomepageShowProcess: false,
-      publicHomepageShowInfrastructure: false,
-      publicHomepageShowFaq: true,
-      publicHomepageShowCta: true,
-      publicHomepageSearchPlaceholder: '输入您想要的域名前缀，例如 myblog',
-      publicHomepageSearchButtonText: '查询',
-      publicNavShowHome: true,
-      publicNavShowAvailable: true,
-      publicNavShowKnowledge: true,
-      publicNavShowFeatured: true,
-      publicNavShowNavigation: true,
-      publicNavHomeLabel: '首页',
-      publicNavAvailableLabel: '可用域名',
-      publicNavKnowledgeLabel: '知识库',
-      publicNavFeaturedLabel: '优质站点',
-      publicNavNavigationLabel: '导航',
-      publicBrandTitle: '',
-      publicHeaderShowBrand: true,
-      publicHeaderShowLanguage: true,
-      publicHeaderShowAccountActions: true,
-      publicHeaderDashboardText: '进入控制台',
-      publicHeaderLoginText: '登录',
-      publicHeaderRegisterText: '注册',
-      publicDomainCheckEmptyText: '请输入域名前缀',
-      publicDomainCheckCheckingText: '正在检查域名是否可注册...',
-      publicDomainCheckAvailableText: '此域名可注册。',
-      publicDomainCheckUnavailableText: '此域名暂不可注册。',
-      publicDomainCheckFailureText: '查询失败，请稍后重试',
-      publicDomainCheckApplyText: '立即申请',
-      publicDomainCheckRegisterApplyText: '注册后申请',
-      publicHomepageShowBadge: true,
-      publicHomepageShowHighlight: true,
-      publicHomepageShowDescription: true,
-      publicHomepageShowPrimaryButton: true,
-      publicHomepageShowSecondaryButton: true,
-      publicHomepageStatsShowUsers: true,
-      publicHomepageStatsShowDomains: true,
-      publicHomepageStatsShowDns: true,
-      publicHomepageStatsShowSuffixes: true,
-      publicHomepageFeature1Show: true, publicHomepageFeature1Icon: '∞', publicHomepageFeature1Title: '免费使用', publicHomepageFeature1Description: '提供可申请的免费二级域名，注册、审核与 DNS 管理集中在一个系统完成。',
-      publicHomepageFeature2Show: true, publicHomepageFeature2Icon: '⚡', publicHomepageFeature2Title: '快速上线', publicHomepageFeature2Description: '域名审核通过后即可配置解析，不需要在多个后台之间反复切换。',
-      publicHomepageFeature3Show: true, publicHomepageFeature3Icon: '◎', publicHomepageFeature3Title: '完整 DNS 控制', publicHomepageFeature3Description: '按管理员开放策略支持常见 DNS 记录类型。',
-      publicHomepageFeature4Show: true, publicHomepageFeature4Icon: '☁', publicHomepageFeature4Title: 'Cloudflare 驱动', publicHomepageFeature4Description: 'DNS 写入由 Cloudflare API 完成，可代理记录可按系统策略开启代理。',
-      publicHomepageFeature5Show: true, publicHomepageFeature5Icon: '⌁', publicHomepageFeature5Title: '多根域名', publicHomepageFeature5Description: '可以从多个当前开放的根域名中选择合适的后缀。',
-      publicHomepageFeature6Show: true, publicHomepageFeature6Icon: '✓', publicHomepageFeature6Title: '可追踪管理', publicHomepageFeature6Description: '域名状态、DNS、续期、消息与操作记录都可在控制台查看。',
-      publicHomepageDomainsLimit: 6,
-      publicHomepageDomainsStatusText: '当前开放申请',
-      publicHomepageDomainsLinkText: '立即查询',
-      publicHomepageDomainsViewAllText: '查看全部',
-      publicHomepageFaqLimit: 4,
-      publicHomepageFaqViewAllText: '查看全部',
-      publicHomepageCtaShowPrimaryButton: true,
-      publicHomepageCtaShowSecondaryButton: true,
-      publicAvailableShowHero: true,
-      publicAvailableShowSearchDescription: true,
-      publicAvailableEmptySuffixesText: '当前暂无开放申请的根域名。',
-      publicKnowledgeShowHero: true,
-      publicKnowledgeShowSearch: true,
-      publicKnowledgeShowCategorySubtitle: true,
-      publicKnowledgeNoResultsText: '没有找到匹配内容。',
-      publicFeaturedShowHero: true,
-      publicFeaturedShowCardBadge: true,
-      publicFeaturedShowCardStatus: true,
-      publicFeaturedShowCardButton: true,
-      publicFeaturedEmptyText: '当前暂无开放申请的根域名。',
-      publicNavigationShowHero: true,
-      publicNavigationShowBackButton: true,
-      publicNavigationShowDescriptions: true,
-      publicNavigationShowNumbers: true,
-      publicNavigationShowArrows: true,
-      publicFooterEnabled: true,
-      publicFooterShowBrand: true,
-      publicFooterServicesTitle: '服务',
-      publicFooterInfoTitle: '信息',
-      publicFooterStartTitle: '开始使用',
-      publicFooterCopyrightText: '',
-      publicFooterShowIcp: true,
-      publicAvailableBadge: 'DOMAIN AVAILABILITY',
-      publicAvailableTitle: '可用域名',
-      publicAvailableDescription: '可查询本站二级域名是否可注册。输入前缀并选择根域名，即可实时检查。',
-      publicAvailableSearchEyebrow: '即时查询',
-      publicAvailableSearchTitle: '查找你想要的二级域名',
-      publicAvailableSearchDescription: '查询会同时检查系统内的域名占用状态和对应 Cloudflare DNS 精确记录。提交申请时系统会再次检查。',
-      publicAvailableSearchPlaceholder: '输入您想要的域名前缀，例如 myblog',
-      publicAvailableSearchButtonText: '查询',
-      publicAvailableShowGuide: true,
-      publicAvailableGuideAvailableTitle: '结果为“可注册”',
-      publicAvailableGuideAvailableText: '表示当前未发现同名占用，可以登录或注册后提交申请；最终状态以提交时实时检查和管理员规则为准。',
-      publicAvailableGuideUnavailableTitle: '结果为“不可注册”',
-      publicAvailableGuideUnavailableText: '通常表示域名已经被系统、Cloudflare DNS 或当前规则占用/限制。可以更换前缀或选择其他根域名。',
-      publicKnowledgeBadge: 'KNOWLEDGE BASE',
-      publicKnowledgeTitle: '知识库',
-      publicKnowledgeDescription: '独立整理的二级域名申请、DNS、续期、安全与故障排查说明。',
-      publicKnowledgeSearchPlaceholder: '搜索标题或内容关键字...',
-      publicKnowledgeShowArticleCount: true,
-      publicFeaturedBadge: 'FEATURED DOMAINS',
-      publicFeaturedTitle: '优质站点',
-      publicFeaturedDescription: '展示目前可用、并由管理员开放申请的根域名。',
-      publicFeaturedCardBadgeText: '免费',
-      publicFeaturedCardStatusText: '开放申请',
-      publicFeaturedCardButtonText: '立即申请',
-      publicFeaturedCardFallbackDescription: '免费二级域名，可用于合规的个人项目、学习、展示与测试。',
-      publicFeaturedShowQueryHelper: true,
-      publicFeaturedQueryTitle: '先查再申请',
-      publicFeaturedQueryDescription: '如果已经想好前缀，可以先到“可用域名”确认完整二级域名是否可注册。',
-      publicFeaturedQueryButtonText: '去查询',
-      publicNavigationBadge: 'FLORE DIRECTORY',
-      publicNavigationTitle: '站点导航',
-      publicNavigationDescription: '按使用场景找到入口，快速进入查询、知识库、账户与规则页面。',
-      publicNavigationBackText: '返回首页',
-      publicNavigationGroupStart: '开始',
-      publicNavigationGroupTools: '工具',
-      publicNavigationGroupUser: '用户中心（需登录）',
-      publicNavigationGroupRequirements: '要求',
-      publicFooterSubtitle: '快速注册并管理您的专属免费域名',
-      publicFooterShowPowered: true,
-      notFoundText: '页面不存在或已移动',
-      defaultLanguage: 'zh',
-      showQuota: true,
-      showExpiryReminder: true,
-    },
-    registration: {
-      enabled: true,
-      autoActivate: true,
-      blockTempEmail: false,
-      maxAccountsPerIp: 0,
-      ipRegisterCooldownMinutes: 0,
-      turnstileRegisterEnabled: false,
-      defaultStatus: 'auto',
-      disabledMessage: '当前暂未开放用户注册',
-      turnstileSiteKey: '',
-      turnstileSecret: '',
-      humanVerificationMode: 'turnstile_fallback',
-      captchaBackgroundEnabled: true,
-      captchaBackgroundMode: 'random',
-      captchaBackgroundImage: '',
-      captchaNoiseLinesEnabled: true,
-      captchaNoiseLinesMin: 2,
-      captchaNoiseLinesMax: 5,
-      captchaNoiseLineColorMode: 'random',
-      captchaNoiseLineFixedColor: '#64748b',
-      captchaCharset: 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789',
-      captchaLength: 4,
-      emailDomainBlacklist: '',
-      emailVerificationEnabled: false,
-      emailApiKey: '',
-      emailFrom: env.EMAIL_FROM || '',
-      emailFromName: env.EMAIL_FROM_NAME || '域名注册中心',
-      emailCodeExpiryMinutes: 10,
-      emailCodeLength: 6,
-      emailCodeCharset: 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789',
-      emailAllowedEnvironments: '*',
-      emailRegistrationSceneEnabled: true,
-      emailTestSceneEnabled: true,
-      emailFixedRecipients: '',
-      emailRegistrationRecipientMode: 'user',
-      emailTestRecipientMode: 'manual',
-      cloudflareEmailAccountId: env.CF_ACCOUNT_ID || '',
-      cloudflareEmailApiToken: '',
-      cloudflareAdminRecipient: env.CF_ADMIN_EMAIL || 'admin@flore.top',
-      cloudflareVerifiedRecipients: [],
-      cloudflareRecipientsSyncedAt: '',
-      emailRegistrationSubjectTemplate: '【{{siteName}}】注册验证码',
-      emailRegistrationTextTemplate: '您好！\n\n您正在注册 {{siteName}} 账户。\n本次验证码：{{code}}\n验证码将在 {{expiryMinutes}} 分钟后失效。\n\n收件邮箱：{{email}}\n发送环境：{{environment}}\n若非本人操作，请忽略本邮件。',
-      emailRegistrationHtmlTemplate: '<div style="font-family:Arial,Microsoft YaHei,sans-serif;max-width:560px;margin:auto;padding:24px;color:#0f172a"><h2>{{siteName}}</h2><p>您正在注册账户，本次验证码为：</p><div style="font-size:32px;font-weight:800;letter-spacing:8px;padding:18px 22px;background:#f1f5f9;border-radius:12px;text-align:center">{{code}}</div><p style="color:#64748b">验证码将在 {{expiryMinutes}} 分钟后失效。</p><p style="color:#94a3b8;font-size:13px">收件邮箱：{{email}}<br>发送环境：{{environment}}<br>若非本人操作，请忽略本邮件。</p></div>',
-      emailTestSubjectTemplate: '【{{siteName}}】邮件服务测试',
-      emailTestTextTemplate: '邮件服务连接正常。\n\n发送环境：{{environment}}\n测试时间：{{time}}\n收件邮箱：{{email}}',
-      emailTestHtmlTemplate: '<div style="font-family:Arial,Microsoft YaHei,sans-serif;max-width:560px;margin:auto;padding:24px;color:#0f172a"><h2>{{siteName}}</h2><p>邮件服务连接正常，这是一封管理员测试邮件。</p><p style="color:#64748b">发送环境：{{environment}}<br>测试时间：{{time}}<br>收件邮箱：{{email}}</p></div>',
-      dailyDomainApplyLimit: 0,
-      failedRegisterBanThreshold: 0,
-      failedRegisterBanMinutes: 0,
-      blockVpnProxy: false,
-      requireRegistrationKey: false,
-    },
-    domain: {
-      defaultQuota: 3,
-      validDays: 365,
-      renewWindowDays: 60,
-      allowUserDeleteInvalid: true,
-      allowDnsEditAfterApproved: true,
-      prefixMinLength: 2,
-      prefixMaxLength: 36,
-      prefixBlacklistText: reserved.join('\n'),
-      allowNumericPrefix: true,
-      allowUnderscorePrefix: false,
-      selfRenewEnabled: true,
-      expiryReminderDays: 30,
-      expiredDnsCleanupDays: 30,
-      allowUserDeleteActive: true,
-      allowDomainTransfer: false,
-      maxDnsRecordsPerDomain: 20,
-      approvalMode: 'manual',
-      platformMaxDomains: 9999,
-      normalUserQuota: 3,
-      normalUserValidDays: 365,
-      whitelistUserQuota: 10,
-      whitelistUserValidDays: 365,
-      lockAfterExpireDays: 0,
-      hardDeleteAfterExpireDays: 30,
-      blockedPrefixText: reserved.join('\n'),
-      adminOnlyPrefixText: 'admin\nroot\nsystem',
-    },
-    help: defaultHelpSettings(),
-    dns: {
-      envManaged: true,
-      reservedPrefixes: reserved,
-      defaultProxied: isEnabled(env.DNS_PROXIED, false),
-      allowMxRecords: true,
-      cfApiToken: '',
-      blockWildcardRecords: true,
-      cnameTargetBlacklist: '',
-      recordTypePolicies: buildDefaultDnsRecordTypePolicies(allowedTypes),
-      suffixes: [{
-        label: env.DNS_SUFFIX_LABEL || '',
-        suffix,
-        suffixAscii: suffix,
-        zoneId: env.DNS_ZONE_ID || '',
-        allowedTypes: allowedTypes.length ? allowedTypes : ['CNAME'],
-        defaultType: (SUPPORTED_DNS_RECORD_TYPES.includes(String(env.DNS_DEFAULT_TYPE || '').toUpperCase() as DnsRecordType)
-          ? String(env.DNS_DEFAULT_TYPE).toUpperCase()
-          : 'CNAME') as DnsRecordType,
-        ttl: clamp(Number(env.DNS_TTL || 1), 1, 86400),
-        proxied: isEnabled(env.DNS_PROXIED, false),
-        enabled: true,
-        allowRegister: true,
-        registerOrder: 1,
-        cfApiToken: '',
-      }],
-    },
-    blacklist: { prefixes: [], ips: [], emails: [], registration: [], access: [], userIds: [] },
-    notification: {
-      events: {
-        newUser: true,
-        newDomain: true,
-        domainExpiring: true,
-        domainExpiredDelete: true,
-        abnormalRegister: true,
-        systemErrorEmail: true,
-        helpSubmissionEmail: true,
-        domainReviewEmail: true,
-        dnsAnomalyEmail: true,
-      },
-      expiryTemplate: '您的域名即将到期，请及时续期。',
-      templates: {
-        newUser: '新账号 {username} 已注册。',
-        newDomain: '用户 {username} 提交了域名 {domain} 申请。',
-        domainExpiring: '您的域名 {domain} 将在 {days} 天后到期，请及时续期。',
-        domainExpiredDelete: '域名 {domain} 已过期并进入清理流程。',
-        abnormalRegister: '检测到异常注册行为：{ip}。',
-      },
-      userTargets: {},
-      adminTargets: {},
-      rateLimitPerHour: 60,
-    },
-    security: {
-      adminSessionTimeoutHours: 24,
-      adminIpWhitelist: '',
-      auditRetentionDays: 7,
-      failedLoginLockThreshold: 0,
-      failedLoginLockMinutes: 0,
-      adminPath: '',
-      rolesPermissions: 'super_admin: 全部权限\noperator: 审核域名、查看用户、发送通知',
-      auditRecordItems: '登录,注册,域名申请,DNS新增,DNS修改,DNS删除,消息发送,设置保存,黑名单操作',
-    },
-    automation: {
-      enabled: false,
-      scanCycleMinutes: 60,
-      checkExpiringDomains: true,
-      cleanupExpiredDns: true,
-      cronExpression: '0 */1 * * *',
-      notifyAdminOnFailure: true,
-      dnsCleanupProtectionDays: 7,
-      taskLogs: [],
-    },
-  };
-}
-
-function normalizeHexColor(value: unknown, fallback: string): string {
-  const raw = String(value || '').trim();
-  return /^#[0-9a-fA-F]{6}$/.test(raw) ? raw : fallback;
-}
-
-function parseJsonArray(value: unknown): unknown[] {
-  if (Array.isArray(value)) return value;
-  const raw = String(value || '').trim();
-  if (!raw) return [];
-  try { const parsed = JSON.parse(raw); return Array.isArray(parsed) ? parsed : []; } catch { return []; }
-}
-
-function sanitizeStringList(value: unknown): string[] {
-  if (Array.isArray(value)) return Array.from(new Set(value.map(x => String(x || '').trim()).filter(Boolean)));
-  return Array.from(new Set(String(value || '').split(/[\n,]+/).map(x => x.trim()).filter(Boolean)));
-}
-
-
-function sanitizeTemplateMap(value: unknown): Record<string, string> {
-  const raw = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
-  const out: Record<string, string> = {};
-  for (const [key, val] of Object.entries(raw)) {
-    const cleanKey = cleanText(key, 80);
-    if (cleanKey) out[cleanKey] = cleanText(val, 5000);
-  }
-  return out;
-}
-
-function sanitizeBlacklistRecords(value: unknown): unknown[] {
-  const raw = Array.isArray(value) ? value : [];
-  return raw.slice(0, 5000).map((item: any) => ({
-    value: cleanText(item?.value, 500),
-    note: cleanText(item?.note, 500),
-    expiresAt: cleanText(item?.expiresAt, 80),
-  })).filter((item: any) => item.value);
-}
-
-
-function sanitizeDnsRecordTypes(value: unknown, fallback: DnsRecordType[] = []): DnsRecordType[] {
-  const source = Array.isArray(value) ? value : String(value || '').split(/[\s,]+/);
-  const result = Array.from(new Set(
-    source
-      .map(item => String(item || '').trim().toUpperCase())
-      .filter((item): item is DnsRecordType => SUPPORTED_DNS_RECORD_TYPES.includes(item as DnsRecordType)),
-  ));
-  return result.length ? result : [...fallback];
-}
-
-function defaultDnsRecordDisplayName(type: DnsRecordType): string {
-  const labels: Record<DnsRecordType, string> = {
-    A: 'A（IPv4）',
-    AAAA: 'AAAA（IPv6）',
-    CNAME: 'CNAME（别名）',
-    TXT: 'TXT（文本验证）',
-    MX: 'MX（邮件）',
-    NS: 'NS（名称服务器）',
-    CAA: 'CAA（证书授权）',
-    SRV: 'SRV（服务定位）',
-  };
-  return labels[type] || type;
-}
-
-function buildDefaultDnsRecordTypePolicies(allowedTypes: DnsRecordType[]): DnsRecordTypePolicy[] {
-  const open = new Set(allowedTypes);
-  return SUPPORTED_DNS_RECORD_TYPES.map(type => ({
-    type,
-    displayName: defaultDnsRecordDisplayName(type),
-    allowUserAdd: open.has(type),
-    note: '',
-  }));
-}
-
-function sanitizeDnsRecordTypePolicies(
-  value: unknown,
-  fallback: DnsRecordTypePolicy[],
-  legacyAllowMx?: boolean,
-): DnsRecordTypePolicy[] {
-  const raw = Array.isArray(value) ? value : [];
-  const byType = new Map<string, any>();
-  for (const item of raw) {
-    const type = String((item as any)?.type || '').trim().toUpperCase();
-    if (SUPPORTED_DNS_RECORD_TYPES.includes(type as DnsRecordType)) byType.set(type, item);
-  }
-  const fallbackByType = new Map((fallback || []).map(item => [item.type, item]));
-  return SUPPORTED_DNS_RECORD_TYPES.map(type => {
-    const item = byType.get(type);
-    const base = fallbackByType.get(type);
-    const defaultOpen = type === 'MX' && typeof legacyAllowMx === 'boolean' ? legacyAllowMx : Boolean(base?.allowUserAdd);
-    return {
-      type,
-      displayName: cleanText(item?.displayName, 80) || base?.displayName || defaultDnsRecordDisplayName(type),
-      allowUserAdd: item ? asBoolean(item.allowUserAdd, defaultOpen) : defaultOpen,
-      note: cleanText(item?.note, 300),
-    };
-  });
-}
-
-function dnsRecordTypePolicy(settings: AppSettings, type: DnsRecordType): DnsRecordTypePolicy | undefined {
-  return settings.dns.recordTypePolicies.find(policy => policy.type === type);
-}
-
-function assertUserDnsRecordTypeOpen(settings: AppSettings, type: DnsRecordType): void {
-  const policy = dnsRecordTypePolicy(settings, type);
-  if (!policy || policy.allowUserAdd === false) {
-    throw new HttpError(403, 'DNS_TYPE_CLOSED', `管理员暂未开放用户添加 ${policy?.displayName || type} 记录`);
-  }
-}
-
-function sanitizeDnsSuffixes(value: unknown, fallback: AppSettings['dns']['suffixes']): AppSettings['dns']['suffixes'] {
-  const raw = Array.isArray(value) ? value : [];
-  const findExisting = (suffix: string, zoneId: string) => (fallback || []).find(item =>
-    (suffix && (item.suffixAscii === suffix || item.suffix === suffix)) || (zoneId && item.zoneId === zoneId)
-  );
-  const items = raw.map((x: any, index: number) => {
-    try {
-      const suffix = normalizeSuffix(String(x?.suffix || ''));
-      const zoneId = cleanText(x?.zoneId, 120);
-      const existing = findExisting(suffix, zoneId);
-      const allowedTypes = Array.from(new Set((Array.isArray(x?.allowedTypes) ? x.allowedTypes : String(x?.allowedTypes || 'A,AAAA,CNAME,TXT,MX,NS').split(','))
-        .map((t: any) => String(t).trim().toUpperCase())
-        .filter((t: string) => SUPPORTED_DNS_RECORD_TYPES.includes(t as DnsRecordType))));
-      const defaultTypeRaw = String(x?.defaultType || allowedTypes[0] || 'CNAME').toUpperCase();
-      const defaultType = (allowedTypes.includes(defaultTypeRaw) ? defaultTypeRaw : (allowedTypes[0] || 'CNAME')) as DnsRecordType;
-      const incomingToken = cleanText(x?.cfApiToken, 2000);
-      return {
-        label: cleanText(x?.label, 80),
-        suffix,
-        suffixAscii: suffix,
-        zoneId,
-        allowedTypes: allowedTypes.length ? allowedTypes : ['CNAME'],
-        defaultType,
-        ttl: clamp(Number(x?.ttl || 1), 1, 86400),
-        proxied: asBoolean(x?.proxied, false),
-        enabled: asBoolean(x?.enabled, true),
-        allowRegister: asBoolean(x?.allowRegister, true),
-        registerOrder: clamp(Number(x?.registerOrder || index + 1), 1, 999999),
-        cfApiToken: incomingToken || existing?.cfApiToken || '',
-      };
-    } catch { return null; }
-  }).filter(Boolean) as AppSettings['dns']['suffixes'];
-  const seen = new Set<string>();
-  const deduped = items.filter(item => {
-    const key = item.suffixAscii || item.suffix;
-    if (!key || seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-  return deduped.length ? deduped : fallback;
-}
-
-function sanitizeNotificationEvents(value: unknown): Record<string, boolean> {
-  const raw: any = value && typeof value === 'object' ? value : {};
-  return {
-    newUser: asBoolean(raw.newUser, true),
-    newDomain: asBoolean(raw.newDomain, true),
-    domainExpiring: asBoolean(raw.domainExpiring, true),
-    domainExpiredDelete: asBoolean(raw.domainExpiredDelete, true),
-    abnormalRegister: asBoolean(raw.abnormalRegister, true),
-    systemErrorEmail: asBoolean(raw.systemErrorEmail, true),
-    helpSubmissionEmail: asBoolean(raw.helpSubmissionEmail, true),
-    domainReviewEmail: asBoolean(raw.domainReviewEmail, true),
-    dnsAnomalyEmail: asBoolean(raw.dnsAnomalyEmail, true),
-  };
-}
-
-function listMatches(value: string, list: string[] = []): boolean {
-  const target = String(value || '').toLowerCase();
-  return list.some(raw => {
-    const item = String(raw || '').trim().toLowerCase();
-    if (!item) return false;
-    if (item.includes('*')) {
-      const re = new RegExp('^' + item.split('*').map(x => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$', 'i');
-      return re.test(target);
-    }
-    return target === item || target.includes(item);
-  });
-}
-
-function prefixMatchesRule(prefix: string, rules: string[] = []): boolean {
-  return rules.some(raw => {
-    const item = String(raw || '').trim();
-    if (!item) return false;
-    try { return new RegExp(item, 'i').test(prefix); } catch { return prefix.toLowerCase().includes(item.toLowerCase()); }
-  });
-}
-
-function isTempEmailDomain(email: string): boolean {
-  const domain = String(email || '').split('@')[1]?.toLowerCase() || '';
-  if (!domain) return false;
-  const tempDomains = ['mailinator.com','10minutemail.com','guerrillamail.com','tempmail.com','temp-mail.org','yopmail.com','dispostable.com','trashmail.com','sharklasers.com','getnada.com'];
-  return tempDomains.includes(domain);
-}
-
-
-
-function publicRegistrationSettings(registration: AppSettings['registration']): Record<string, unknown> {
-  const safe: Record<string, unknown> = { ...registration };
-  delete safe.turnstileSecret;
-  delete safe.captchaBackgroundImage;
-  delete safe.emailApiKey;
-  delete safe.emailAllowedEnvironments;
-  delete safe.emailRegistrationSceneEnabled;
-  delete safe.emailTestSceneEnabled;
-  delete safe.emailFixedRecipients;
-  delete safe.emailRegistrationRecipientMode;
-  delete safe.emailTestRecipientMode;
-  delete safe.cloudflareEmailAccountId;
-  delete safe.cloudflareEmailApiToken;
-  delete safe.cloudflareAdminRecipient;
-  delete safe.cloudflareVerifiedRecipients;
-  delete safe.cloudflareRecipientsSyncedAt;
-  delete safe.emailRegistrationSubjectTemplate;
-  delete safe.emailRegistrationTextTemplate;
-  delete safe.emailRegistrationHtmlTemplate;
-  delete safe.emailTestSubjectTemplate;
-  delete safe.emailTestTextTemplate;
-  delete safe.emailTestHtmlTemplate;
-  return safe;
-}
-
-function uniqueCharacters(value: unknown, fallback: string, maxLength = 160): string {
-  const source = Array.from(String(value || '').replace(/\s/g, ''));
-  const unique = Array.from(new Set(source)).join('').slice(0, maxLength);
-  return unique.length >= 2 ? unique : fallback;
-}
-
-function sanitizeCaptchaCharset(value: unknown): string {
-  return uniqueCharacters(value, 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 120);
-}
-
-function sanitizeEmailCodeCharset(value: unknown): string {
-  return uniqueCharacters(value, 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 160);
-}
-
-function sanitizeCaptchaBackgroundImage(value: unknown): string {
-  const raw = String(value || '').trim();
-  if (!raw) return '';
-  if (!/^data:image\/(?:png|jpeg|jpg|webp|gif);base64,[a-z0-9+/=]+$/i.test(raw)) return '';
-  return raw.length <= 700000 ? raw : '';
-}
-
-function randomCodeFromCharset(charset: string, length: number, min = 3, max = 12): string {
-  const chars = Array.from(uniqueCharacters(charset, 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'));
-  const size = clamp(Number(length || min), min, max);
-  const bytes = new Uint32Array(size);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes).map(value => chars[value % chars.length]).join('');
-}
-
-function randomBetween(min: number, max: number): number {
-  const low = Math.min(min, max);
-  const high = Math.max(min, max);
-  const bytes = new Uint32Array(1);
-  crypto.getRandomValues(bytes);
-  return low + (bytes[0] % Math.max(1, high - low + 1));
-}
-
-function captchaColor(): string {
-  const hue = randomBetween(0, 359);
-  const saturation = randomBetween(48, 82);
-  const lightness = randomBetween(28, 55);
-  return `hsl(${hue} ${saturation}% ${lightness}%)`;
-}
-
-function escapeSvg(value: unknown): string {
-  return String(value ?? '').replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[char] || char));
-}
-
-function buildCaptchaSvg(settings: AppSettings, code: string): string {
-  const registration = settings.registration;
-  const width = 260;
-  const height = 92;
-  const backgroundEnabled = registration.captchaBackgroundEnabled !== false;
-  const uploadedBackground = backgroundEnabled && registration.captchaBackgroundMode === 'upload' ? sanitizeCaptchaBackgroundImage(registration.captchaBackgroundImage) : '';
-  const background = uploadedBackground
-    ? `<image href="${escapeSvg(uploadedBackground)}" x="0" y="0" width="${width}" height="${height}" preserveAspectRatio="xMidYMid slice" opacity="0.72"/>`
-    : backgroundEnabled
-      ? Array.from({ length: 14 }).map(() => `<circle cx="${randomBetween(0,width)}" cy="${randomBetween(0,height)}" r="${randomBetween(3,18)}" fill="${captchaColor()}" opacity="0.${randomBetween(8,22)}"/>`).join('')
-      : `<rect width="${width}" height="${height}" fill="#f8fafc"/>`;
-  const minLines = clamp(Number(registration.captchaNoiseLinesMin ?? 2), 0, 20);
-  const maxLines = clamp(Number(registration.captchaNoiseLinesMax ?? 5), 0, 20);
-  const lineCount = registration.captchaNoiseLinesEnabled === false ? 0 : randomBetween(minLines, maxLines);
-  const fixedLineColor = normalizeHexColor(registration.captchaNoiseLineFixedColor, '#64748b');
-  const lines = Array.from({ length: lineCount }).map(() => {
-    const color = registration.captchaNoiseLineColorMode === 'fixed' ? fixedLineColor : captchaColor();
-    return `<path d="M ${randomBetween(-20,40)} ${randomBetween(10,height-10)} C ${randomBetween(50,110)} ${randomBetween(-20,height+20)}, ${randomBetween(120,210)} ${randomBetween(-20,height+20)}, ${randomBetween(width-30,width+20)} ${randomBetween(8,height-8)}" fill="none" stroke="${color}" stroke-width="${randomBetween(2,5)}" opacity="0.${randomBetween(55,90)}" stroke-linecap="round"/>`;
-  }).join('');
-  const chars = Array.from(code);
-  const step = width / Math.max(1, chars.length);
-  const glyphs = chars.map((character, index) => {
-    const x = Math.round(step * index + step * 0.48 + randomBetween(-5,5));
-    const y = randomBetween(58,75);
-    const rotate = randomBetween(-24,24);
-    const size = randomBetween(43,59);
-    return `<text x="${x}" y="${y}" text-anchor="middle" font-family="Arial Black,Arial,sans-serif" font-size="${size}" font-weight="900" fill="${captchaColor()}" transform="rotate(${rotate} ${x} ${y})">${escapeSvg(character)}</text>`;
-  }).join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="图形验证码"><rect width="${width}" height="${height}" rx="12" fill="#f8fafc"/>${background}${glyphs}${lines}<rect x="1" y="1" width="${width-2}" height="${height-2}" rx="11" fill="none" stroke="#cbd5e1"/></svg>`;
-}
-
-function captchaScene(value: unknown): 'login' | 'register' | 'apply' | 'admin_create' {
-  const scene = String(value || 'login');
-  return ['login','register','apply','admin_create'].includes(scene) ? scene as any : 'login';
-}
-
-async function createImageCaptchaChallenge(request: Request, env: Env): Promise<Response> {
-  await rateLimit(env, request, 'captcha-challenge', 80, 600);
-  const body = await readJson<Record<string, unknown>>(request).catch(() => ({} as Record<string, unknown>));
-  const settings = await loadSettings(env);
-  const scene = captchaScene(body.scene);
-  const charset = sanitizeCaptchaCharset(settings.registration.captchaCharset);
-  const length = clamp(Number(settings.registration.captchaLength || 4), 3, 8);
-  const code = randomCodeFromCharset(charset, length, 3, 8);
-  const id = crypto.randomUUID();
-  const expiresAt = Date.now() + 5 * 60 * 1000;
-  // Image captcha answers are intentionally case-sensitive. A and a are different characters.
-  const answerHash = await sha256(`${id}|${scene}|${clientIp(request)}|${code}`);
-  await env.APP_KV.put(`captcha:${id}`, JSON.stringify({ answerHash, scene, expiresAt }), { expirationTtl: 360 });
-  return ok({ challengeId: id, imageSvg: buildCaptchaSvg(settings, code), expiresInSeconds: 300, length });
-}
-
-async function verifyImageCaptcha(env: Env, request: Request, rawId: unknown, rawAnswer: unknown, scene: string): Promise<void> {
-  const id = cleanText(rawId, 100);
-  const answer = String(rawAnswer || '').trim();
-  if (!id || !answer) throw new HttpError(400, 'CAPTCHA_REQUIRED', '请输入图形验证码');
-  const key = `captcha:${id}`;
-  const raw = await env.APP_KV.get(key);
-  await env.APP_KV.delete(key).catch(() => undefined);
-  if (!raw) throw new HttpError(403, 'CAPTCHA_EXPIRED', '图形验证码已过期，请刷新后重试');
-  let record: { answerHash?: string; scene?: string; expiresAt?: number } = {};
-  try { record = JSON.parse(raw); } catch {}
-  if (record.scene !== scene || Number(record.expiresAt || 0) < Date.now()) throw new HttpError(403, 'CAPTCHA_EXPIRED', '图形验证码已过期，请刷新后重试');
-  const candidate = await sha256(`${id}|${scene}|${clientIp(request)}|${answer}`);
-  if (candidate !== record.answerHash) throw new HttpError(403, 'CAPTCHA_INVALID', '图形验证码不正确，请重新输入');
-}
-
-function humanVerificationMode(settings: AppSettings): 'image' | 'turnstile' | 'turnstile_fallback' {
-  const mode = String(settings.registration.humanVerificationMode || 'turnstile_fallback');
-  return ['image','turnstile','turnstile_fallback'].includes(mode) ? mode as any : 'turnstile_fallback';
-}
-
-async function verifyHumanChallenge(env: Env, request: Request, body: Record<string, unknown>, scene: string, expectedAction: string): Promise<void> {
-  const settings = await loadSettings(env);
-  const mode = humanVerificationMode(settings);
-  if (mode === 'image') {
-    await verifyImageCaptcha(env, request, body.captchaChallengeId, body.captchaAnswer, scene);
-    return;
-  }
-  if (mode === 'turnstile') {
-    await verifyTurnstile(env, request, body.turnstileToken, expectedAction);
-    return;
-  }
-  if (String(body.captchaChallengeId || '').trim() || String(body.captchaAnswer || '').trim()) {
-    await verifyImageCaptcha(env, request, body.captchaChallengeId, body.captchaAnswer, scene);
-    return;
-  }
-  await verifyTurnstile(env, request, body.turnstileToken, expectedAction);
-}
-
-function escapeEmailHtml(value: unknown): string {
-  return String(value ?? '').replace(/[&<>\"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '\"':'&quot;', "'":'&#39;' }[char] || char));
-}
-
-function resolveEmailRuntimeEnvironment(env: Env): string {
-  return cleanText(env.APP_ENVIRONMENT || env.ENVIRONMENT || 'production', 80).toLowerCase() || 'production';
-}
-
-function sanitizeEmailRecipientList(value: unknown): string[] {
-  const items = Array.isArray(value) ? value : String(value || '').split(/[\n,;]+/);
-  return Array.from(new Set(items.map(item => String(item || '').trim().toLowerCase()).filter(item => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item)))).slice(0, 50);
-}
-
-function assertEmailEnvironmentAllowed(env: Env, settings: AppSettings): string {
-  const runtime = resolveEmailRuntimeEnvironment(env);
-  const allowed = String(settings.registration.emailAllowedEnvironments || '*')
-    .split(/[\n,;]+/)
-    .map(item => item.trim().toLowerCase())
-    .filter(Boolean);
-  if (!allowed.length || allowed.includes('*') || allowed.includes('all') || allowed.includes(runtime)) return runtime;
-  throw new HttpError(409, 'EMAIL_ENVIRONMENT_BLOCKED', `当前运行环境 ${runtime} 未被允许发送邮件`);
-}
-
-function renderEmailTemplate(template: unknown, context: Record<string, unknown>, html = false): string {
-  return String(template || '').replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => {
-    const value = String(context[key] ?? '');
-    return html ? escapeEmailHtml(value) : value;
-  });
-}
-
-function plainTextToEmailHtml(text: string): string {
-  return `<div style="font-family:Arial,'Microsoft YaHei',sans-serif;max-width:560px;margin:auto;padding:24px;color:#0f172a;white-space:normal">${escapeEmailHtml(text).replace(/\n/g, '<br>')}</div>`;
-}
-
-
-type AdminCloudflareEmailScene = 'admin_test' | 'system_error' | 'help_submission' | 'domain_review' | 'dns_anomaly';
-
-function resolveCloudflareEmailAccountId(env: Env, settings: AppSettings): string {
-  return cleanText(env.CF_ACCOUNT_ID || settings.registration.cloudflareEmailAccountId || '', 64);
-}
-
-function resolveCloudflareEmailRoutingToken(env: Env, settings: AppSettings): string {
-  return String(env.CF_EMAIL_ROUTING_API_TOKEN || settings.registration.cloudflareEmailApiToken || '').trim();
-}
-
-function resolveCloudflareAdminEmail(env: Env, settings: AppSettings): string {
-  const verified = sanitizeEmailRecipientList(settings.registration.cloudflareVerifiedRecipients || []);
-  const candidates = [
-    settings.registration.cloudflareAdminRecipient,
-    env.CF_ADMIN_EMAIL,
-    verified[0],
-    'admin@flore.top',
-  ];
-  for (const candidate of candidates) {
-    const email = String(candidate || '').trim().toLowerCase();
-    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && (!verified.length || verified.includes(email))) return email;
-  }
-  return 'admin@flore.top';
-}
-
-async function fetchCloudflareVerifiedDestinationAddresses(env: Env, settings: AppSettings): Promise<string[]> {
-  const accountId = resolveCloudflareEmailAccountId(env, settings);
-  const token = resolveCloudflareEmailRoutingToken(env, settings);
-  if (!accountId) throw new HttpError(409, 'CF_EMAIL_ACCOUNT_ID_MISSING', '请先填写 Cloudflare Account ID，或配置 Worker 变量 CF_ACCOUNT_ID');
-  if (!/^[a-f0-9]{32}$/i.test(accountId)) throw new HttpError(400, 'CF_EMAIL_ACCOUNT_ID_INVALID', 'Cloudflare Account ID 格式不正确，应为 32 位字符');
-  if (!token) throw new HttpError(409, 'CF_EMAIL_ROUTING_TOKEN_MISSING', '请配置只读的 Email Routing API Token，权限至少包含 Email Routing Addresses Read');
-  const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/email/routing/addresses?verified=true&per_page=50`, {
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-  });
-  const payload: any = await response.json().catch(() => ({}));
-  if (!response.ok || payload?.success === false) {
-    const detail = payload?.errors?.[0]?.message || payload?.message || `HTTP ${response.status}`;
-    throw new HttpError(502, 'CF_EMAIL_ADDRESS_SYNC_FAILED', `同步 Cloudflare 已验证邮箱失败：${String(detail).slice(0, 500)}`);
-  }
-  return sanitizeEmailRecipientList((Array.isArray(payload?.result) ? payload.result : []).filter((item: any) => item?.verified).map((item: any) => item?.email));
-}
-
-async function adminSyncCloudflareEmailAddresses(request: Request, env: Env): Promise<Response> {
-  const admin = await requireAdmin(env, request);
-  const settings = await loadSettings(env);
-  const addresses = await fetchCloudflareVerifiedDestinationAddresses(env, settings);
-  if (!addresses.length) throw new HttpError(404, 'CF_EMAIL_NO_VERIFIED_ADDRESS', 'Cloudflare 账户中没有可用的已验证目标邮箱');
-  settings.registration.cloudflareVerifiedRecipients = addresses;
-  settings.registration.cloudflareRecipientsSyncedAt = new Date().toISOString();
-  if (!addresses.includes(String(settings.registration.cloudflareAdminRecipient || '').toLowerCase())) {
-    settings.registration.cloudflareAdminRecipient = addresses[0];
-  }
-  await env.APP_KV.put(SETTINGS_KEY, JSON.stringify(settings));
-  await audit(env, request, admin.id, 'admin.cloudflare_email_addresses_sync', 'setting', 'cloudflare_email', {
-    count: addresses.length,
-    selectedHash: await sha256(String(settings.registration.cloudflareAdminRecipient || '').toLowerCase()),
-  });
-  return ok({
-    addresses,
-    selected: resolveCloudflareAdminEmail(env, settings),
-    syncedAt: settings.registration.cloudflareRecipientsSyncedAt,
-    provider: 'cloudflare-seb',
-    message: `已同步 ${addresses.length} 个 Cloudflare 已验证邮箱`,
-  });
-}
-
-type WorkerVariableKind = 'plain_text' | 'json' | 'secret_text';
-
-type WorkerVariableDefinition = {
-  label: string;
-  purpose: string;
-  addMethod: string;
-  suggestedType?: WorkerVariableKind;
-};
-
-type WorkerVariableItem = {
-  name: string;
-  type: WorkerVariableKind;
-  label: string;
-  purpose: string;
-  addMethod: string;
-  sensitive: boolean;
-  configured: boolean;
-  value: string;
-  source: string;
-  protected: boolean;
-};
-
-const RUNTIME_ONLY_BINDING_NAMES = new Set(['DB', 'APP_KV', 'ASSETS', 'SEB']);
-const WORKER_VARIABLE_BINDING_TYPES = new Set(['plain_text', 'json', 'secret_text']);
-const PROTECTED_WORKER_VARIABLE_NAMES = new Set(['CF_WORKERS_API_TOKEN']);
-const SECRET_VARIABLE_PATTERN = /(TOKEN|SECRET|KEY|PASSWORD|PRIVATE|SALT|BOOTSTRAP|API_KEY)/i;
-
-const WORKER_VARIABLE_DEFINITIONS: Record<string, WorkerVariableDefinition> = {
-  BOOTSTRAP_ADMIN_TOKEN: {
-    label: '初始化管理员令牌',
-    purpose: '系统首次初始化管理员时使用；初始化完成后建议删除，避免别人拿到令牌后重新创建管理员。',
-    addMethod: '类型选“密钥”；值填写一次性强随机字符串。初始化管理员完成后回到 Cloudflare 变量页面删除。',
-    suggestedType: 'secret_text',
-  },
-  CF_ACCOUNT_ID: {
-    label: 'Cloudflare 账户 ID',
-    purpose: '用于调用 Cloudflare 账户级 API，例如同步已验证邮箱、管理 Worker 变量。',
-    addMethod: '类型选“纯文本”；值从 Cloudflare 账户首页或 Workers 页面复制 Account ID。',
-    suggestedType: 'plain_text',
-  },
-  CF_API_TOKEN: {
-    label: 'Cloudflare DNS API Token',
-    purpose: '写入、更新和删除用户二级域名 DNS 记录。',
-    addMethod: '类型选“密钥”；Token 至少需要对应 Zone 的 DNS Edit 权限，不要使用 Global API Key。',
-    suggestedType: 'secret_text',
-  },
-  CF_EMAIL_ROUTING_API_TOKEN: {
-    label: 'Cloudflare 邮箱地址读取 Token',
-    purpose: '同步 Cloudflare Email Routing 中已验证的收件邮箱列表。',
-    addMethod: '类型选“密钥”；权限选择账户级 Email Routing Addresses Read。',
-    suggestedType: 'secret_text',
-  },
-  CF_WORKERS_API_TOKEN: {
-    label: 'Worker 变量管理 Token',
-    purpose: '允许本系统调用 Cloudflare API 添加、修改、删除当前 Worker 的变量和密钥。',
-    addMethod: '类型选“密钥”；权限选择账户级 Workers Scripts Edit/Write。这个变量本身只能在 Cloudflare 控制台维护，网站内不允许修改。',
-    suggestedType: 'secret_text',
-  },
-  CF_WORKER_SCRIPT_NAME: {
-    label: 'Worker 脚本名称',
-    purpose: '当 Worker 名称不是 storage 时，用它指定 Cloudflare API 要管理的脚本名称。',
-    addMethod: '类型选“纯文本”；值填写 Cloudflare Workers 列表中的脚本名称，例如 storage。',
-    suggestedType: 'plain_text',
-  },
-  CONFIG_MODE: {
-    label: '配置读取模式',
-    purpose: '标记当前配置来源；常用于区分 env、kv 或其他配置策略。',
-    addMethod: '类型选“纯文本”；一般填写 env。',
-    suggestedType: 'plain_text',
-  },
-  DNS_ALLOWED_TYPES: {
-    label: '全局允许 DNS 类型',
-    purpose: '控制用户能创建哪些 DNS 记录类型。多根域名单独设置时优先生效。',
-    addMethod: '类型选“纯文本”；值用英文逗号分隔，例如 CNAME,A,AAAA,TXT,MX,NS。',
-    suggestedType: 'plain_text',
-  },
-  DNS_DEFAULT_TYPE: {
-    label: '默认 DNS 类型',
-    purpose: '用户新增解析时默认选中的记录类型。',
-    addMethod: '类型选“纯文本”；常用值为 CNAME。',
-    suggestedType: 'plain_text',
-  },
-  DNS_PROXIED: {
-    label: '默认代理状态',
-    purpose: '控制新建 A/AAAA/CNAME 记录是否默认开启 Cloudflare 代理。',
-    addMethod: '类型选“纯文本”；填写 true 或 false。',
-    suggestedType: 'plain_text',
-  },
-  DNS_RESERVED_PREFIXES: {
-    label: '保留前缀',
-    purpose: '禁止用户注册系统、邮箱、常用服务等敏感前缀。',
-    addMethod: '类型选“纯文本”；用英文逗号分隔，例如 api,admin,mail,smtp。',
-    suggestedType: 'plain_text',
-  },
-  DNS_SUFFIX: {
-    label: '默认根域名',
-    purpose: '单根域名模式下的默认后缀；多根域名设置启用后仅作为兼容配置。',
-    addMethod: '类型选“纯文本”；填写根域名，例如 flore.top。',
-    suggestedType: 'plain_text',
-  },
-  DNS_SUFFIX_LABEL: {
-    label: '默认根域名显示名',
-    purpose: '注册页展示根域名时的描述文字。',
-    addMethod: '类型选“纯文本”；可填写“免费一级域名”等显示名称，也可留空不显示。',
-    suggestedType: 'plain_text',
-  },
-  DNS_TTL: {
-    label: '默认 TTL',
-    purpose: '新建 DNS 记录时的 TTL 默认值。Cloudflare 中 1 通常表示 Auto。',
-    addMethod: '类型选“纯文本”；填写数字，例如 1。',
-    suggestedType: 'plain_text',
-  },
-  DNS_ZONE_ID: {
-    label: '默认 Zone ID',
-    purpose: '单根域名模式下写入 Cloudflare DNS 的 Zone ID。多根域名设置中每个域名可单独配置。',
-    addMethod: '类型选“纯文本”；从 Cloudflare 对应域名概览页复制 Zone ID。',
-    suggestedType: 'plain_text',
-  },
-  EMAIL_FROM: {
-    label: '邮件发件地址',
-    purpose: '系统邮件显示的 From 地址。Cloudflare SEB 管理员邮件和 Resend 注册验证码都会读取。',
-    addMethod: '类型选“纯文本”；填写已验证域名下的邮箱，例如 admin@flore.top。',
-    suggestedType: 'plain_text',
-  },
-  EMAIL_FROM_NAME: {
-    label: '邮件发件名称',
-    purpose: '收件箱中显示的发件人名称。',
-    addMethod: '类型选“纯文本”；填写品牌名，例如 FLORE域名注册中心。',
-    suggestedType: 'plain_text',
-  },
-  CF_ADMIN_EMAIL: {
-    label: '管理员通知邮箱',
-    purpose: 'Cloudflare 免费邮件通知的默认收件邮箱。',
-    addMethod: '类型选“纯文本”；填写 Cloudflare Email Routing 中已验证的邮箱。',
-    suggestedType: 'plain_text',
-  },
-  RESEND_API_KEY: {
-    label: 'Resend API Key',
-    purpose: '向任意用户邮箱发送注册验证码。管理员固定通知不依赖它。',
-    addMethod: '类型选“密钥”；在 Resend 后台创建 Sending access API Key 后粘贴完整 re_ 开头密钥。',
-    suggestedType: 'secret_text',
-  },
-  APP_ENVIRONMENT: {
-    label: '运行环境',
-    purpose: '用于邮件模板、环境限制和排查日志中标识当前环境。',
-    addMethod: '类型选“纯文本”；常用值 production、preview、staging。',
-    suggestedType: 'plain_text',
-  },
-  ENVIRONMENT: {
-    label: '兼容运行环境',
-    purpose: '兼容旧版本环境名称，优先建议使用 APP_ENVIRONMENT。',
-    addMethod: '类型选“纯文本”；常用值 production。',
-    suggestedType: 'plain_text',
-  },
-  TURNSTILE_SITE_KEY: {
-    label: 'Turnstile Site Key',
-    purpose: '前端显示 Turnstile 组件用的公开站点密钥。',
-    addMethod: '类型选“纯文本”；从 Cloudflare Turnstile 小组件页面复制 Site Key。',
-    suggestedType: 'plain_text',
-  },
-  TURNSTILE_SECRET: {
-    label: 'Turnstile Secret',
-    purpose: '后端校验 Turnstile token 的密钥。',
-    addMethod: '类型选“密钥”；从 Cloudflare Turnstile 小组件页面复制 Secret Key。',
-    suggestedType: 'secret_text',
-  },
-  TURNSTILE_EXPECTED_HOSTNAME: {
-    label: 'Turnstile 允许域名',
-    purpose: '限制 Turnstile 校验必须来自指定站点域名。',
-    addMethod: '类型选“纯文本”；填写正式访问域名，例如 storage.flore.top。',
-    suggestedType: 'plain_text',
-  },
-  TURNSTILE_ACTION_APPLY: {
-    label: '域名申请 Turnstile Action',
-    purpose: '校验域名申请场景的 Turnstile action。',
-    addMethod: '类型选“纯文本”；默认可填写 domain_apply。',
-    suggestedType: 'plain_text',
-  },
-  TURNSTILE_ACTION_LOGIN: {
-    label: '登录 Turnstile Action',
-    purpose: '校验登录场景的 Turnstile action。',
-    addMethod: '类型选“纯文本”；默认可填写 login。',
-    suggestedType: 'plain_text',
-  },
-  TURNSTILE_ACTION_REGISTER: {
-    label: '注册 Turnstile Action',
-    purpose: '校验注册场景的 Turnstile action。',
-    addMethod: '类型选“纯文本”；默认可填写 register。',
-    suggestedType: 'plain_text',
-  },
-  TURNSTILE_ENABLE_APPLY: {
-    label: '域名申请 Turnstile 开关',
-    purpose: '控制域名申请场景是否启用 Turnstile。',
-    addMethod: '类型选“纯文本”；填写 true 或 false。',
-    suggestedType: 'plain_text',
-  },
-  TURNSTILE_ENABLE_LOGIN: {
-    label: '登录 Turnstile 开关',
-    purpose: '控制登录场景是否启用 Turnstile。',
-    addMethod: '类型选“纯文本”；填写 true 或 false。',
-    suggestedType: 'plain_text',
-  },
-  TURNSTILE_ENABLE_REGISTER: {
-    label: '注册 Turnstile 开关',
-    purpose: '控制注册场景是否启用 Turnstile。',
-    addMethod: '类型选“纯文本”；填写 true 或 false。',
-    suggestedType: 'plain_text',
-  },
-};
-
-function managedWorkerScriptName(env: Env): string {
-  const value = cleanText(env.CF_WORKER_SCRIPT_NAME || 'storage', 80).replace(/[^a-zA-Z0-9_-]/g, '');
-  return value || 'storage';
-}
-
-function resolveWorkerVariableDefinition(name: string, type?: WorkerVariableKind): WorkerVariableDefinition {
-  const known = WORKER_VARIABLE_DEFINITIONS[name];
-  if (known) return known;
-  const secretLike = type === 'secret_text' || SECRET_VARIABLE_PATTERN.test(name);
-  return {
-    label: name,
-    purpose: secretLike ? '自定义密钥变量，当前代码或后续功能可能通过 env 读取它。' : '自定义文本变量，当前代码或后续功能可能通过 env 读取它。',
-    addMethod: secretLike ? '类型建议选择“密钥”；填写后代码可通过 env.' + name + ' 读取。' : '类型建议选择“纯文本”；填写后代码可通过 env.' + name + ' 读取。',
-    suggestedType: secretLike ? 'secret_text' : 'plain_text',
-  };
-}
-
-function isSensitiveWorkerVariableName(name: string, type?: WorkerVariableKind): boolean {
-  return type === 'secret_text' || SECRET_VARIABLE_PATTERN.test(name);
-}
-
-function isValidWorkerVariableName(name: string): boolean {
-  return /^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(name);
-}
-
-function normalizeWorkerVariableName(rawName: unknown): string {
-  const name = String(rawName || '').trim();
-  if (!isValidWorkerVariableName(name)) throw new HttpError(400, 'WORKER_VARIABLE_NAME_INVALID', '变量名称只能使用字母、数字和下划线，并且不能以数字开头');
-  return name;
-}
-
-function normalizeWorkerVariableType(rawType: unknown, name: string): WorkerVariableKind {
-  const value = String(rawType || '').trim().toLowerCase();
-  if (value === 'plain_text' || value === 'text') return 'plain_text';
-  if (value === 'json') return 'json';
-  if (value === 'secret_text' || value === 'secret') return 'secret_text';
-  return isSensitiveWorkerVariableName(name) ? 'secret_text' : 'plain_text';
-}
-
-function formatJsonWorkerVariableValue(rawValue: unknown): string {
-  const value = String(rawValue ?? '').trim();
-  if (!value) throw new HttpError(400, 'WORKER_VARIABLE_VALUE_REQUIRED', '请输入变量值');
-  if (value.length > 20000) throw new HttpError(400, 'WORKER_VARIABLE_VALUE_TOO_LONG', 'JSON 变量内容过长，请控制在 20000 字符以内');
-  try {
-    const parsed = JSON.parse(value);
-    return JSON.stringify(parsed, null, 2);
-  } catch {
-    throw new HttpError(400, 'WORKER_VARIABLE_JSON_INVALID', 'JSON 变量内容不是有效 JSON，请检查引号、逗号、括号和布尔值格式');
-  }
-}
-
-function parseJsonWorkerVariableValue(rawValue: unknown): unknown {
-  return JSON.parse(formatJsonWorkerVariableValue(rawValue));
-}
-
-function validateWorkerVariableValue(name: string, rawValue: unknown, type: WorkerVariableKind = 'plain_text'): string {
-  if (type === 'json') return formatJsonWorkerVariableValue(rawValue);
-  const value = String(rawValue ?? '').trim();
-  if (!value) throw new HttpError(400, 'WORKER_VARIABLE_VALUE_REQUIRED', '请输入变量值');
-  if (value.length > 5000) throw new HttpError(400, 'WORKER_VARIABLE_VALUE_TOO_LONG', '变量内容过长，请控制在 5000 字符以内');
-  if (['EMAIL_FROM','CF_ADMIN_EMAIL'].includes(name) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
-    throw new HttpError(400, 'WORKER_VARIABLE_EMAIL_INVALID', `${name} 邮箱格式不正确`);
-  }
-  if (name === 'CF_ACCOUNT_ID' && !/^[a-f0-9]{32}$/i.test(value)) {
-    throw new HttpError(400, 'WORKER_VARIABLE_ACCOUNT_ID_INVALID', 'Cloudflare Account ID 应为 32 位字符');
-  }
-  if ((name === 'APP_ENVIRONMENT' || name === 'ENVIRONMENT') && !/^[a-zA-Z0-9._-]{1,80}$/.test(value)) {
-    throw new HttpError(400, 'WORKER_VARIABLE_ENV_INVALID', '运行环境只能使用字母、数字、点、下划线或短横线');
-  }
-  return value;
-}
-
-function buildWorkerVariableItem(name: string, type: WorkerVariableKind, value: string, source: string): WorkerVariableItem {
-  const definition = resolveWorkerVariableDefinition(name, type);
-  const sensitive = type === 'json' ? false : isSensitiveWorkerVariableName(name, type);
-  return {
-    name,
-    type,
-    label: definition.label,
-    purpose: definition.purpose,
-    addMethod: definition.addMethod,
-    sensitive,
-    configured: type === 'secret_text' ? true : Boolean(value),
-    value: sensitive ? '' : value,
-    source,
-    protected: PROTECTED_WORKER_VARIABLE_NAMES.has(name),
-  };
-}
-
-function mergeWorkerVariableItems(items: WorkerVariableItem[]): WorkerVariableItem[] {
-  const map = new Map<string, WorkerVariableItem>();
-  for (const item of items) {
-    const existing = map.get(item.name);
-    if (!existing || existing.source === 'runtime-fallback' || item.source.includes('cloudflare')) {
-      map.set(item.name, item);
-    }
-  }
-  return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
-}
-
-function runtimeWorkerVariables(env: Env): WorkerVariableItem[] {
-  return Object.keys(env as unknown as Record<string, unknown>)
-    .filter(name => !RUNTIME_ONLY_BINDING_NAMES.has(name))
-    .filter(name => isValidWorkerVariableName(name))
-    .map(name => {
-      const raw = (env as unknown as Record<string, unknown>)[name];
-      const isObjectValue = raw !== null && typeof raw === 'object';
-      const type: WorkerVariableKind = isObjectValue ? 'json' : (isSensitiveWorkerVariableName(name) ? 'secret_text' : 'plain_text');
-      const value = isObjectValue ? JSON.stringify(raw, null, 2) : String(raw ?? '');
-      return buildWorkerVariableItem(name, type, value, 'runtime-fallback');
-    });
-}
-
-async function cloudflareWorkersApi(request: Request, env: Env, path: string, init: RequestInit = {}): Promise<any> {
-  const settings = await loadSettings(env);
-  const token = String(env.CF_WORKERS_API_TOKEN || '').trim();
-  if (!token) throw new HttpError(409, 'CF_WORKERS_API_TOKEN_MISSING', '请先在 Cloudflare Worker 中添加 Secret：CF_WORKERS_API_TOKEN，权限为 Workers Scripts Write');
-  const accountId = resolveCloudflareEmailAccountId(env, settings);
-  if (!/^[a-f0-9]{32}$/i.test(accountId)) throw new HttpError(409, 'CF_WORKERS_ACCOUNT_ID_MISSING', '请先配置有效的 CF_ACCOUNT_ID');
-  const headers = new Headers(init.headers || {});
-  headers.set('Authorization', `Bearer ${token}`);
-  headers.set('Accept', 'application/json');
-  const isMultipart = typeof FormData !== 'undefined' && init.body instanceof FormData;
-  if (init.body && !isMultipart && !headers.has('content-type')) headers.set('content-type', 'application/json');
-  const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}${path}`, {
-    ...init,
-    headers,
-  });
-  const payload: any = await response.json().catch(() => ({}));
-  if (!response.ok || payload?.success === false) {
-    const detail = payload?.errors?.[0]?.message || payload?.message || `HTTP ${response.status}`;
-    throw new HttpError(502, 'CLOUDFLARE_WORKERS_API_FAILED', String(detail).slice(0, 500));
-  }
-  return payload?.result ?? payload;
-}
-
-async function fetchWorkerScriptSettings(request: Request, env: Env): Promise<any> {
-  const scriptName = managedWorkerScriptName(env);
-  // `/script-settings` only returns script-level options such as observability and tail consumers.
-  // Environment bindings (plain_text/json/secret_text) are exposed by `/settings`.
-  return cloudflareWorkersApi(request, env, `/workers/scripts/${encodeURIComponent(scriptName)}/settings`);
-}
-
-async function patchWorkerScriptBindings(request: Request, env: Env, bindings: any[]): Promise<void> {
-  const scriptName = managedWorkerScriptName(env);
-  // Cloudflare's /settings endpoint requires multipart/form-data. The `settings`
-  // part carries the complete binding list; the browser/Worker runtime supplies
-  // the multipart boundary automatically, so Content-Type must not be set by hand.
-  const form = new FormData();
-  form.append(
-    'settings',
-    new Blob([JSON.stringify({ bindings })], { type: 'application/json' }),
-    'settings.json',
-  );
-  await cloudflareWorkersApi(request, env, `/workers/scripts/${encodeURIComponent(scriptName)}/settings`, {
-    method: 'PATCH',
-    body: form,
-  });
-}
-
-async function fetchWorkerSecretBindings(request: Request, env: Env): Promise<any[]> {
-  const scriptName = managedWorkerScriptName(env);
-  const result = await cloudflareWorkersApi(request, env, `/workers/scripts/${encodeURIComponent(scriptName)}/secrets`);
-  if (Array.isArray(result)) return result;
-  if (Array.isArray(result?.secrets)) return result.secrets;
-  return [];
-}
-
-function variableItemsFromScriptSettings(settings: any): WorkerVariableItem[] {
-  const bindings = Array.isArray(settings?.bindings) ? settings.bindings : [];
-  return bindings
-    .filter((binding: any) => WORKER_VARIABLE_BINDING_TYPES.has(String(binding?.type || '')))
-    .filter((binding: any) => isValidWorkerVariableName(String(binding?.name || '')))
-    .map((binding: any) => {
-      const name = String(binding.name);
-      const type: WorkerVariableKind = String(binding.type) === 'secret_text' ? 'secret_text' : (String(binding.type) === 'json' ? 'json' : 'plain_text');
-      const value = type === 'plain_text' ? String(binding.text ?? '') : (type === 'json' ? JSON.stringify(binding.json ?? null, null, 2) : '');
-      return buildWorkerVariableItem(name, type, value, 'cloudflare-worker-settings');
-    });
-}
-
-function variableItemsFromSecretList(secrets: any[]): WorkerVariableItem[] {
-  return secrets
-    .filter((secret: any) => isValidWorkerVariableName(String(secret?.name || '')))
-    .map((secret: any) => buildWorkerVariableItem(String(secret.name), 'secret_text', '', 'cloudflare-secrets'));
-}
-
-function removeVariableBinding(bindings: any[], name: string): any[] {
-  return bindings.filter((binding: any) => !(String(binding?.name || '') === name && WORKER_VARIABLE_BINDING_TYPES.has(String(binding?.type || ''))));
-}
-
-async function putWorkerSecret(request: Request, env: Env, name: string, value: string): Promise<void> {
-  const scriptName = managedWorkerScriptName(env);
-  await cloudflareWorkersApi(request, env, `/workers/scripts/${encodeURIComponent(scriptName)}/secrets`, {
-    method: 'PUT',
-    body: JSON.stringify({ name, text: value, type: 'secret_text' }),
-  });
-}
-
-async function deleteWorkerSecret(request: Request, env: Env, name: string): Promise<void> {
-  const scriptName = managedWorkerScriptName(env);
-  await cloudflareWorkersApi(request, env, `/workers/scripts/${encodeURIComponent(scriptName)}/secrets/${encodeURIComponent(name)}`, {
-    method: 'DELETE',
-  });
-}
-
-async function adminListManagedWorkerVariables(request: Request, env: Env): Promise<Response> {
-  await requireAdmin(env, request);
-  const items: WorkerVariableItem[] = [];
-  let syncMode = 'runtime-fallback';
-  let warning = '';
-  if (env.CF_WORKERS_API_TOKEN) {
-    try {
-      const [settings, secrets] = await Promise.all([
-        fetchWorkerScriptSettings(request, env),
-        fetchWorkerSecretBindings(request, env).catch(() => []),
-      ]);
-      items.push(...variableItemsFromScriptSettings(settings));
-      items.push(...variableItemsFromSecretList(secrets));
-      syncMode = 'cloudflare-api';
-    } catch (error: any) {
-      warning = `Cloudflare API 同步失败，已显示当前运行时可见变量：${error?.message || error}`;
-      items.push(...runtimeWorkerVariables(env));
-    }
-  } else {
-    warning = '未配置 CF_WORKERS_API_TOKEN，只能显示当前运行时可见变量，不能同步 Cloudflare 后台完整类型。';
-    items.push(...runtimeWorkerVariables(env));
-  }
-  const variables = mergeWorkerVariableItems(items);
-  return ok({
-    enabled: Boolean(env.CF_WORKERS_API_TOKEN),
-    accountIdConfigured: Boolean(env.CF_ACCOUNT_ID),
-    scriptName: managedWorkerScriptName(env),
-    syncMode,
-    warning,
-    variables,
-    definitions: WORKER_VARIABLE_DEFINITIONS,
-    protectedNames: Array.from(PROTECTED_WORKER_VARIABLE_NAMES),
-    note: '这里通过 Worker /settings 同步文本、JSON 和密钥变量，并通过 /secrets 校验密钥列表。CF_WORKERS_API_TOKEN 本身必须在 Cloudflare 控制台维护，网站内不能修改。',
-  });
-}
-
-async function adminUpdateManagedWorkerVariable(request: Request, env: Env): Promise<Response> {
-  const admin = await requireAdmin(env, request);
-  const body = await readJson<Record<string, unknown>>(request);
-  const name = normalizeWorkerVariableName(body.name);
-  if (PROTECTED_WORKER_VARIABLE_NAMES.has(name)) {
-    throw new HttpError(403, 'WORKER_VARIABLE_PROTECTED', 'CF_WORKERS_API_TOKEN 只能在 Cloudflare 控制台修改，不能在网站内修改');
-  }
-  const type = normalizeWorkerVariableType(body.type, name);
-  const value = validateWorkerVariableValue(name, body.value, type);
-  const scriptName = managedWorkerScriptName(env);
-  if (type === 'secret_text') {
-    await putWorkerSecret(request, env, name, value);
-  } else {
-    const settings = await fetchWorkerScriptSettings(request, env);
-    const bindings = Array.isArray(settings?.bindings) ? settings.bindings : [];
-    const nextBindings = removeVariableBinding(bindings, name);
-    if (type === 'json') {
-      nextBindings.push({ name, type: 'json', json: parseJsonWorkerVariableValue(body.value) });
-    } else {
-      nextBindings.push({ name, type: 'plain_text', text: value });
-    }
-    await patchWorkerScriptBindings(request, env, nextBindings);
-  }
-  await audit(env, request, admin.id, 'admin.worker_variable_update', 'worker_variable', name, {
-    scriptName,
-    type,
-    valueHash: await sha256(value),
-  });
-  const definition = resolveWorkerVariableDefinition(name, type);
-  return ok({
-    updated: true,
-    name,
-    type,
-    label: definition.label,
-    scriptName,
-    message: `${definition.label || name} 已提交到 Cloudflare；新值通常会在数秒内对后续请求生效`,
-  });
-}
-
-async function adminDeleteManagedWorkerVariable(request: Request, env: Env): Promise<Response> {
-  const admin = await requireAdmin(env, request);
-  const body = await readJson<Record<string, unknown>>(request);
-  const name = normalizeWorkerVariableName(body.name);
-  if (PROTECTED_WORKER_VARIABLE_NAMES.has(name)) {
-    throw new HttpError(403, 'WORKER_VARIABLE_PROTECTED', 'CF_WORKERS_API_TOKEN 只能在 Cloudflare 控制台删除或修改，不能在网站内删除');
-  }
-  const type = normalizeWorkerVariableType(body.type, name);
-  const scriptName = managedWorkerScriptName(env);
-  if (type === 'secret_text') {
-    await deleteWorkerSecret(request, env, name);
-  } else {
-    const settings = await fetchWorkerScriptSettings(request, env);
-    const bindings = Array.isArray(settings?.bindings) ? settings.bindings : [];
-    await patchWorkerScriptBindings(request, env, removeVariableBinding(bindings, name));
-  }
-  await audit(env, request, admin.id, 'admin.worker_variable_delete', 'worker_variable', name, { scriptName, type });
-  return ok({ deleted: true, name, type, scriptName, message: `${name} 已从 Cloudflare Worker 变量中删除` });
-}
-
-
-function dnsAllowedTypesBindingValue(settings: any, env: Env): { raw: string; source: string } {
-  const bindings = Array.isArray(settings?.bindings) ? settings.bindings : [];
-  const binding = bindings.find((item: any) => String(item?.name || '') === 'DNS_ALLOWED_TYPES');
-  if (binding) {
-    if (String(binding.type) === 'json') {
-      const value = binding.json;
-      if (Array.isArray(value)) return { raw: value.join(','), source: 'Cloudflare JSON variable' };
-      if (typeof value === 'string') return { raw: value, source: 'Cloudflare JSON variable' };
-    }
-    if (typeof binding.text === 'string') return { raw: binding.text, source: 'Cloudflare text variable' };
-  }
-  return { raw: String(env.DNS_ALLOWED_TYPES || ''), source: 'current Worker runtime' };
-}
-
-async function adminSyncDnsAllowedTypesFromWorker(request: Request, env: Env): Promise<Response> {
-  const admin = await requireAdmin(env, request);
-  let sourceSettings: any = null;
-  let warning = '';
-  if (env.CF_WORKERS_API_TOKEN) {
-    try { sourceSettings = await fetchWorkerScriptSettings(request, env); }
-    catch (error: any) { warning = `Cloudflare API 读取失败，已改用当前 Worker 运行时变量：${error?.message || error}`; }
-  }
-  const source = dnsAllowedTypesBindingValue(sourceSettings, env);
-  const types = sanitizeDnsRecordTypes(source.raw, []);
-  if (!types.length) {
-    throw new HttpError(409, 'DNS_ALLOWED_TYPES_EMPTY', 'DNS_ALLOWED_TYPES 未配置有效类型；请先在 Cloudflare 变量中填写，例如 CNAME,A,AAAA,TXT,MX,NS');
-  }
-
-  const settings = await loadSettings(env);
-  const existingByType = new Map(settings.dns.recordTypePolicies.map(item => [item.type, item]));
-  const openSet = new Set(types);
-  settings.dns.recordTypePolicies = SUPPORTED_DNS_RECORD_TYPES.map(type => {
-    const existing = existingByType.get(type);
-    return {
-      type,
-      displayName: existing?.displayName || defaultDnsRecordDisplayName(type),
-      allowUserAdd: openSet.has(type),
-      note: existing?.note || '',
-    };
-  });
-  settings.dns.suffixes = settings.dns.suffixes.map(item => ({
-    ...item,
-    allowedTypes: [...types],
-    defaultType: (types.includes(item.defaultType) ? item.defaultType : types[0]) as DnsRecordType,
-  }));
-  await env.APP_KV.put(SETTINGS_KEY, JSON.stringify(settings));
-  await audit(env, request, admin.id, 'admin.dns_sync_allowed_types', 'setting', 'dns', {
-    source: source.source,
-    raw: source.raw,
-    types,
-  });
-  return ok({
-    synced: true,
-    source: source.source,
-    raw: source.raw,
-    types,
-    warning,
-    settings: adminSettingsView(settings, env),
-    message: `已从 ${source.source} 同步 ${types.length} 种 DNS 类型：${types.join(', ')}`,
-  });
-}
-
-function adminCloudflareEmailSceneEnabled(settings: AppSettings, scene: AdminCloudflareEmailScene): boolean {
-  if (scene === 'admin_test') return settings.registration.emailTestSceneEnabled !== false;
-  return true;
-}
-
-function resolveCloudflareAdminSender(env: Env, settings: AppSettings): { fromEmail: string; fromName: string } {
-  const fromEmail = normalizeOptionalEmailStrict(env.EMAIL_FROM || settings.registration.emailFrom) || resolveCloudflareAdminEmail(env, settings);
-  const fromName = cleanText(env.EMAIL_FROM_NAME || settings.registration.emailFromName || settings.site.title || '域名注册中心', 120) || '域名注册中心';
-  return { fromEmail, fromName };
-}
-
-function encodeMailHeader(value: string): string {
-  const text = String(value || '').replace(/[\r\n]+/g, ' ').trim();
-  if (!text) return '';
-  if (/^[\x20-\x7e]*$/.test(text)) return text;
-  const bytes = new TextEncoder().encode(text);
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return `=?UTF-8?B?${btoa(binary)}?=`;
-}
-
-function buildCloudflareRawEmail(message: { fromEmail: string; fromName: string; toEmail: string; subject: string; text: string; html?: string }): string {
-  const boundary = `flore-${crypto.randomUUID().replace(/-/g, '')}`;
-  const subject = encodeMailHeader(message.subject || '系统通知');
-  const fromName = encodeMailHeader(message.fromName || '域名注册中心');
-  const text = String(message.text || '');
-  const html = String(message.html || '') || plainTextToEmailHtml(text);
-  return [
-    `From: ${fromName} <${message.fromEmail}>`,
-    `To: ${message.toEmail}`,
-    `Subject: ${subject}`,
-    'MIME-Version: 1.0',
-    `Content-Type: multipart/alternative; boundary="${boundary}"`,
-    '',
-    `--${boundary}`,
-    'Content-Type: text/plain; charset=utf-8',
-    'Content-Transfer-Encoding: 8bit',
-    '',
-    text,
-    '',
-    `--${boundary}`,
-    'Content-Type: text/html; charset=utf-8',
-    'Content-Transfer-Encoding: 8bit',
-    '',
-    html,
-    '',
-    `--${boundary}--`,
-  ].join('\r\n');
-}
-
-async function claimAdminEmailCooldown(
-  env: Env,
-  scene: AdminCloudflareEmailScene,
-  fingerprint: string,
-  cooldownSeconds: number,
-): Promise<boolean> {
-  if (cooldownSeconds <= 0) return true;
-  const hash = (await sha256(`${scene}|${fingerprint}`)).slice(0, 32);
-  const key = `admin_email_v90:${scene}:${hash}`;
-  const existing = await env.APP_KV.get(key).catch(() => null);
-  if (existing) return false;
-  await env.APP_KV.put(key, '1', { expirationTtl: clamp(cooldownSeconds, 60, 86400) }).catch(() => undefined);
-  return true;
-}
-
-async function sendAdminCloudflareEmail(
-  env: Env,
-  settings: AppSettings,
-  scene: AdminCloudflareEmailScene,
-  message: { subject: string; text: string; html?: string; fingerprint?: string; cooldownSeconds?: number; recipient?: string },
-): Promise<{ sent: boolean; recipient: string; skipped?: string }> {
-  const recipient = normalizeOptionalEmailStrict(message.recipient) || resolveCloudflareAdminEmail(env, settings);
-  if (!adminCloudflareEmailSceneEnabled(settings, scene)) return { sent: false, recipient, skipped: 'scene_disabled' };
-  if (!env.SEB) throw new HttpError(503, 'CF_EMAIL_BINDING_MISSING', 'Cloudflare 邮件绑定未配置，请确认 wrangler.jsonc 中存在名为 SEB 的 send_email 绑定');
-  const fingerprint = message.fingerprint || `${message.subject}|${message.text.slice(0, 500)}`;
-  const allowed = await claimAdminEmailCooldown(env, scene, fingerprint, Number(message.cooldownSeconds || 0));
-  if (!allowed) return { sent: false, recipient, skipped: 'cooldown' };
-  const sender = resolveCloudflareAdminSender(env, settings);
-  const raw = buildCloudflareRawEmail({
-    fromEmail: sender.fromEmail,
-    fromName: sender.fromName,
-    toEmail: recipient,
-    subject: message.subject,
-    text: message.text,
-    html: message.html,
-  });
-  try {
-    await env.SEB.send(new EmailMessage(sender.fromEmail, recipient, raw));
-    console.log('email delivery success', { provider: 'cloudflare-seb', scene, recipient });
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error || '未知错误');
-    throw new HttpError(502, 'CF_ADMIN_EMAIL_FAILED', `Cloudflare 管理员邮件发送失败：${detail.slice(0, 500)}`);
-  }
-  return { sent: true, recipient };
-}
-
-async function sendAdminCloudflareEmailSafe(
-  env: Env,
-  scene: AdminCloudflareEmailScene,
-  message: { subject: string; text: string; html?: string; fingerprint?: string; cooldownSeconds?: number },
-  settingsInput?: AppSettings,
-): Promise<void> {
-  try {
-    const settings = settingsInput || await loadSettings(env);
-    await sendAdminCloudflareEmail(env, settings, scene, message);
-  } catch (error) {
-    console.error(`cloudflare admin email ${scene} failed`, error);
-  }
-}
-
-async function notifySystemExceptionByCloudflare(env: Env, request: Request, error: unknown): Promise<void> {
-  let settings: AppSettings;
-  try { settings = await loadSettings(env); }
-  catch { settings = defaultSettings(env); }
-  if (!adminCloudflareEmailSceneEnabled(settings, 'system_error')) return;
-  const url = new URL(request.url);
-  const message = error instanceof Error ? error.message : String(error || '未知异常');
-  const stack = error instanceof Error ? String(error.stack || '').slice(0, 4000) : '';
-  const rayId = request.headers.get('cf-ray') || '';
-  const text = [
-    '系统捕获到未处理异常。',
-    '',
-    `时间：${new Date().toISOString()}`,
-    `请求：${request.method} ${url.pathname}${url.search}`,
-    `访问域名：${url.hostname}`,
-    `客户端 IP：${clientIp(request) || '未知'}`,
-    rayId ? `Cloudflare Ray ID：${rayId}` : '',
-    `错误：${message}`,
-    stack ? `堆栈：\n${stack}` : '',
-    '',
-    '处理建议：先查看 Workers 日志中同一时间的第一条错误，再检查 D1、KV、绑定和最近部署文件。',
-  ].filter(Boolean).join('\n');
-  await sendAdminCloudflareEmail(env, settings, 'system_error', {
-    subject: `【系统异常】${request.method} ${url.pathname}`,
-    text,
-    fingerprint: `${request.method}|${url.pathname}|${message}`,
-    cooldownSeconds: 900,
-  });
-}
-
-function resolveEmailDeliveryConfig(env: Env, settings: AppSettings) {
-  const apiKey = String(env.RESEND_API_KEY || settings.registration.emailApiKey || '').trim();
-  const fromEmail = String(env.EMAIL_FROM || settings.registration.emailFrom || '').trim();
-  const fromName = String(env.EMAIL_FROM_NAME || settings.registration.emailFromName || settings.site.title || '域名注册中心').trim();
-  if (!apiKey) throw new HttpError(503, 'EMAIL_API_KEY_MISSING', '邮件服务未配置：请设置 RESEND_API_KEY 或在管理员设置中填写 Resend API Key');
-  if (!fromEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fromEmail)) {
-    throw new HttpError(503, 'EMAIL_FROM_MISSING', '发件邮箱未配置或格式不正确');
-  }
-  return { apiKey, fromEmail, fromName };
-}
-
-interface ResendEmailMessage {
-  to: string[];
-  bcc?: string[];
-  subject: string;
-  text: string;
-  html: string;
-}
-
-async function sendEmailWithResend(env: Env, settings: AppSettings, message: ResendEmailMessage): Promise<void> {
-  const config = resolveEmailDeliveryConfig(env, settings);
-  const to = sanitizeEmailRecipientList(message.to);
-  const bcc = sanitizeEmailRecipientList(message.bcc || []).filter(item => !to.includes(item));
-  if (!to.length) throw new HttpError(400, 'EMAIL_RECIPIENT_REQUIRED', '没有可用的邮件收件对象');
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${config.apiKey}`,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: `${config.fromName} <${config.fromEmail}>`,
-      to,
-      ...(bcc.length ? { bcc } : {}),
-      subject: cleanText(message.subject, 300).replace(/[\r\n]+/g, ' ') || '系统邮件',
-      text: String(message.text || ''),
-      html: String(message.html || '') || plainTextToEmailHtml(String(message.text || '')),
-    }),
-  });
-  const payload: any = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new HttpError(502, 'EMAIL_SEND_FAILED', payload?.message || payload?.error?.message || `邮件发送失败 HTTP ${response.status}`);
-  }
-  console.log('email delivery success', { provider: 'resend', recipients: to.length, bcc: bcc.length });
-}
-
-function buildEmailTemplateMessage(
-  settings: AppSettings,
-  scene: 'registration' | 'test',
-  context: Record<string, unknown>,
-): Pick<ResendEmailMessage, 'subject' | 'text' | 'html'> {
-  const registration = settings.registration;
-  const isRegistration = scene === 'registration';
-  const subjectTemplate = isRegistration ? registration.emailRegistrationSubjectTemplate : registration.emailTestSubjectTemplate;
-  const textTemplate = isRegistration ? registration.emailRegistrationTextTemplate : registration.emailTestTextTemplate;
-  const htmlTemplate = isRegistration ? registration.emailRegistrationHtmlTemplate : registration.emailTestHtmlTemplate;
-  const subject = renderEmailTemplate(subjectTemplate, context, false).replace(/[\r\n]+/g, ' ').trim();
-  const text = renderEmailTemplate(textTemplate, context, false).trim();
-  const html = renderEmailTemplate(htmlTemplate, context, true).trim() || plainTextToEmailHtml(text);
-  return { subject, text, html };
-}
-
-async function sendRegistrationEmailCode(request: Request, env: Env): Promise<Response> {
-  await rateLimit(env, request, 'registration-email', 8, 3600);
-  const settings = await loadSettings(env);
-  if (!settings.registration.enabled) throw new HttpError(403, 'REGISTER_CLOSED', settings.registration.disabledMessage || '当前暂未开放用户注册');
-  if (!settings.registration.emailVerificationEnabled) throw new HttpError(409, 'EMAIL_VERIFICATION_DISABLED', '管理员尚未开启注册邮箱验证');
-  const body = await readJson<Record<string, unknown>>(request);
-  const email = normalizeOptionalEmailStrict(body.email);
-  if (!email) throw new HttpError(400, 'EMAIL_REQUIRED', '请输入有效邮箱');
-  if (settings.registration.blockTempEmail && isTempEmailDomain(email)) throw new HttpError(400, 'TEMP_EMAIL_BLOCKED', '不允许使用临时邮箱注册');
-  const emailDomain = email.split('@').pop() || '';
-  const blockedEmailDomains = sanitizeStringList(settings.registration.emailDomainBlacklist || '');
-  if (blockedEmailDomains.some(domain => emailDomain.toLowerCase() === domain.toLowerCase().replace(/^@/, ''))) {
-    throw new HttpError(403, 'EMAIL_DOMAIN_BLOCKED', '该邮箱后缀已被禁止注册');
-  }
-  if (listMatches(email, settings.blacklist?.emails || [])) throw new HttpError(403, 'EMAIL_BLOCKED', '该邮箱已被禁止注册');
-  const duplicate = await env.DB.prepare(`SELECT id FROM users WHERE email=? COLLATE NOCASE LIMIT 1`).bind(email).first<{ id: string }>();
-  if (duplicate) throw new HttpError(409, 'EMAIL_EXISTS', '该邮箱已被使用');
-
-  const existing = await env.DB.prepare(`
-    SELECT sent_at FROM email_verification_codes WHERE email=? COLLATE NOCASE LIMIT 1
-  `).bind(email).first<{ sent_at?: string }>();
-  if (existing?.sent_at) {
-    const sentAt = new Date(existing.sent_at).getTime();
-    const remaining = 60 - Math.floor((Date.now() - sentAt) / 1000);
-    if (Number.isFinite(sentAt) && remaining > 0) throw new HttpError(429, 'EMAIL_CODE_COOLDOWN', `请 ${remaining} 秒后再发送`);
-  }
-
-  const codeLength = clamp(Number(settings.registration.emailCodeLength || 6), 4, 12);
-  const codeCharset = sanitizeEmailCodeCharset(settings.registration.emailCodeCharset);
-  const code = randomCodeFromCharset(codeCharset, codeLength, 4, 12);
-  const expiryMinutes = clamp(Number(settings.registration.emailCodeExpiryMinutes || 10), 2, 60);
-  const expiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000).toISOString();
-  const sentAt = new Date().toISOString();
-  const codeHash = await sha256(`${email.toLowerCase()}|${code}`);
-  if (settings.registration.emailRegistrationSceneEnabled === false) {
-    throw new HttpError(409, 'EMAIL_REGISTRATION_SCENE_DISABLED', '注册验证码邮件场景已被管理员关闭');
-  }
-  const environment = assertEmailEnvironmentAllowed(env, settings);
-  const siteTitle = settings.site.title || '域名注册中心';
-  const templateContext = {
-    siteName: siteTitle,
-    code,
-    expiryMinutes,
-    email,
-    environment,
-    time: new Date().toISOString(),
-  };
-  const rendered = buildEmailTemplateMessage(settings, 'registration', templateContext);
-  const fixedRecipients = sanitizeEmailRecipientList(settings.registration.emailFixedRecipients || '');
-  const bcc = settings.registration.emailRegistrationRecipientMode === 'user_bcc_fixed' ? fixedRecipients : [];
-  await env.DB.prepare(`
-    INSERT INTO email_verification_codes (email, code_hash, expires_at, attempts, sent_at, ip)
-    VALUES (?, ?, ?, 0, ?, ?)
-    ON CONFLICT(email) DO UPDATE SET
-      code_hash=excluded.code_hash,
-      expires_at=excluded.expires_at,
-      attempts=0,
-      sent_at=excluded.sent_at,
-      ip=excluded.ip
-  `).bind(email, codeHash, expiresAt, sentAt, clientIp(request)).run();
-  try {
-    await sendEmailWithResend(env, settings, { to: [email], bcc, ...rendered });
-  } catch (error) {
-    await env.DB.prepare(`DELETE FROM email_verification_codes WHERE email=? COLLATE NOCASE AND code_hash=?`).bind(email, codeHash).run().catch(() => undefined);
-    throw error;
-  }
-  await audit(env, request, null, 'auth.email_code_sent', 'email', await sha256(email.toLowerCase()), { expiresInMinutes: expiryMinutes, provider: 'resend' });
-  return ok({ sent: true, expiresInSeconds: expiryMinutes * 60, cooldownSeconds: 60 });
-}
-
-async function verifyRegistrationEmailCode(env: Env, email: string, rawCode: unknown): Promise<string> {
-  const settings = await loadSettings(env);
-  const code = String(rawCode || '').trim();
-  const codeLength = clamp(Number(settings.registration.emailCodeLength || 6), 4, 12);
-  const charset = new Set(Array.from(sanitizeEmailCodeCharset(settings.registration.emailCodeCharset)));
-  if (Array.from(code).length !== codeLength || Array.from(code).some(character => !charset.has(character))) {
-    throw new HttpError(400, 'EMAIL_CODE_REQUIRED', `请输入 ${codeLength} 位邮箱验证码`);
-  }
-  const state = await env.DB.prepare(`
-    SELECT code_hash, expires_at, attempts FROM email_verification_codes WHERE email=? COLLATE NOCASE LIMIT 1
-  `).bind(email).first<{ code_hash?: string; expires_at?: string; attempts?: number }>();
-  if (!state) throw new HttpError(403, 'EMAIL_CODE_INVALID', '邮箱验证码不存在或已过期，请重新发送');
-  const expiresAt = new Date(String(state.expires_at || '')).getTime();
-  if (!Number.isFinite(expiresAt) || expiresAt < Date.now()) {
-    await env.DB.prepare(`DELETE FROM email_verification_codes WHERE email=? COLLATE NOCASE`).bind(email).run().catch(() => undefined);
-    throw new HttpError(403, 'EMAIL_CODE_EXPIRED', '邮箱验证码已过期，请重新发送');
-  }
-  const attempts = Number(state.attempts || 0);
-  if (attempts >= 6) {
-    await env.DB.prepare(`DELETE FROM email_verification_codes WHERE email=? COLLATE NOCASE`).bind(email).run().catch(() => undefined);
-    throw new HttpError(429, 'EMAIL_CODE_ATTEMPTS_EXCEEDED', '验证码错误次数过多，请重新发送');
-  }
-  const candidate = await sha256(`${email.toLowerCase()}|${code}`);
-  if (candidate !== state.code_hash) {
-    await env.DB.prepare(`UPDATE email_verification_codes SET attempts=COALESCE(attempts,0)+1 WHERE email=? COLLATE NOCASE`).bind(email).run();
-    throw new HttpError(403, 'EMAIL_CODE_INVALID', '邮箱验证码不正确');
-  }
-  return email;
-}
-
-async function adminTestEmailDelivery(request: Request, env: Env): Promise<Response> {
-  const admin = await requireAdmin(env, request);
-  const settings = await loadSettings(env);
-  if (settings.registration.emailTestSceneEnabled === false) {
-    throw new HttpError(409, 'EMAIL_TEST_SCENE_DISABLED', '管理员测试邮件场景已被关闭');
-  }
-  const environment = assertEmailEnvironmentAllowed(env, settings);
-  const body = await readJson<Record<string, unknown>>(request);
-  const requestedScene = String(body.scene || 'test') === 'registration' ? 'registration' : 'test';
-  if (requestedScene === 'registration' && settings.registration.emailRegistrationSceneEnabled === false) {
-    throw new HttpError(409, 'EMAIL_REGISTRATION_SCENE_DISABLED', '注册验证码邮件场景已被管理员关闭');
-  }
-  const syncedRecipients = sanitizeEmailRecipientList(settings.registration.cloudflareVerifiedRecipients || []);
-  const requestedRecipient = normalizeOptionalEmailStrict(body.recipient);
-  const recipient = requestedRecipient || resolveCloudflareAdminEmail(env, settings);
-  if (syncedRecipients.length && !syncedRecipients.includes(recipient.toLowerCase())) {
-    throw new HttpError(400, 'CF_EMAIL_RECIPIENT_NOT_VERIFIED', '所选邮箱不在已同步的 Cloudflare 已验证目标邮箱列表中');
-  }
-  const context = {
-    siteName: settings.site.title || '域名注册中心',
-    code: randomCodeFromCharset(
-      sanitizeEmailCodeCharset(settings.registration.emailCodeCharset),
-      clamp(Number(settings.registration.emailCodeLength || 6), 4, 12),
-      4,
-      12,
-    ),
-    expiryMinutes: clamp(Number(settings.registration.emailCodeExpiryMinutes || 10), 2, 60),
-    email: recipient,
-    adminEmail: admin.email || recipient,
-    environment,
-    time: new Date().toISOString(),
-  };
-  const rendered = buildEmailTemplateMessage(settings, requestedScene, context);
-  const result = await sendAdminCloudflareEmail(env, settings, 'admin_test', {
-    ...rendered,
-    fingerprint: `manual-test|${admin.id}|${Date.now()}`,
-    cooldownSeconds: 0,
-    recipient,
-  });
-  await audit(env, request, admin.id, 'admin.email_test', 'setting', 'cloudflare_email', {
-    recipientHash: await sha256(recipient.toLowerCase()),
-    scene: requestedScene,
-    environment,
-    provider: 'cloudflare_email_binding',
-  });
-  return ok({
-    sent: result.sent,
-    recipients: [recipient],
-    environment,
-    scene: requestedScene,
-    provider: 'cloudflare-seb',
-    message: `Cloudflare SEB 测试邮件已发送至 ${recipient}`, 
-  });
-}
-
-function serializeUser(user: UserRow) {
-  return {
-    id: user.id,
-    username: user.username,
-    email: user.email,
-    phone: user.phone || null,
-    role: user.role,
-    status: user.status,
-    domainQuota: Math.max(0, Number(user.domain_quota ?? 3)),
-    createdAt: user.created_at,
-    lastLoginAt: user.last_login_at || null,
-  };
-}
-
-function serializeApplication(app: ApplicationRow, settings: AppSettings) {
-  const created = parseDate(app.created_at);
-  const approved = app.status === 'approved';
-  const expires = approved ? parseDate(app.expires_at) : null;
-  const remainingMs = expires ? expires.getTime() - Date.now() : null;
-  const remainingDays = remainingMs === null ? null : Math.max(0, Math.ceil(remainingMs / DAY));
-  const canRenew = approved && remainingDays !== null && remainingDays <= settings.domain.renewWindowDays;
-  const deleteRequested = Boolean(app.delete_requested_at);
-  const deleteRequestedAtDate = deleteRequested ? parseDate(app.delete_requested_at || '') : null;
-  const deleteCancelDeadline = deleteRequestedAtDate ? new Date(deleteRequestedAtDate.getTime() + 12 * 60 * 60 * 1000) : null;
-  const canCancelDeleteRequest = Boolean(deleteCancelDeadline && Date.now() <= deleteCancelDeadline.getTime());
-  const disabledByAdmin = app.status === 'revoked' && String(app.review_note || '').startsWith('【已禁用】');
-  const extra = app as ApplicationRow & Record<string, unknown>;
-  const dnsCount = Math.max(0, Number(extra.dns_count || 0));
-  const primaryRecordType = String(extra.primary_record_type || app.record_type || '').trim();
-  const primaryRecordContent = String(extra.primary_record_content || app.record_content || '').trim();
-  const primaryDnsRecordId = String(extra.primary_dns_record_id || app.dns_record_id || '').trim();
-  const rawDnsSummary = String(extra.dns_summary || '').trim();
-  const dnsSummary = dnsCount > 0
-    ? (rawDnsSummary || `${primaryRecordType} → ${primaryRecordContent}`)
-    : '';
-
-  return {
-    id: app.id,
-    userId: app.user_id,
-    username: app.username || null,
-    prefixUnicode: app.prefix_unicode,
-    prefixAscii: app.prefix_ascii,
-    suffixUnicode: app.suffix_unicode,
-    suffixAscii: app.suffix_ascii,
-    fqdnUnicode: app.fqdn_unicode,
-    fqdnAscii: app.fqdn_ascii,
-    recordType: primaryRecordType || 'CNAME',
-    recordContent: primaryRecordContent,
-    proxied: Boolean(app.proxied),
-    ttl: Number(app.ttl || 1),
-    status: app.status,
-    statusText: disabledByAdmin ? '已禁用' : (deleteRequested && app.status === 'approved' ? '待删除审核' : statusLabel(app.status)),
-    reviewNote: '',
-    errorMessage: app.error_message || '',
-    dnsRecordId: primaryDnsRecordId,
-    dnsConfigured: dnsCount > 0 || Boolean(primaryRecordContent),
-    dnsCount,
-    dnsSummary,
-    createdAt: created ? created.toISOString() : app.created_at,
-    reviewedAt: app.reviewed_at || null,
-    expiresAt: expires ? expires.toISOString() : null,
-    renewedAt: app.renewed_at || null,
-    deleteRequested,
-    deleteRequestedAt: app.delete_requested_at || null,
-    controlled: Boolean(app.controlled_at),
-    controlledAt: app.controlled_at || null,
-    controlledBy: app.controlled_by || null,
-    deleteCancelDeadline: deleteCancelDeadline ? deleteCancelDeadline.toISOString() : null,
-    canCancelDeleteRequest,
-    renewCount: Number(app.renew_count || 0),
-    remainingDays,
-    remainingText: expires ? (remainingDays === 0 ? '今天到期' : `${remainingDays} 天`) : '',
-    canRenew: canRenew && !deleteRequested,
-    canDelete: ['rejected', 'revoked'].includes(app.status) && !app.deleted_at,
-    canRequestDelete: app.status === 'approved' && !deleteRequested && !app.deleted_at,
-  };
-}
-
-function statusLabel(status: string): string {
-  const map: Record<string, string> = {
-    pending: '待审核',
-    processing: '处理中',
-    approved: '正常',
-    rejected: '已拒绝',
-    revoking: '撤销中',
-    revoked: '已撤销',
-    deleted: '已删除',
-    active: '启用',
-    disabled: '禁用',
-  };
-  return map[status] || status;
-}
-
-async function createDnsRecord(token: string, zoneId: string, payload: any): Promise<any> {
-  if (!zoneId) throw new HttpError(503, 'ZONE_ID_MISSING', '尚未配置 DNS_ZONE_ID');
-  const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records`, {
-    method: 'POST',
-    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  const data: any = await res.json().catch(() => ({}));
-  if (!res.ok || data.success === false) {
-    throw new Error(data.errors?.[0]?.message || `Cloudflare DNS 创建失败 HTTP ${res.status}`);
-  }
-  return data.result;
-}
-
-async function updateDnsRecord(token: string, zoneId: string, recordId: string, payload: any): Promise<any> {
-  if (!zoneId) throw new HttpError(503, 'ZONE_ID_MISSING', '尚未配置 DNS_ZONE_ID');
-  const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records/${recordId}`, {
-    method: 'PUT',
-    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  const data: any = await res.json().catch(() => ({}));
-  if (!res.ok || data.success === false) {
-    throw new Error(data.errors?.[0]?.message || `Cloudflare DNS 更新失败 HTTP ${res.status}`);
-  }
-  return data.result;
-}
-
-function cloudflareErrorText(data: any): string {
-  try { return JSON.stringify(data?.errors || data || {}).toLowerCase(); }
-  catch { return ''; }
-}
-
-function isCloudflareRecordMissing(status: number, data: any): boolean {
-  const text = cloudflareErrorText(data);
-  return status === 404
-    || text.includes('record does not exist')
-    || text.includes('dns record not found')
-    || text.includes('not_found')
-    || text.includes('not found')
-    || text.includes('81044');
-}
-
-async function deleteDnsRecord(token: string, zoneId: string, recordId: string): Promise<void> {
-  if (!zoneId) throw new HttpError(503, 'ZONE_ID_MISSING', '尚未配置 DNS_ZONE_ID');
-  if (!recordId) return;
-  const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records/${recordId}`, {
-    method: 'DELETE',
-    headers: { authorization: `Bearer ${token}` },
-  });
-  const data: any = await res.json().catch(() => ({}));
-  if (!res.ok || data.success === false) {
-    // v56：Cloudflare 已经没有这条记录时，说明外部已经删除；这里视为删除成功，继续清 D1，避免卡死。
-    if (isCloudflareRecordMissing(res.status, data)) return;
-    throw new Error(data.errors?.[0]?.message || `Cloudflare DNS 删除失败 HTTP ${res.status}`);
-  }
-}
-
-
-async function listCloudflareDnsRecords(token: string, zoneId: string): Promise<any[]> {
-  if (!zoneId) return [];
-  const all: any[] = [];
-  const perPage = 500;
-  for (let page = 1; page <= 100; page += 1) {
-    const url = new URL(`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records`);
-    url.searchParams.set('page', String(page));
-    url.searchParams.set('per_page', String(perPage));
-    url.searchParams.set('order', 'name');
-    url.searchParams.set('direction', 'asc');
-    const res = await fetch(url.toString(), { headers: { authorization: `Bearer ${token}` } });
-    const data: any = await res.json().catch(() => ({}));
-    if (!res.ok || data.success === false) {
-      throw new Error(data.errors?.[0]?.message || `Cloudflare DNS 查询失败 HTTP ${res.status}`);
-    }
-    const rows = Array.isArray(data.result) ? data.result : [];
-    all.push(...rows);
-    const totalPages = Number(data.result_info?.total_pages || 0);
-    if (!rows.length || rows.length < perPage || (totalPages > 0 && page >= totalPages)) break;
-  }
-  return all;
-}
-
-function normalizeCloudflareDnsName(value: unknown): string {
-  return String(value || '').trim().toLowerCase().replace(/\.$/, '');
-}
-
-function cloudflareDnsRecordToLocal(record: any, applicationFqdn: string): {
-  type: DnsRecordType;
-  name: string;
-  host: string;
-  content: string;
-  priority: number | null;
-  proxied: number;
-  ttl: number;
-} | null {
-  const type = String(record?.type || '').trim().toUpperCase() as DnsRecordType;
-  if (!SUPPORTED_DNS_RECORD_TYPES.includes(type)) return null;
-  const name = normalizeCloudflareDnsName(record?.name);
-  const fqdn = normalizeCloudflareDnsName(applicationFqdn);
-  if (!name || !(name === fqdn || name.endsWith(`.${fqdn}`))) return null;
-  const host = name === fqdn ? '@' : name.slice(0, -(fqdn.length + 1));
-  let content = String(record?.content ?? '').trim();
-  let priority: number | null = record?.priority === undefined || record?.priority === null ? null : Number(record.priority);
-  if (type === 'CAA' && record?.data) {
-    const flags = Number(record.data.flags || 0);
-    const tag = String(record.data.tag || 'issue').trim().toLowerCase();
-    const value = String(record.data.value || '').trim();
-    content = `${flags} ${tag} ${value}`.trim();
-  }
-  if (type === 'SRV' && record?.data) {
-    const srvPriority = Number(record.data.priority || 0);
-    const weight = Number(record.data.weight || 0);
-    const port = Number(record.data.port || 0);
-    const target = normalizeCloudflareDnsName(record.data.target);
-    priority = srvPriority;
-    content = `${srvPriority} ${weight} ${port} ${target}`.trim();
-  }
-  if (!content) return null;
-  return {
-    type,
-    name,
-    host: host || '@',
-    content,
-    priority: Number.isFinite(Number(priority)) ? Number(priority) : null,
-    proxied: Boolean(record?.proxied) ? 1 : 0,
-    ttl: clamp(Number(record?.ttl || 1), 1, 86400),
-  };
-}
-
-function dnsImportSignature(applicationId: string, record: { type: string; name: string; content: string; priority?: number | null }): string {
-  return [applicationId, String(record.type || '').toUpperCase(), normalizeCloudflareDnsName(record.name), String(record.content || '').trim(), record.priority ?? ''].join('|');
-}
-
-async function listCloudflareDnsRecordsByName(token: string, zoneId: string, name: string): Promise<Array<{ id: string; name?: string; type?: string }>> {
-  if (!zoneId || !name) return [];
-  const url = new URL(`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records`);
-  url.searchParams.set('name', name);
-  url.searchParams.set('per_page', '100');
-  const res = await fetch(url.toString(), { headers: { authorization: `Bearer ${token}` } });
-  const data: any = await res.json().catch(() => ({}));
-  if (!res.ok || data.success === false) {
-    if (isCloudflareRecordMissing(res.status, data)) return [];
-    throw new Error(data.errors?.[0]?.message || `Cloudflare DNS 查询失败 HTTP ${res.status}`);
-  }
-  return Array.isArray(data.result) ? data.result : [];
-}
-
-async function deleteDnsRecordsByName(token: string, zoneId: string, name: string): Promise<void> {
-  const records = await listCloudflareDnsRecordsByName(token, zoneId, name);
-  for (const record of records) {
-    if (record?.id) await deleteDnsRecord(token, zoneId, record.id);
-  }
-}
-
-function resolveDnsToken(env: Env, settings?: AppSettings, suffix?: AppSettings['dns']['suffixes'][number] | null): string {
-  // 优先使用根域名单独 Token，其次全局 Worker Secret，最后使用后台 DNS 配置里的全局 Token。
-  // 这样不同 Cloudflare 账号下的多个根域名也能在后台单独配置，不需要每个域名都改环境变量。
-  return String(suffix?.cfApiToken || env.CF_API_TOKEN || settings?.dns?.cfApiToken || '').trim();
-}
-
-function isCloudflareAuthErrorMessage(message: string): boolean {
-  const text = String(message || '').toLowerCase();
-  return text.includes('authentication error') || text.includes('unauthorized') || text.includes('permission') || text.includes('forbidden') || text.includes('403');
-}
-
-async function deleteDnsRecordBestEffort(token: string, zoneId: string, recordId: string): Promise<{ ok: boolean; warning?: string }> {
-  if (!recordId) return { ok: true };
-  if (!token || !zoneId) return { ok: true, warning: '未配置 Cloudflare Token 或 Zone ID，已仅清理本地记录' };
-  try {
-    await deleteDnsRecord(token, zoneId, recordId);
-    return { ok: true };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Cloudflare 删除失败';
-    // Cloudflare 中记录已经被外部删除、Zone/Token 无权限时，不再阻塞本地删除，避免二级域名卡在待删除审核。
-    return { ok: false, warning: message };
-  }
-}
-
-async function verifyTurnstile(env: Env, request: Request, token: unknown, expectedAction: string): Promise<void> {
-  const settings = await loadSettings(env);
-  const secret = String(env.TURNSTILE_SECRET || settings.registration.turnstileSecret || '').trim();
-  if (!secret) throw new HttpError(503, 'TURNSTILE_UNAVAILABLE', 'Turnstile Secret 未配置，请改用图形验证');
-  const value = String(token || '').trim();
-  if (!value) throw new HttpError(400, 'TURNSTILE_REQUIRED', '请完成人机验证');
-
-  const form = new FormData();
-  form.append('secret', secret);
-  form.append('response', value);
-  form.append('remoteip', clientIp(request));
-
-  let response: Response;
-  try {
-    response = await Promise.race([
-      fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', body: form }),
-      new Promise<Response>((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
-    ]);
-  } catch {
-    throw new HttpError(503, 'TURNSTILE_UNAVAILABLE', 'Turnstile 服务连接超时，请切换图形验证');
-  }
-  const result: any = await response.json().catch(() => null);
-  if (!response.ok) throw new HttpError(503, 'TURNSTILE_UNAVAILABLE', `Turnstile 验证接口异常 HTTP ${response.status}，请切换图形验证`);
-  if (!result?.success) throw new HttpError(403, 'TURNSTILE_FAILED', '人机验证失败，请刷新验证后重试');
-
-  if (expectedAction && result.action && result.action !== expectedAction) {
-    throw new HttpError(403, 'TURNSTILE_ACTION_MISMATCH', '人机验证 Action 不匹配');
-  }
-  if (env.TURNSTILE_EXPECTED_HOSTNAME && result.hostname && result.hostname !== env.TURNSTILE_EXPECTED_HOSTNAME) {
-    throw new HttpError(403, 'TURNSTILE_HOSTNAME_MISMATCH', '人机验证主机名不匹配');
-  }
-}
-
-function turnstilePublicConfig(env: Env, settings?: AppSettings) {
-  const mode = settings ? humanVerificationMode(settings) : 'turnstile_fallback';
-  return {
-    siteKey: env.TURNSTILE_SITE_KEY || settings?.registration?.turnstileSiteKey || '',
-    enabledApply: mode !== 'image',
-    enabledLogin: mode !== 'image',
-    enabledRegister: mode !== 'image',
-    mode,
-    captchaEndpoint: '/api/auth/captcha/challenge',
-    actionApply: env.TURNSTILE_ACTION_APPLY || 'domain_apply',
-    actionLogin: env.TURNSTILE_ACTION_LOGIN || 'login',
-    actionRegister: env.TURNSTILE_ACTION_REGISTER || 'register',
-  };
-}
-
-
-
-async function adminSystemStatus(request: Request, env: Env): Promise<Response> {
-  await requireAdmin(env, request);
-  const settings = await loadSettings(env);
-  const auditRetentionDays = clamp(Number(settings.security?.auditRetentionDays || 7), 1, 3650);
-  const counts = await env.DB.prepare(`
-    SELECT
-      (SELECT COUNT(*) FROM users WHERE status!='deleted') AS users,
-      (SELECT COUNT(*) FROM domain_applications) AS domains,
-      (SELECT COUNT(*) FROM dns_records) AS dnsRecords,
-      (SELECT COUNT(*) FROM audit_logs WHERE datetime(created_at) >= datetime('now','-' || ? || ' days')) AS logsRetained
-  `).bind(auditRetentionDays).first<any>();
-  return ok({
-    version: 'v118',
-    settingsKey: SETTINGS_KEY,
-    kv: { storage: 'Workers KV', estimatedKeys: '由 Cloudflare 控制台查看实际占用' },
-    cfApi: { configured: Boolean(resolveDnsToken(env, settings)), status: resolveDnsToken(env, settings) ? '已配置' : '未配置' },
-    cron: { enabled: Boolean(settings.automation?.enabled), expression: settings.automation?.cronExpression || '' },
-    counts: { ...counts, logs4d: Number(counts?.logsRetained || 0) },
-    auditRetentionDays,
-    update: { current: 'v118', latest: '请以当前部署包为准' },
-  });
-}
-
-async function adminExportSettings(request: Request, env: Env): Promise<Response> {
-  await requireAdmin(env, request);
-  return ok({ exportedAt: new Date().toISOString(), version: 'v118', settings: await loadSettings(env) });
-}
-
-async function adminImportSettings(request: Request, env: Env): Promise<Response> {
-  const admin = await requireAdmin(env, request);
-  const body = await readJson<Record<string, unknown>>(request, 1024 * 1024);
-  const incoming = (body as any).settings || body;
-  const defaults = defaultSettings(env);
-  const merged = {
-    ...defaults,
-    ...(incoming || {}),
-    site: { ...defaults.site, ...((incoming as any)?.site || {}) },
-    registration: { ...defaults.registration, ...((incoming as any)?.registration || {}) },
-    domain: { ...defaults.domain, ...((incoming as any)?.domain || {}) },
-    dns: { ...defaults.dns, ...((incoming as any)?.dns || {}) },
-    blacklist: { ...defaults.blacklist, ...((incoming as any)?.blacklist || {}) },
-    notification: { ...defaults.notification, ...((incoming as any)?.notification || {}) },
-    security: { ...defaults.security, ...((incoming as any)?.security || {}) },
-    automation: { ...defaults.automation, ...((incoming as any)?.automation || {}) },
-  } as AppSettings;
-  await env.APP_KV.put(SETTINGS_KEY, JSON.stringify(merged));
-  await audit(env, request, admin.id, 'admin.settings_import', 'setting', SETTINGS_KEY);
-  return ok({ settings: adminSettingsView(await loadSettings(env), env) });
-}
-
-async function adminTestCloudflareApi(request: Request, env: Env): Promise<Response> {
-  const admin = await requireAdmin(env, request);
-  const settings = await loadSettings(env);
-  const body = await readJson<Record<string, unknown>>(request, 256 * 1024).catch(() => ({}));
-  const requestedZoneId = cleanText((body as any).zoneId, 120);
-  const requestedSuffix = normalizeOptionalSuffix((body as any).suffix);
-  const bodyToken = cleanText((body as any).cfApiToken, 2000);
-  const testOne = async (suffix: AppSettings['dns']['suffixes'][number]) => {
-    const token = bodyToken || resolveDnsToken(env, settings, suffix);
-    if (!token) return { suffix: suffix.suffix, zoneId: suffix.zoneId, ok: false, message: '未配置 API Token' };
-    try {
-      const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${encodeURIComponent(suffix.zoneId)}`, {
-        headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-      });
-      const data: any = await res.json().catch(() => ({}));
-      const ok = res.ok && data.success !== false;
-      return {
-        suffix: suffix.suffix,
-        zone: data.result?.name || suffix.suffix,
-        zoneId: suffix.zoneId,
-        ok,
-        message: ok ? '连接正常' : (data.errors?.[0]?.message || `HTTP ${res.status}`),
-      };
-    } catch (error) {
-      return { suffix: suffix.suffix, zoneId: suffix.zoneId, ok: false, message: error instanceof Error ? error.message : '网络请求失败' };
-    }
-  };
-
-  if (requestedZoneId || requestedSuffix) {
-    const suffix = settings.dns.suffixes.find(x => requestedZoneId && x.zoneId === requestedZoneId)
-      || settings.dns.suffixes.find(x => requestedSuffix && (x.suffix === requestedSuffix || x.suffixAscii === requestedSuffix));
-    if (!suffix?.zoneId) throw new HttpError(400, 'ZONE_ID_MISSING', '没有可测试的 Zone ID；请填写该根域名的 Zone ID');
-    const result = await testOne(suffix);
-    await audit(env, request, admin.id, 'admin.cf_api_test', 'setting', 'dns', result);
-    if (!result.ok) throw new HttpError(502, 'CF_API_TEST_FAILED', `Cloudflare API 测试失败：${result.message}`);
-    return ok({ ...result, status: 'ok', message: `Cloudflare API 连通正常：${result.zone || result.suffix}` });
-  }
-
-  const inputSuffixes = Array.isArray((body as any).suffixes)
-    ? sanitizeDnsSuffixes((body as any).suffixes, settings.dns.suffixes)
-    : settings.dns.suffixes;
-  const candidates = inputSuffixes.filter(item => item.enabled !== false && item.zoneId);
-  if (!candidates.length) throw new HttpError(400, 'ZONE_ID_MISSING', '没有可测试的根域名；请先填写并启用至少一个 Zone ID');
-  const results = await Promise.all(candidates.map(testOne));
-  const successCount = results.filter(item => item.ok).length;
-  await audit(env, request, admin.id, 'admin.cf_api_test_all', 'setting', 'dns', { successCount, total: results.length, results });
-  return ok({
-    status: successCount === results.length ? 'ok' : (successCount ? 'partial' : 'failed'),
-    successCount,
-    failedCount: results.length - successCount,
-    total: results.length,
-    message: `全部根域名测试完成：${successCount}/${results.length} 正常`,
-    results,
-  });
-}
-
-function stripClientHint(value: string | null): string {
-  return String(value || '').replace(/^"|"$/g, '').trim();
-}
-
-function parseDeviceInfoFromRequest(request: Request): { name: string; type: string; model: string } {
-  const ua = String(request.headers.get('user-agent') || '');
-  const chPlatform = stripClientHint(request.headers.get('sec-ch-ua-platform'));
-  const chModel = stripClientHint(request.headers.get('sec-ch-ua-model'));
-  const chMobile = stripClientHint(request.headers.get('sec-ch-ua-mobile'));
-  const chBrands = stripClientHint(request.headers.get('sec-ch-ua'));
-  return parseDeviceInfo(ua, { platform: chPlatform, model: chModel, mobile: chMobile, brands: chBrands });
-}
-
-function parseDeviceInfo(userAgent: string, hints: { platform?: string; model?: string; mobile?: string; brands?: string } = {}): { name: string; type: string; model: string } {
-  const ua = String(userAgent || '');
-  const lower = ua.toLowerCase();
-  const platform = String(hints.platform || '').replace(/^"|"$/g, '').trim();
-  const hintModel = String(hints.model || '').replace(/^"|"$/g, '').trim();
-  const hintBrands = String(hints.brands || '').replace(/"/g, '').trim();
-  const isMobileHint = hints.mobile === '?1';
-
-  let type = '电脑';
-  if (/ipad|tablet|kindle|silk/.test(lower) || /ipad/i.test(platform)) type = '平板';
-  else if (isMobileHint || /mobile|iphone|android|phone/.test(lower)) type = '手机';
-
-  let os = platform || '未知系统';
-  if (/windows nt 10/i.test(ua) || /windows/i.test(platform)) os = 'Windows 10/11';
-  else if (/windows/i.test(ua)) os = 'Windows';
-  else if (/iphone/i.test(ua) || /ios/i.test(platform)) os = 'iPhone';
-  else if (/ipad/i.test(ua)) os = 'iPad';
-  else if (/android/i.test(ua) || /android/i.test(platform)) os = 'Android';
-  else if (/mac os x/i.test(ua) || /macos/i.test(platform)) os = 'macOS';
-  else if (/linux/i.test(ua) || /linux/i.test(platform)) os = 'Linux';
-
-  let browser = '浏览器';
-  if (/edg\//i.test(ua) || /Microsoft Edge|Edge/i.test(hintBrands)) browser = 'Edge';
-  else if (/chrome\//i.test(ua) && !/edg\//i.test(ua)) browser = 'Chrome';
-  else if (/safari\//i.test(ua) && !/chrome\//i.test(ua)) browser = 'Safari';
-  else if (/firefox\//i.test(ua)) browser = 'Firefox';
-
-  let model = hintModel;
-  if (!model) {
-    if (/iphone/i.test(os)) model = '苹果 iPhone（浏览器未提供具体型号）';
-    else if (/ipad/i.test(os)) model = '苹果 iPad（浏览器未提供具体型号）';
-    else if (/macos/i.test(os)) model = 'Apple Mac（浏览器未提供具体型号）';
-    else if (/huawei|honor/i.test(ua)) model = '华为设备';
-    else if (/android/i.test(os)) model = 'Android 设备（浏览器未提供具体型号）';
-    else if (/windows/i.test(os)) model = 'Windows 电脑（浏览器未提供具体品牌型号）';
-    else model = `${os} / ${browser}`;
-  } else if (/huawei/i.test(model)) {
-    model = `华为 ${model.replace(/^huawei\s*/i, '')}`.trim();
-  } else if (/iphone/i.test(model)) {
-    model = `苹果 ${model}`;
-  }
-
-  return { name: `${browser} · ${os}`, type, model };
-}
-
-async function getAuthUser(env: Env, request: Request): Promise<UserRow | null> {
-  const sid = parseCookie(request.headers.get('cookie') || '').sid;
-  if (!sid) return null;
-  const tokenHash = await sha256(sid);
-  const session = await env.DB.prepare(`
-    SELECT * FROM sessions WHERE token_hash=? AND expires_at > datetime('now') LIMIT 1
-  `).bind(tokenHash).first<{ id: string; user_id: string }>();
-  if (!session) return null;
-  try { await env.DB.prepare(`UPDATE sessions SET last_seen_at=? WHERE id=?`).bind(new Date().toISOString(), session.id).run(); } catch {}
-  const user = await env.DB.prepare(`
-    SELECT * FROM users WHERE id=? AND status!='deleted' LIMIT 1
-  `).bind(session.user_id).first<UserRow>();
-  return user || null;
-}
-
-async function requireUser(env: Env, request: Request): Promise<UserRow> {
-  const user = await getAuthUser(env, request);
-  if (!user) throw new HttpError(401, 'UNAUTHORIZED', '请先登录');
-  if (user.status !== 'active') throw new HttpError(403, 'ACCOUNT_DISABLED', '账户已被禁用');
-  return user;
-}
-
-async function requireAdmin(env: Env, request: Request): Promise<UserRow> {
-  const user = await requireUser(env, request);
-  if (user.role !== 'admin') throw new HttpError(403, 'ADMIN_REQUIRED', '需要管理员权限');
-  return user;
-}
-
-async function createSession(env: Env, request: Request, userId: string, remember: boolean): Promise<string> {
-  const token = randomToken(32);
-  const tokenHash = await sha256(token);
-  const settings = await loadSettings(env);
-  let sessionHours = remember ? 30 * 24 : 24;
-  try {
-    const sessionUser = await env.DB.prepare(`SELECT role FROM users WHERE id=?`).bind(userId).first<{ role: string }>();
-    if (sessionUser?.role === 'admin') sessionHours = settings.security?.adminSessionTimeoutHours || 24;
-  } catch {}
-  const expires = new Date(Date.now() + sessionHours * 60 * 60 * 1000).toISOString();
-  const id = crypto.randomUUID();
-  const ua = String(request.headers.get('user-agent') || '').slice(0, 300);
-  const ip = clientIp(request);
-  const device = parseDeviceInfoFromRequest(request);
-  const nowIso = new Date().toISOString();
-
-  const insertFull = () => env.DB.prepare(`
-    INSERT INTO sessions (id,user_id,token_hash,ip,user_agent,device_name,device_type,device_model,first_seen_at,last_seen_at,expires_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?)
-  `).bind(id, userId, tokenHash, ip, ua, device.name, device.type, device.model, nowIso, nowIso, expires).run();
-
-  try {
-    await insertFull();
-  } catch (firstError) {
-    console.error('session insert failed, repairing sessions table', firstError);
-    try { await env.DB.prepare(`ALTER TABLE sessions ADD COLUMN ip TEXT`).run(); } catch {}
-    try { await env.DB.prepare(`ALTER TABLE sessions ADD COLUMN user_agent TEXT`).run(); } catch {}
-    try { await env.DB.prepare(`ALTER TABLE sessions ADD COLUMN device_name TEXT`).run(); } catch {}
-    try { await env.DB.prepare(`ALTER TABLE sessions ADD COLUMN device_type TEXT`).run(); } catch {}
-    try { await env.DB.prepare(`ALTER TABLE sessions ADD COLUMN device_model TEXT`).run(); } catch {}
-    try { await env.DB.prepare(`ALTER TABLE sessions ADD COLUMN first_seen_at TEXT`).run(); } catch {}
-    try { await env.DB.prepare(`ALTER TABLE sessions ADD COLUMN last_seen_at TEXT`).run(); } catch {}
-    try { await env.DB.prepare(`ALTER TABLE sessions ADD COLUMN expires_at TEXT`).run(); } catch {}
-    try { await env.DB.prepare(`ALTER TABLE sessions ADD COLUMN created_at TEXT`).run(); } catch {}
-
-    try {
-      await insertFull();
-    } catch (secondError) {
-      console.error('session insert still failed, recreating sessions table', secondError);
-      await env.DB.prepare(`DROP TABLE IF EXISTS sessions`).run();
-      await env.DB.prepare(`
-        CREATE TABLE sessions (
-          id TEXT PRIMARY KEY,
-          user_id TEXT NOT NULL,
-          token_hash TEXT NOT NULL UNIQUE,
-          ip TEXT,
-          user_agent TEXT,
-          device_name TEXT,
-          device_type TEXT,
-          device_model TEXT,
-          first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
-          last_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
-          expires_at TEXT NOT NULL,
-          created_at TEXT NOT NULL DEFAULT (datetime('now'))
-        )
-      `).run();
-      try { await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token_hash)').run(); } catch {}
-      await insertFull();
-    }
-  }
-
-  return cookieString('sid', token, {
-    maxAge: sessionHours * 60 * 60,
-    httpOnly: true,
-    sameSite: 'Lax',
-    secure: true,
-    path: '/',
-  });
-}
-
-async function destroySession(env: Env, request: Request): Promise<string> {
-  const sid = parseCookie(request.headers.get('cookie') || '').sid;
-  if (sid) {
-    const tokenHash = await sha256(sid);
-    await env.DB.prepare(`DELETE FROM sessions WHERE token_hash=?`).bind(tokenHash).run();
-  }
-  return cookieString('sid', '', { maxAge: 0, httpOnly: true, sameSite: 'Lax', secure: true, path: '/' });
-}
-
-async function rateLimit(env: Env, request: Request, key: string, limit: number, windowSeconds: number): Promise<void> {
-  const ip = clientIp(request);
-  const bucket = `rl:${key}:${ip}:${Math.floor(Date.now() / (windowSeconds * 1000))}`;
-  const current = Number(await env.APP_KV.get(bucket) || '0');
-  if (current >= limit) throw new HttpError(429, 'RATE_LIMITED', '操作过于频繁，请稍后再试');
-  await env.APP_KV.put(bucket, String(current + 1), { expirationTtl: windowSeconds + 60 });
-}
-
-async function audit(env: Env, request: Request, actorUserId: string | null, action: string, targetType?: string, targetId?: string | null, meta?: unknown): Promise<void> {
-  try {
-    await env.DB.prepare(`
-      INSERT INTO audit_logs (id,actor_user_id,action,target_type,target_id,ip,meta_json)
-      VALUES (?,?,?,?,?,?,?)
-    `).bind(crypto.randomUUID(), actorUserId, action, targetType || null, targetId || null, clientIp(request), JSON.stringify(meta || {})).run();
-  } catch (error) {
-    console.error('audit failed', error);
-  }
-}
-
-function normalizeUsername(raw: unknown): string {
-  // v26：账号不再限制长度格式、大小写或字符类型；只要求不能为空。
-  const value = String(raw || '').trim();
-  if (!value) {
-    throw new HttpError(400, 'INVALID_USERNAME', '账号不能为空');
-  }
-  return value;
-}
-
-function normalizeEmail(raw: unknown): string | null {
-  // v28：此字段作为“邮箱/手机号”联系方式使用。
-  // 包含 @ 时按邮箱规范化；否则允许手机号/联系方式文本，避免手机号被邮箱校验拦截。
-  const original = String(raw || '').trim();
-  if (!original) return null;
-  if (original.includes('@')) {
-    const email = original.toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, 'INVALID_EMAIL_OR_PHONE', '邮箱/手机号格式不正确');
-    return email;
-  }
-  const value = original.replace(/\s+/g, '');
-  if (value.length < 5 || value.length > 40) throw new HttpError(400, 'INVALID_EMAIL_OR_PHONE', '邮箱/手机号格式不正确');
-  if (!/^[0-9+()\-]+$/.test(value)) throw new HttpError(400, 'INVALID_EMAIL_OR_PHONE', '邮箱/手机号格式不正确');
-  return value;
-}
-
-
-function normalizeOptionalEmailStrict(raw: unknown): string | null {
-  const value = String(raw || '').trim();
-  if (!value) return null;
-  const email = value.toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    throw new HttpError(400, 'INVALID_EMAIL', '邮箱格式不正确');
-  }
-  return email;
-}
-
-function normalizeOptionalPhone(raw: unknown): string | null {
-  const value = String(raw || '').trim().replace(/\s+/g, '');
-  if (!value) return null;
-  if (value.length < 5 || value.length > 40 || !/^[0-9+()\-]+$/.test(value)) {
-    throw new HttpError(400, 'INVALID_PHONE', '手机号格式不正确');
-  }
-  return value;
-}
-
-function validatePassword(raw: unknown): string {
-  // v26：密码只要求至少 8 位，不再要求大小写、字母或数字组合。
-  const value = String(raw || '');
-  if (value.length < 8) {
-    throw new HttpError(400, 'INVALID_PASSWORD', '密码至少 8 位');
-  }
-  return value;
-}
-
-function normalizePrefix(raw: unknown): { unicode: string; ascii: string } {
-  const unicode = String(raw || '').trim().toLowerCase();
-  if (!/^[a-z0-9](?:[a-z0-9_-]{0,61}[a-z0-9])?$/.test(unicode) || unicode.length < 1 || unicode.length > 63) {
-    throw new HttpError(400, 'INVALID_PREFIX', '域名前缀格式不正确，需以字母或数字开头结尾');
-  }
-  const ascii = unicode;
-  return { unicode, ascii };
-}
-
-function normalizeSuffix(raw: string): string {
-  const value = raw.trim().toLowerCase().replace(/^\.+/, '');
-  if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(value)) throw new HttpError(400, 'INVALID_SUFFIX', '根域名格式不正确');
-  return value;
-}
-
-function normalizeOptionalSuffix(value: unknown): string {
-  const raw = String(value || '').trim().toLowerCase().replace(/^\.+|\.+$/g, '');
-  if (!raw) return '';
-  try { return normalizeSuffix(raw); } catch { return ''; }
-}
-
-function normalizeRecordType(raw: unknown, allowed: string[]): DnsRecordType {
-  const type = String(raw || 'CNAME').trim().toUpperCase();
-  const configured = sanitizeDnsRecordTypes(allowed, SUPPORTED_DNS_RECORD_TYPES);
-  const allowedSet = new Set(configured.length ? configured : SUPPORTED_DNS_RECORD_TYPES);
-  if (!SUPPORTED_DNS_RECORD_TYPES.includes(type as DnsRecordType) || !allowedSet.has(type as DnsRecordType)) {
-    throw new HttpError(400, 'INVALID_RECORD_TYPE', `当前根域名未开放 ${type} 记录`);
-  }
-  return type as DnsRecordType;
-}
-
-function normalizeDnsHost(raw: unknown, blockWildcard = true): string {
-  const host = String(raw || '@').trim().toLowerCase().replace(/^\.+|\.+$/g, '');
-  if (!host || host === '@') return '@';
-  if (host.length > 80) throw new HttpError(400, 'INVALID_DNS_HOST', '主机记录过长');
-  const labels = host.split('.');
-  for (let index = 0; index < labels.length; index += 1) {
-    const label = labels[index];
-    if (label === '*' && index === 0) {
-      if (blockWildcard) throw new HttpError(403, 'WILDCARD_BLOCKED', '管理员已禁止用户创建泛解析');
-      continue;
-    }
-    if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label)) {
-      throw new HttpError(400, 'INVALID_DNS_HOST', '主机记录只能包含字母、数字、连字符和点，且不能以连字符开头或结尾');
-    }
-  }
-  return host;
-}
-
-function assertCnameTargetAllowed(target: string, blacklist: unknown): void {
-  const blocked = sanitizeStringList(blacklist).map(x => x.toLowerCase().replace(/^\*\./, ''));
-  const value = String(target || '').toLowerCase().replace(/\.$/, '');
-  const hit = blocked.find(rule => value === rule || value.endsWith(`.${rule}`) || value.includes(rule));
-  if (hit) throw new HttpError(403, 'CNAME_TARGET_BLOCKED', `CNAME 目标命中管理员黑名单：${hit}`);
-}
-
-function fullRecordName(host: string, fqdn: string): string {
-  return host === '@' ? fqdn.toLowerCase() : `${host}.${fqdn}`.toLowerCase();
-}
-
-function normalizeDnsTarget(type: string, raw: unknown, fqdn: string): string {
-  const original = String(raw || '').trim();
-  const target = original.toLowerCase();
-  if (!original) throw new HttpError(400, 'DNS_TARGET_REQUIRED', '请输入 DNS 目标地址');
-
-  if (type === 'CNAME') {
-    const cleaned = target.replace(/^https?:\/\//, '').split('/')[0].replace(/\.$/, '');
-    if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(cleaned)) {
-      throw new HttpError(400, 'INVALID_CNAME', 'CNAME 目标必须是完整主机名，不要填写协议、端口或路径');
-    }
-    if (cleaned === fqdn.toLowerCase()) throw new HttpError(400, 'CNAME_LOOP', 'CNAME 目标不能指向自己');
-    return cleaned;
-  }
-
-  if (type === 'A') {
-    if (!/^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/.test(target)) {
-      throw new HttpError(400, 'INVALID_A', 'A 记录必须填写 IPv4 地址');
-    }
-    if (/^(10\.|127\.|0\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(target)) {
-      throw new HttpError(400, 'PRIVATE_IP', '不能填写私有、本地或保留 IP');
-    }
-    return target;
-  }
-
-  if (type === 'AAAA') {
-    if (!/^[0-9a-f:]+$/i.test(target) || !target.includes(':')) {
-      throw new HttpError(400, 'INVALID_AAAA', 'AAAA 记录必须填写 IPv6 地址');
-    }
-    if (/^(::1|fe80:|fc|fd)/i.test(target)) throw new HttpError(400, 'PRIVATE_IP', '不能填写本地或私有 IPv6');
-    return target;
-  }
-
-  if (type === 'TXT') {
-    const cleaned = original.replace(/^"|"$/g, '').trim();
-    if (!cleaned || cleaned.length > 2048) throw new HttpError(400, 'INVALID_TXT', 'TXT 内容不能为空，且不能超过 2048 字符');
-    return cleaned;
-  }
-
-  if (type === 'MX' || type === 'NS') {
-    const cleaned = target.replace(/^https?:\/\//, '').split('/')[0].replace(/\.$/, '');
-    if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(cleaned)) {
-      throw new HttpError(
-        400,
-        type === 'NS' ? 'INVALID_NS' : 'INVALID_MX',
-        type === 'NS' ? 'NS 目标必须是完整名称服务器主机名' : 'MX 目标必须是完整邮件服务器主机名',
-      );
-    }
-    return cleaned;
-  }
-
-  if (type === 'CAA') {
-    const match = original.match(/^(\d{1,3})\s+(issue|issuewild|iodef)\s+(.+)$/i);
-    if (!match || Number(match[1]) > 255 || !match[3].trim()) {
-      throw new HttpError(400, 'INVALID_CAA', 'CAA 请按“标志 标签 值”填写，例如：0 issue letsencrypt.org');
-    }
-    return `${Number(match[1])} ${match[2].toLowerCase()} ${match[3].trim()}`;
-  }
-
-  if (type === 'SRV') {
-    const parts = original.split(/\s+/).filter(Boolean);
-    if (parts.length !== 4) throw new HttpError(400, 'INVALID_SRV', 'SRV 请按“优先级 权重 端口 目标”填写，例如：10 5 443 server.example.com');
-    const [priority, weight, port, srvTargetRaw] = parts;
-    const numbers = [priority, weight, port].map(value => Number(value));
-    const srvTarget = srvTargetRaw.toLowerCase().replace(/\.$/, '');
-    if (numbers.some(value => !Number.isInteger(value) || value < 0 || value > 65535) || !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(srvTarget)) {
-      throw new HttpError(400, 'INVALID_SRV', 'SRV 的优先级、权重、端口必须为 0-65535，目标必须是完整主机名');
-    }
-    return `${numbers[0]} ${numbers[1]} ${numbers[2]} ${srvTarget}`;
-  }
-
-  throw new HttpError(400, 'INVALID_RECORD_TYPE', 'DNS 记录类型错误');
-}
-
-function dnsPayload(record: DnsRecordRow | { type: DnsRecordType; name: string; content: string; ttl?: number | null; proxied?: number | null; priority?: number | null }, comment: string): any {
-  const type = record.type;
-  const payload: any = {
-    type,
-    name: record.name,
-    content: record.content,
-    ttl: Number(record.ttl || 1),
-    comment,
-  };
-  if (['A', 'AAAA', 'CNAME'].includes(type)) payload.proxied = Boolean(record.proxied);
-  if (type === 'MX') payload.priority = clamp(Number(record.priority || 10), 0, 65535);
-  if (type === 'CAA') {
-    const match = String(record.content || '').match(/^(\d{1,3})\s+(issue|issuewild|iodef)\s+(.+)$/i);
-    if (match) {
-      delete payload.content;
-      payload.data = { flags: Number(match[1]), tag: match[2].toLowerCase(), value: match[3].trim() };
-    }
-  }
-  if (type === 'SRV') {
-    const parts = String(record.content || '').split(/\s+/).filter(Boolean);
-    if (parts.length === 4) {
-      delete payload.content;
-      payload.data = { priority: Number(parts[0]), weight: Number(parts[1]), port: Number(parts[2]), target: parts[3] };
-    }
-  }
-  return payload;
-}
-
-async function hashPassword(password: string): Promise<{ hash: string; salt: string }> {
-  const saltBytes = crypto.getRandomValues(new Uint8Array(16));
-  const salt = base64url(saltBytes);
-  const key = await crypto.subtle.importKey('raw', utf8(password), 'PBKDF2', false, ['deriveBits']);
-  const bits = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', hash: 'SHA-256', salt: saltBytes, iterations: 100000 },
-    key,
-    256,
-  );
-  return { hash: base64url(new Uint8Array(bits)), salt };
-}
-
-async function verifyPassword(password: string, hash: string, salt: string): Promise<boolean> {
-  const saltBytes = fromBase64url(salt);
-  const key = await crypto.subtle.importKey('raw', utf8(password), 'PBKDF2', false, ['deriveBits']);
-  const bits = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', hash: 'SHA-256', salt: saltBytes, iterations: 100000 },
-    key,
-    256,
-  );
-  return timingSafeEqual(base64url(new Uint8Array(bits)), hash);
-}
-
-async function sha256(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', utf8(value));
-  return base64url(new Uint8Array(digest));
 }
 
-function randomToken(bytes: number): string {
-  return base64url(crypto.getRandomValues(new Uint8Array(bytes)));
-}
-
-function utf8(value: string): Uint8Array {
-  return new TextEncoder().encode(value);
-}
-
-function base64url(bytes: Uint8Array): string {
-  let s = '';
-  for (const b of bytes) s += String.fromCharCode(b);
-  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-}
-
-function fromBase64url(value: string): Uint8Array {
-  const padded = value.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((value.length + 3) % 4);
-  const bin = atob(padded);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
-}
-
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let result = 0;
-  for (let i = 0; i < a.length; i++) result |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return result === 0;
-}
-
-function parseCookie(header: string): Record<string, string> {
-  const result: Record<string, string> = {};
-  for (const part of header.split(';')) {
-    const i = part.indexOf('=');
-    if (i > -1) result[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
-  }
-  return result;
-}
-
-function cookieString(name: string, value: string, options: any): string {
-  const parts = [`${name}=${encodeURIComponent(value)}`];
-  if (options.maxAge !== undefined) parts.push(`Max-Age=${Math.floor(options.maxAge)}`);
-  if (options.path) parts.push(`Path=${options.path}`);
-  if (options.httpOnly) parts.push('HttpOnly');
-  if (options.secure) parts.push('Secure');
-  if (options.sameSite) parts.push(`SameSite=${options.sameSite}`);
-  return parts.join('; ');
-}
-
-function assertSameOrigin(request: Request): void {
-  if (['GET','HEAD','OPTIONS'].includes(request.method.toUpperCase())) return;
-  const origin = request.headers.get('origin');
-  if (!origin) return;
-  let originUrl: URL;
-  try { originUrl = new URL(origin); } catch { throw new HttpError(403, 'BAD_ORIGIN', '请求来源格式不正确'); }
-  const requestUrl = new URL(request.url);
-  const forwardedHost = String(request.headers.get('x-forwarded-host') || request.headers.get('host') || '').split(',')[0].trim();
-  const forwardedProto = String(request.headers.get('x-forwarded-proto') || requestUrl.protocol.replace(':','')).split(',')[0].trim().toLowerCase();
-  const fetchSite = String(request.headers.get('sec-fetch-site') || '').toLowerCase();
-  const requestIsSecure = requestUrl.protocol === 'https:' || forwardedProto === 'https';
-  if (requestIsSecure && originUrl.protocol !== 'https:') throw new HttpError(403, 'BAD_ORIGIN', '请求必须使用 HTTPS');
-  // Sec-Fetch-Site 由浏览器控制；same-origin 可避免自定义域/反向代理偶发改写 Host 导致误判。
-  if (fetchSite === 'same-origin') return;
-  const normalizeHost = (value: string) => value.trim().toLowerCase().replace(/:\d+$/, '');
-  const allowedHosts = new Set([requestUrl.host, requestUrl.hostname, forwardedHost].map(normalizeHost).filter(Boolean));
-  if (!allowedHosts.has(normalizeHost(originUrl.host)) && !allowedHosts.has(normalizeHost(originUrl.hostname))) {
-    throw new HttpError(403, 'BAD_ORIGIN', '请求来源不允许，请刷新页面后重试');
-  }
-}
-
-async function readJson<T>(request: Request, maxBytes = 64 * 1024): Promise<T> {
-  const text = await request.text();
-  if (text.length > maxBytes) throw new HttpError(413, 'PAYLOAD_TOO_LARGE', '请求内容过大');
-  try { return text ? JSON.parse(text) as T : {} as T; }
-  catch { throw new HttpError(400, 'INVALID_JSON', 'JSON 格式错误'); }
-}
-
-function json(data: unknown, status = 200): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      'content-type': 'application/json; charset=utf-8',
-      'cache-control': 'no-store',
-    },
-  });
-}
-
-function ok(data: Record<string, unknown> = {}): Response {
-  return json({ ok: true, ...data });
-}
-
-function withCookie(response: Response, cookie: string): Response {
-  const headers = new Headers(response.headers);
-  headers.set('set-cookie', cookie);
-  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
-}
-
-function clientIp(request: Request): string {
-  return request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '0.0.0.0';
-}
-
-function asBoolean(value: unknown, fallback: boolean): boolean {
-  if (value === undefined || value === null || value === '') return fallback;
-  if (typeof value === 'boolean') return value;
-  return ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());
-}
-
-function isEnabled(value: unknown, fallback: boolean): boolean {
-  return asBoolean(value, fallback);
-}
-
-function cleanText(value: unknown, max = 200): string {
-  return String(value || '').trim().slice(0, max);
-}
-
-function parseDate(value: unknown): Date | null {
-  if (!value) return null;
-  const raw = String(value);
-  const date = new Date(raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z');
-  return Number.isFinite(date.getTime()) ? date : null;
-}
 
-function clamp(value: number, min: number, max: number): number {
-  if (!Number.isFinite(value)) return min;
-  return Math.min(max, Math.max(min, Math.floor(value)));
+/* v58 account profile and deletion guard */
+.copy-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.copy-mini {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border, #d7e1f2);
+  background: #f7faff;
+  border-radius: 9px;
+  color: #2f58d8;
+  cursor: pointer;
+  font-weight: 800;
+  line-height: 1;
+}
+.copy-mini:hover {
+  background: #edf4ff;
+  transform: translateY(-1px);
+}
+.account-info-list strong {
+  min-width: 0;
+  word-break: break-all;
+}
+.blocking-domain-box {
+  border-color: #fecdd3;
+  background: #fff7f8;
+}
+.blocking-domain-list {
+  margin: 14px 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+.blocking-domain-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #ffe1e6;
+  border-radius: 12px;
+  background: #fff;
+}
+.blocking-domain-list span {
+  color: #e11d48;
+  font-weight: 800;
+  white-space: nowrap;
+}
+@media (max-width: 720px) {
+  .blocking-domain-list li {
+    display: block;
+  }
+  .blocking-domain-list span {
+    display: block;
+    margin-top: 4px;
+  }
+}
+
+
+/* v59 admin settings expansion */
+.admin-settings-v59 .admin-tabs { flex-wrap: wrap; gap: 10px; }
+.admin-settings-v59 .tab { min-height: 42px; }
+.settings-grid { gap: 18px; }
+.settings-grid .field textarea { min-height: 96px; resize: vertical; }
+.settings-grid .field em { display:block; margin-top:6px; color:var(--muted); font-style:normal; font-size:13px; }
+.color-preview { width:52px; height:32px; border-radius:12px; border:1px solid var(--line); display:inline-block; margin-top:8px; }
+.readonly-box { background:#f8fafc; border:1px solid var(--line); border-radius:18px; padding:16px; color:var(--muted); }
+.readonly-box b { color:var(--text); display:block; margin-bottom:6px; }
+.danger-notice { border-color:#fecaca; background:#fff7f7; color:#9f1239; }
+.admin-settings-v59 .wide { grid-column:1/-1; }
+@media (max-width: 900px) { .settings-grid { grid-template-columns:1fr !important; } }
+
+.site-notice { margin: 18px 24px 0; background: #eef6ff; border: 1px solid #bfdbfe; border-radius: 18px; padding: 16px 18px; color: #1d4ed8; font-weight: 700; }
+.app-footer { margin: 0 24px 24px; padding: 18px; color: var(--muted); text-align: center; font-size: 14px; }
+
+
+/* v63 Turnstile login visibility */
+.turnstile-holder {
+  margin: 10px 0 14px;
+  min-height: 72px;
+}
+.turnstile-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 72px;
+  border: 1px dashed rgba(84, 104, 255, .35);
+  border-radius: 14px;
+  color: #65728a;
+  font-weight: 700;
+  background: rgba(246, 248, 255, .8);
+}
+.notice.small.turnstile-missing {
+  margin: 10px 0 14px;
+  font-size: 13px;
+}
+.notice.small.danger {
+  border-color: rgba(239, 68, 68, .28);
+  background: #fff5f5;
+  color: #b91c1c;
+}
+
+/* v64: mobile login de-duplicate brand display
+   On phones, keep the top brand block (free + 二级域名注册) and hide the repeated
+   mini free/welcome header inside the login card. Desktop remains unchanged. */
+@media (max-width: 900px) {
+  .login-split-wrap .login-compact-card .login-compact-head {
+    display: none !important;
+  }
+  .login-split-wrap .login-compact-card {
+    padding-top: 22px !important;
+  }
+}
+
+@media (max-width: 520px) {
+  .login-split-wrap {
+    gap: 14px !important;
+    padding-top: 22px !important;
+  }
+  .login-split-brand {
+    margin-bottom: 0 !important;
+  }
+  .login-split-brand .auth-logo {
+    width: 48px !important;
+    height: 48px !important;
+    border-radius: 16px !important;
+    font-size: 18px !important;
+  }
+  .login-split-brand h1 {
+    margin-top: 8px !important;
+    margin-bottom: 6px !important;
+    font-size: 27px !important;
+  }
+  .login-split-brand p {
+    margin: 0 !important;
+    font-size: 12px !important;
+  }
+  .login-split-wrap .login-compact-card {
+    margin-top: 2px !important;
+  }
+}
+
+/* v67 login feedback link */
+.login-feedback-row {
+  margin: 22px 0 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  font-weight: 800;
+  color: var(--muted);
+}
+.login-feedback-row a {
+  color: inherit;
+  text-decoration: none;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  border-bottom: 1px dashed currentColor;
+}
+.login-feedback-row a:hover {
+  color: var(--ink);
+  background: transparent;
+}
+
+
+/* v66 help center advanced search */
+.help-search-card{
+  position:relative;
+  overflow:visible;
+  margin-bottom:18px;
+}
+.help-search-title{
+  margin-bottom:14px;
+}
+.help-search-title h2{
+  margin:0 0 6px;
+  font-size:24px;
+}
+.help-search-title p{
+  margin:0;
+  color:#64748b;
+  font-weight:750;
+  line-height:1.6;
+}
+.help-search-box{
+  position:relative;
+  display:flex;
+  gap:12px;
+  align-items:stretch;
+  z-index:3;
+}
+.help-search-box .help-search{
+  min-height:54px;
+}
+.help-suggest{
+  position:absolute;
+  left:0;
+  right:132px;
+  top:calc(100% + 8px);
+  z-index:50;
+  background:#fff;
+  border:1px solid #dbe4ef;
+  border-radius:18px;
+  box-shadow:0 22px 55px rgba(15,23,42,.16);
+  padding:8px;
+  max-height:340px;
+  overflow:auto;
+}
+.help-suggest-title{
+  padding:8px 12px 6px;
+  color:#64748b;
+  font-size:12px;
+  font-weight:900;
+}
+.help-suggest button{
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+  width:100%;
+  border:0;
+  background:#fff;
+  text-align:left;
+  border-radius:14px;
+  padding:10px 12px;
+  cursor:pointer;
+  color:#0f172a;
+  font-weight:900;
+}
+.help-suggest button:hover{
+  background:#f1f5ff;
+}
+.help-suggest button span{
+  color:#64748b;
+  font-size:12px;
+  font-weight:800;
+}
+.help-results{
+  margin-top:14px;
+  border-top:1px solid #e5edf7;
+  padding-top:14px;
+}
+.help-results-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  margin-bottom:10px;
+  color:#64748b;
+  font-weight:850;
+}
+.help-results-head strong{
+  color:#0f172a;
+  font-size:18px;
+}
+.help-result-list{
+  display:grid;
+  gap:10px;
+}
+.help-result{
+  display:block;
+  width:100%;
+  text-align:left;
+  border:1px solid #dbe4ef;
+  background:linear-gradient(180deg,#fff,#f8fbff);
+  border-radius:18px;
+  padding:14px 16px;
+  cursor:pointer;
+  box-shadow:0 10px 28px rgba(15,23,42,.04);
+}
+.help-result:hover{
+  border-color:#a9bcff;
+  box-shadow:0 14px 36px rgba(79,99,246,.12);
+  transform:translateY(-1px);
+}
+.help-result-title{
+  display:block;
+  color:#0f172a;
+  font-weight:950;
+  font-size:17px;
+  line-height:1.45;
+}
+.help-result-meta{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  align-items:center;
+  margin-top:7px;
+  color:#64748b;
+  font-size:12px;
+  font-weight:850;
+}
+.help-result-meta i{
+  font-style:normal;
+  border-radius:999px;
+  background:#eef4ff;
+  border:1px solid #dbe7ff;
+  color:#1d4ed8;
+  padding:3px 8px;
+}
+.help-result-snippet{
+  display:block;
+  margin-top:9px;
+  color:#334155;
+  font-size:14px;
+  line-height:1.7;
+  font-weight:650;
+}
+.help-result mark,
+.help-suggest mark{
+  background:#fef3c7;
+  color:#92400e;
+  padding:0 2px;
+  border-radius:4px;
+}
+.help-no-results{
+  border:1px solid #fed7aa;
+  background:#fff7ed;
+  color:#9a3412;
+  border-radius:16px;
+  padding:13px 15px;
+  margin-bottom:12px;
+  font-weight:750;
+  line-height:1.65;
+}
+.help-no-results strong{
+  display:block;
+  color:#7c2d12;
+  font-size:16px;
+  margin-bottom:4px;
+}
+.help-no-results p{
+  margin:0;
+}
+.help-item-highlight{
+  animation: helpItemPulse 1.8s ease;
+}
+@keyframes helpItemPulse{
+  0%,100%{box-shadow:none}
+  20%,80%{box-shadow:0 0 0 5px rgba(79,99,246,.18);border-radius:16px}
+}
+@media(max-width:760px){
+  .help-search-card{padding:16px}
+  .help-search-title h2{font-size:20px}
+  .help-search-title p{font-size:13px}
+  .help-search-box{display:grid;gap:10px}
+  .help-search-box .btn{width:100%;min-height:48px}
+  .help-suggest{right:0;top:58px;max-height:280px;border-radius:16px}
+  .help-results-head{align-items:flex-start;flex-direction:column;gap:4px}
+  .help-result{padding:12px;border-radius:16px}
+  .help-result-title{font-size:15px}
+  .help-result-snippet{font-size:13px}
+}
+
+/* v67 admin color picker */
+.color-field .color-picker-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) 56px 52px;
+  align-items: center;
+  gap: 10px;
+}
+.color-field .color-picker-row .color-text {
+  width: 100%;
+}
+.color-native {
+  width: 56px;
+  height: 44px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+  cursor: pointer;
+}
+.color-preview.color-open {
+  width: 52px;
+  height: 44px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  box-shadow: inset 0 0 0 3px rgba(255,255,255,.65), 0 10px 24px rgba(15,23,42,.12);
+  cursor: pointer;
+  margin: 0;
+}
+.color-preview.color-open:focus-visible,
+.color-native:focus-visible {
+  outline: 3px solid rgba(79,99,246,.25);
+  outline-offset: 2px;
+}
+@media (max-width: 720px) {
+  .color-field .color-picker-row {
+    grid-template-columns: 1fr 50px 48px;
+    gap: 8px;
+  }
+  .color-native, .color-preview.color-open {
+    height: 40px;
+  }
+}
+
+/* v68 multifix: auth agreement, help search, mobile sidebar, operation/log controls */
+.login-feedback-row {
+  margin-top: calc(14px + 5mm) !important;
+  color: var(--muted, #6b7280) !important;
+}
+.login-feedback-row a,
+.login-feedback-row .login-link-btn {
+  color: inherit !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.auth-agreement {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0 4px;
+  font-weight: 700;
+  color: var(--muted, #64748b);
+}
+.auth-agreement input {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  accent-color: var(--primary, #5468ff);
+}
+.agreement-link {
+  border: 0;
+  background: transparent;
+  color: var(--text, #0f172a);
+  font: inherit;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  padding: 0;
+  cursor: pointer;
+}
+.agreement-modal .modal-body,
+.modal.agreement-modal .modal-body {
+  max-height: min(68vh, 720px);
+  overflow: auto;
+  padding-right: 8px;
+}
+.agreement-full-text {
+  line-height: 1.8;
+  color: var(--text, #0f172a);
+}
+.agreement-full-text h2 { margin-top: 0; }
+.turnstile-holder,
+.turnstile-holder > div,
+#turnstile-box {
+  min-height: 72px;
+}
+.turnstile-loading {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  color: var(--muted, #64748b);
+}
+.turnstile-retry-box .btn {
+  margin-top: 8px;
+}
+.help-search-box-v68 {
+  position: relative;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: start;
+}
+.help-search-input-wrap {
+  position: relative;
+  min-width: 0;
+}
+.help-search-input-wrap .help-search {
+  width: 100%;
+  padding-right: 52px !important;
+}
+.help-input-clear {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(15,23,42,.08);
+  color: #475569;
+  font-size: 22px;
+  line-height: 1;
+  display: none;
+  cursor: pointer;
+}
+.help-input-clear.active { display: grid; place-items: center; }
+.help-suggest,
+.help-history {
+  right: 74px !important;
+  left: 0 !important;
+  max-width: calc(100% - 74px);
+}
+.help-history {
+  margin-top: 12px;
+  border: 1px solid var(--line, #dbe4f0);
+  border-radius: 18px;
+  background: #fff;
+  padding: 14px 18px;
+}
+.help-history h4 { margin: 0 0 8px; color: var(--muted, #64748b); }
+.help-history-list {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.help-history-list [data-history-use] {
+  border: 0;
+  background: #eef4ff;
+  color: #0f172a;
+  border-radius: 999px;
+  padding: 8px 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.help-history-remove {
+  margin-left: -12px;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #334155;
+  font-size: 16px;
+  cursor: pointer;
+}
+.help-filter-panel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr)) auto;
+  gap: 14px;
+  align-items: end;
+  margin-top: 16px;
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(238,244,255,.75);
+  border: 1px solid var(--line, #dbe4f0);
+}
+.help-search-status {
+  margin-top: 14px;
+  line-height: 1.6;
+  color: var(--muted, #64748b);
+  word-break: break-word;
+}
+.help-results-compact {
+  margin-top: 16px;
+  transform-origin: top left;
+  font-size: 75%;
+}
+.help-result-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--line, #dbe4f0);
+  border-radius: 18px;
+  padding: 15px 18px;
+  margin-bottom: 12px;
+  background: #fff;
+  cursor: pointer;
+  color: var(--text, #0f172a);
+}
+.help-result-row strong { font-size: 1.28em; }
+.help-result-row span,
+.help-result-row em { display: block; margin-top: 5px; color: var(--muted, #64748b); font-style: normal; }
+.help-result-row p { margin: 8px 0 0; line-height: 1.7; }
+.help-result-row mark {
+  background: #fff3b0;
+  color: #111827;
+  border-radius: 4px;
+  padding: 0 2px;
+}
+.help-no-result h3 { margin-top: 0; }
+.help-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 16px 0 4px;
+  font-weight: 800;
+}
+.help-pagination button,
+.help-pagination .page-ellipsis {
+  min-width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid var(--line, #dbe4f0);
+  background: #fff;
+  color: var(--text, #0f172a);
+  font-weight: 900;
+}
+.help-pagination button.active {
+  background: linear-gradient(135deg, var(--primary, #2463eb), var(--secondary, #7c3aed));
+  color: #fff;
+  border-color: transparent;
+}
+.help-pagination .page-triangle {
+  font-size: 16px;
+}
+.help-pagination .page-total {
+  margin-left: 8px;
+  color: var(--muted, #64748b);
+}
+.help-category > summary {
+  display: flex !important;
+  align-items: center !important;
+}
+.help-category > summary::marker { content: ''; }
+.help-category > summary::after,
+.help-category summary .chevron {
+  margin-left: auto;
+  display: grid;
+  place-items: center;
+  transform: scale(1.2);
+  transform-origin: center;
+}
+.help-category > summary {
+  position: relative;
+}
+.help-category > summary::after {
+  content: '∨';
+  font-size: 26px;
+  font-weight: 900;
+  line-height: 1;
+}
+.help-category[open] > summary::after {
+  content: '∧';
+}
+.help-category-title {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.help-category-icon {
+  display: grid !important;
+  place-items: center !important;
+  width: 42px !important;
+  height: 42px !important;
+  transform: scale(1.2);
+  transform-origin: center;
+}
+.account-delete-tip {
+  margin: 14px 0;
+}
+.account-delete-card .btn[disabled],
+#confirm-delete-account[disabled] {
+  opacity: .45;
+  cursor: not-allowed;
+  filter: grayscale(.15);
+}
+@media (max-width: 1100px) {
+  .sidebar {
+    width: 45vw !important;
+    max-width: 45vw !important;
+    min-width: 0 !important;
+    overflow-y: auto !important;
+  }
+  .sidebar.open,
+  body.sidebar-open .sidebar {
+    width: 45vw !important;
+    max-width: 45vw !important;
+  }
+  .help-search-box-v68 {
+    grid-template-columns: 1fr;
+  }
+  .help-suggest,
+  .help-history {
+    right: 0 !important;
+    max-width: 100%;
+  }
+  .help-filter-panel {
+    grid-template-columns: 1fr;
+  }
+  .help-results-compact {
+    font-size: 78%;
+  }
+  .help-pagination {
+    flex-wrap: wrap;
+  }
+  .auth-agreement {
+    font-size: 14px;
+  }
+}
+@media (max-width: 520px) {
+  .sidebar,
+  .sidebar.open,
+  body.sidebar-open .sidebar {
+    width: 45vw !important;
+    max-width: 45vw !important;
+  }
+  .sidebar .nav-label,
+  .sidebar .brand h1,
+  .sidebar .user-card {
+    font-size: 12px !important;
+  }
+  .help-category-icon {
+    width: 34px !important;
+    height: 34px !important;
+  }
+}
+
+
+/* v69 agreement exact text + submit disabled until checked */
+.auth-agreement {
+  align-items: center;
+}
+.auth-agreement input[type="checkbox"] {
+  border: 2px solid #94a3b8;
+}
+.auth-agreement .agreement-link {
+  color: var(--ink, #0f172a) !important;
+}
+.login-submit[disabled],
+#register-form button[type="submit"][disabled],
+.btn.primary.is-disabled {
+  background: #cbd5e1 !important;
+  color: #64748b !important;
+  box-shadow: none !important;
+  opacity: 1 !important;
+  cursor: not-allowed !important;
+}
+.agreement-modal .modal {
+  max-height: 88vh;
+}
+.agreement-modal .modal-body,
+.modal.agreement-modal .modal-body {
+  max-height: min(72vh, 760px) !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+}
+.agreement-long-text h3 {
+  margin: 22px 0 8px;
+  font-size: 1.12em;
+}
+.agreement-long-text p,
+.agreement-long-text li {
+  margin: 0 0 10px;
+}
+.agreement-long-text ol {
+  padding-left: 1.4em;
+  margin: 8px 0 14px;
+}
+@media (max-width: 700px) {
+  .agreement-modal .modal {
+    width: min(94vw, 760px);
+  }
+  .agreement-modal .modal-body,
+  .modal.agreement-modal .modal-body {
+    max-height: 66vh !important;
+  }
+}
+
+
+/* v70 search width, history style, footer, and Turnstile stability UI */
+.help-search-box-v68 {
+  display: grid !important;
+  grid-template-columns: minmax(520px, 1fr) auto auto !important;
+  align-items: stretch !important;
+  column-gap: 14px !important;
+}
+.help-search-input-wrap {
+  width: 100% !important;
+  min-width: 0 !important;
+}
+.help-search-input-wrap .help-search {
+  width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+  padding-right: 70px !important;
+}
+.help-input-clear {
+  right: 22px !important;
+  width: 38px !important;
+  height: 38px !important;
+  font-size: 26px !important;
+}
+.help-history-list {
+  gap: 14px 18px !important;
+}
+.help-history-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.help-history-list .help-history-word,
+.help-history-list [data-history-use] {
+  background: transparent !important;
+  color: #0f172a !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  padding: 2px 0 !important;
+  font-weight: 900 !important;
+  cursor: pointer;
+}
+.help-history-list .help-history-word:hover,
+.help-history-list [data-history-use]:hover {
+  color: var(--accent, #4f63f6) !important;
+  text-decoration: underline;
+}
+.help-history-remove {
+  margin-left: 0 !important;
+  width: 26px !important;
+  height: 26px !important;
+  display: inline-grid !important;
+  place-items: center !important;
+}
+.app-footer {
+  display: grid;
+  gap: 4px;
+}
+.app-footer .footer-icp,
+.app-footer .footer-copyright {
+  font-weight: 750;
+}
+.app-footer .footer-copyright {
+  color: #64748b;
+}
+.turnstile-holder,
+#turnstile-box {
+  min-height: 72px;
+}
+.turnstile-loading {
+  min-height: 66px;
+  display: grid;
+  place-items: center;
+  color: #64748b;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  background: rgba(248,250,252,.75);
+}
+@media (max-width: 760px) {
+  .help-search-box-v68 {
+    grid-template-columns: 1fr !important;
+  }
+  .help-search-input-wrap .help-search {
+    min-height: 58px !important;
+  }
+}
+
+
+/* v71 copyright multiline footer */
+.admin-settings textarea[name="copyright"] {
+  min-height: 92px;
+  resize: vertical;
+}
+.app-footer .footer-line {
+  white-space: pre-line;
+}
+.app-footer .footer-copyright {
+  order: 2;
+}
+.app-footer .footer-icp {
+  order: 3;
+}
+.app-footer .footer-text {
+  order: 1;
+}
+
+
+/* v73 admin settings extension */
+.admin-settings-v79 .settings-toolbar{
+  display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:18px;
+}
+.admin-settings-v79 .settings-toolbar h2{margin:0;font-size:28px;}
+.admin-settings-v79 .toolbar-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+.admin-settings-v79 .file-btn{position:relative;overflow:hidden;}
+.admin-settings-v79 .settings-grid .field em,
+.admin-settings-v79 .settings-grid .check em{
+  display:block;margin-top:6px;font-size:13px;line-height:1.5;color:#768399;font-style:normal;font-weight:500;
+}
+.admin-settings-v79 .settings-grid .check{
+  align-items:flex-start;gap:10px;padding:14px 16px;border:1px solid var(--border);border-radius:16px;background:#fbfdff;
+}
+.admin-settings-v79 .settings-grid .check input{margin-top:4px;}
+.admin-settings-v79 textarea{min-height:auto;resize:vertical;}
+.admin-settings-v79 .readonly-box.danger{border-color:#ffd1d8;background:#fff7f8;color:#8a1b2a;}
+.admin-settings-v79 .section-head.compact{margin-bottom:12px;}
+.suffix-editor-row{
+  display:grid;grid-template-columns:80px minmax(120px,1fr) minmax(150px,1fr) minmax(160px,1.4fr) minmax(150px,1fr) 120px 90px 80px auto;
+  gap:10px;align-items:end;padding:14px;border:1px solid var(--border);border-radius:18px;background:#f8fbff;margin-bottom:10px;
+}
+.suffix-editor-row label{display:flex;flex-direction:column;gap:6px;font-weight:800;color:#64748b;font-size:13px;}
+.suffix-editor-row input,.suffix-editor-row select{height:42px;border:1px solid var(--border);border-radius:12px;padding:0 10px;background:#fff;font:inherit;}
+.dns-suffix-editor-block{border:1px solid var(--border);border-radius:22px;padding:18px;background:#fff;}
+.event-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;}
+.notification-template{border:1px solid var(--border);border-radius:20px;background:#fbfdff;padding:18px;display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.notification-template h3{grid-column:1/-1;margin:0;font-size:18px;}
+.cron-builder{display:flex;gap:10px;flex-wrap:wrap;}
+.system-status-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin:18px 0;}
+.stat-card{border:1px solid var(--border);border-radius:20px;background:#fbfdff;padding:18px;box-shadow:0 12px 30px rgba(32,45,84,.06);}
+.stat-card span{display:block;color:#6b778d;font-weight:800;margin-bottom:8px;}
+.stat-card strong{display:block;font-size:24px;color:var(--text);}
+.stat-card small{display:block;margin-top:6px;color:#7b879b;line-height:1.5;}
+.markdown-preview{padding:18px;border:1px solid var(--border);border-radius:18px;background:#f8fbff;line-height:1.8;}
+@media (max-width: 1100px){
+  .admin-settings-v79 .settings-toolbar{align-items:flex-start;flex-direction:column;}
+  .suffix-editor-row{grid-template-columns:1fr 1fr;}
+  .notification-template{grid-template-columns:1fr;}
+}
+@media (max-width: 640px){
+  .admin-settings-v79 .settings-toolbar h2{font-size:22px;}
+  .suffix-editor-row{grid-template-columns:1fr;}
+  .admin-settings-v79 .tabs.admin-tabs{gap:8px;overflow-x:auto;}
+  .admin-settings-v79 .tab{white-space:nowrap;}
+}
+
+
+/* v74 registration keys and analytics */
+.login-submit.is-disabled,.btn.is-disabled,.btn:disabled{opacity:.52;cursor:not-allowed;filter:grayscale(.15)}
+.reg-key-page .reg-key-tools{display:flex;gap:14px;margin:18px 0}.reg-key-tools input{max-width:360px}.reg-key-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}.reg-key-card{position:relative;background:#fff;border:1px solid var(--line);border-radius:22px;padding:24px;box-shadow:var(--shadow-soft)}.reg-key-card h3{font-size:28px;margin:0 0 14px}.reg-key-card p{margin:8px 0;color:var(--muted);font-weight:700}.reg-key-gear{position:absolute;right:18px;top:18px;width:44px;height:44px;border-radius:16px}.analytics-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:18px;margin:20px 0}.analytics-card{display:flex;justify-content:space-between;gap:20px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:20px;padding:22px}.analytics-card span{display:block;color:var(--muted);font-weight:800}.analytics-card strong{display:block;font-size:38px;margin:10px 0}.analytics-card em{font-style:normal;color:var(--muted)}.analytics-icon{width:70px;height:70px;border-radius:20px;background:#eaf6ff;color:var(--accent);display:grid;place-items:center;font-size:34px}.chart-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:18px}.chart-card{background:#fff;border:1px solid var(--line);border-radius:20px;padding:22px}.mini-bars{height:180px;display:flex;align-items:end;gap:8px;border-bottom:1px solid var(--line);padding:12px 0}.mini-bar{flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px;min-width:10px}.mini-bar b{display:block;width:100%;max-width:18px;background:linear-gradient(180deg,var(--accent),var(--accent-2));border-radius:999px}.mini-bar span{font-size:10px;color:var(--muted);writing-mode:vertical-rl;max-height:50px;overflow:hidden}.distribution-list p{position:relative;display:grid;grid-template-columns:1fr auto;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);overflow:hidden}.distribution-list span,.distribution-list b{position:relative;z-index:1}.distribution-list em{position:absolute;left:0;bottom:0;height:3px;background:linear-gradient(90deg,var(--accent),var(--accent-2));border-radius:99px}.quick-actions{flex-wrap:wrap}.auth-agreement input{width:28px;height:28px;accent-color:var(--accent)}
+@media (max-width:700px){.chart-grid{grid-template-columns:1fr}.analytics-grid{grid-template-columns:1fr}.reg-key-grid{grid-template-columns:1fr}.reg-key-page .reg-key-tools{flex-direction:column}.reg-key-tools input{max-width:none}}
+
+/* v75 analytics page: learned from mailbox dashboard layout */
+.analytics-v75{padding:24px!important;overflow:hidden}.analytics-head{align-items:flex-start!important;gap:16px}.analytics-toolbar-v75{display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap}.range-switch{display:flex;gap:8px;flex-wrap:wrap}.range-chip{border:1px solid var(--line);background:#fff;border-radius:14px;padding:10px 14px;font-weight:900;color:#5f6f86;cursor:pointer}.range-chip.active{background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff;border-color:transparent;box-shadow:var(--shadow-soft)}.custom-range{display:flex;align-items:center;gap:8px}.custom-range.hidden{display:none}.custom-range input{height:42px;border:1px solid var(--line);border-radius:12px;padding:0 10px;font-weight:800}.metric-row-v75{grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px}.analytics-card.v75{min-height:136px}.analytics-card.v75 p{margin:8px 0 0;color:#5f6f86;font-weight:800;font-size:14px}.analytics-card .trend{display:inline-flex!important;align-items:center;margin:0 0 2px;padding:4px 9px;border-radius:999px;background:#f2f6ff;font-size:13px;font-weight:1000}.trend.up{color:#20b66b;background:#eafff4}.trend.down{color:#ee475d;background:#fff0f2}.trend.flat{color:#667085;background:#f3f5f8}.analytics-charts-v75{grid-template-columns:repeat(2,minmax(360px,1fr));gap:20px}.wide-chart{grid-column:1/-1}.chart-titlebar{display:flex;align-items:center;justify-content:space-between;gap:12px}.chart-titlebar small{color:#7b8798;font-weight:900}.chart-legend{display:flex;align-items:center;justify-content:center;gap:24px;margin:10px 0 2px;color:#344256;font-weight:900}.chart-legend span{display:inline-flex;align-items:center;gap:8px}.legend-dot{width:22px;height:12px;border-radius:5px;display:inline-block}.analytics-svg{width:100%;height:300px;display:block}.chart-grid-line{stroke:#cfd6e2;stroke-width:1;stroke-dasharray:5 5}.chart-axis{stroke:#9aa5b5;stroke-width:1}.chart-axis-text{fill:#8a93a3;font-size:13px;font-weight:800}.line-series{fill:none;stroke-width:4;stroke-linecap:round;stroke-linejoin:round}.line-0{stroke:#2697ff;background:#2697ff;fill:#2697ff}.line-1{stroke:#17cdb5;background:#17cdb5;fill:#17cdb5}.line-2{stroke:#ff6f4d;background:#ff6f4d;fill:#ff6f4d}.line-dot{stroke:#fff;stroke-width:2}.donut-wrap{display:grid;grid-template-columns:230px 1fr;gap:18px;align-items:center;min-height:250px}.donut-svg{width:220px;height:220px;transform:rotate(-90deg)}.donut-bg{fill:none;stroke:#eef2f7;stroke-width:24}.donut-seg{fill:none;stroke-width:24;stroke-linecap:round;transition:all .2s}.donut-total{font-size:28px;font-weight:1000;fill:#111827;transform:rotate(90deg);transform-origin:90px 90px}.donut-caption{font-size:12px;fill:#7b8798;font-weight:900;transform:rotate(90deg);transform-origin:90px 90px}.donut-0{stroke:#39aef3;background:#39aef3}.donut-1{stroke:#18ceb2;background:#18ceb2}.donut-2{stroke:#ffc229;background:#ffc229}.donut-3{stroke:#ff774f;background:#ff774f}.donut-4{stroke:#aee2ff;background:#aee2ff}.donut-5{stroke:#b878f2;background:#b878f2}.donut-6{stroke:#6d7cff;background:#6d7cff}.donut-7{stroke:#77d66e;background:#77d66e}.donut-legend{display:grid;gap:10px}.donut-legend p{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;margin:0;color:#344256;font-weight:850}.donut-color{width:20px;height:12px;border-radius:4px;display:inline-block}.cf-monitor{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:12px 0 18px}.cf-monitor div{border:1px solid var(--line);background:#f8fbff;border-radius:16px;padding:14px}.cf-monitor span{display:block;color:#708096;font-weight:900}.cf-monitor strong{display:block;font-size:26px;margin-top:8px}.empty.small{padding:34px;text-align:center;color:#7b8798;font-weight:900}
+@media (max-width:900px){.analytics-head{flex-direction:column}.analytics-toolbar-v75{justify-content:flex-start;width:100%}.analytics-charts-v75{grid-template-columns:1fr}.donut-wrap{grid-template-columns:1fr}.donut-svg{margin:auto}.cf-monitor{grid-template-columns:repeat(2,1fr)}.custom-range{width:100%;flex-wrap:wrap}.custom-range input{flex:1;min-width:150px}}
+@media (max-width:520px){.range-chip{padding:8px 10px;font-size:12px}.analytics-svg{height:230px}.chart-legend{justify-content:flex-start;overflow:auto;gap:14px}.cf-monitor{grid-template-columns:1fr}.metric-row-v75{grid-template-columns:1fr}.analytics-v75{padding:14px!important}}
+
+/* v76 analytics page: full-width email-style dashboard and interactive charts */
+body:has(.analytics-v76) .content{max-width:none!important;width:100%!important;margin:0!important;padding-left:22px!important;padding-right:22px!important;}
+.analytics-v76{max-width:none!important;width:100%!important;margin:0!important;padding:24px!important;border-radius:22px!important;overflow:visible!important;}
+.analytics-v76 .analytics-head{align-items:flex-start!important;}
+.metric-row-v76{display:grid!important;grid-template-columns:repeat(5,minmax(180px,1fr))!important;gap:18px!important;margin:20px 0 22px!important;}
+.metric-row-v76 .analytics-card{min-height:150px;}
+.analytics-section-stack{display:grid;grid-template-columns:1fr;gap:20px;margin-top:18px;}
+.analytics-two-col{display:grid;grid-template-columns:repeat(2,minmax(420px,1fr));gap:20px;margin-top:20px;}
+.analytics-two-col .monitor-card{grid-column:1 / -1;}
+.trend-card,.distribution-card,.monitor-card{min-height:360px;overflow:visible;}
+.interactive-chart{position:relative;width:100%;min-height:260px;}
+.line-chart-box{min-height:330px;}
+.analytics-line-svg{height:330px!important;}
+.chart-hit{fill:transparent;cursor:crosshair;pointer-events:all;}
+.chart-hover-line{stroke:#9aa5b5;stroke-width:1.5;stroke-dasharray:5 5;opacity:0;pointer-events:none;}
+.chart-hover-line.active{opacity:.85;}
+.analytics-floating-tip{position:absolute;z-index:20;min-width:160px;max-width:260px;background:#fff;border:1px solid #bfe5ff;border-radius:10px;box-shadow:0 10px 30px rgba(15,23,42,.18);padding:10px 14px;color:#2b3445;font-weight:900;line-height:1.45;pointer-events:none;white-space:normal;}
+.analytics-floating-tip::before{content:'';display:inline-block;width:10px;height:10px;border-radius:50%;background:#aee2ff;margin-right:10px;vertical-align:middle;}
+.donut-wrap.email-style{grid-template-columns:minmax(210px,1fr) 300px!important;gap:30px;align-items:center;min-height:300px;}
+.donut-wrap.email-style .donut-legend{align-self:center;}
+.donut-wrap.email-style .donut-svg{width:300px!important;height:300px!important;justify-self:center;overflow:visible;}
+.donut-seg{cursor:pointer;filter:none;outline:none;}
+.donut-seg:hover,.donut-seg.active{stroke-width:28;filter:drop-shadow(0 8px 12px rgba(15,23,42,.18));}
+.donut-legend p{grid-template-columns:auto minmax(120px,1fr) auto auto!important;padding:4px 0;border-radius:8px;cursor:pointer;}
+.donut-legend p:hover{background:#f7fbff;}
+.donut-legend em{font-style:normal;color:#7b8798;font-weight:850;text-align:right;}
+.donut-color{width:26px!important;height:14px!important;border-radius:5px!important;}
+.cf-monitor{margin-top:18px!important;}
+@media (max-width:1400px){.metric-row-v76{grid-template-columns:repeat(3,minmax(220px,1fr))!important}.analytics-two-col{grid-template-columns:1fr!important}.analytics-two-col .monitor-card{grid-column:auto}.donut-wrap.email-style{grid-template-columns:minmax(180px,1fr) 280px!important}.donut-wrap.email-style .donut-svg{width:280px!important;height:280px!important}}
+@media (max-width:900px){body:has(.analytics-v76) .content{padding-left:12px!important;padding-right:12px!important}.metric-row-v76{grid-template-columns:repeat(2,minmax(160px,1fr))!important}.analytics-v76{padding:16px!important}.donut-wrap.email-style{grid-template-columns:1fr!important}.donut-wrap.email-style .donut-svg{width:240px!important;height:240px!important}.analytics-line-svg{height:280px!important}.line-chart-box{min-height:290px}.trend-card,.distribution-card,.monitor-card{min-height:auto}}
+@media (max-width:560px){.metric-row-v76{grid-template-columns:1fr!important}.analytics-toolbar-v75{gap:8px}.range-switch{gap:6px}.donut-wrap.email-style .donut-svg{width:220px!important;height:220px!important}.analytics-floating-tip{max-width:210px}.analytics-v76 .chart-card{padding:16px!important}}
+
+/* v78 多根域名设置优化 */
+.suffix-editor-help{
+  margin:10px 0 14px;padding:12px 14px;border:1px solid var(--border);border-radius:14px;background:#f8fbff;color:#64748b;font-weight:700;line-height:1.6;
+}
+.suffix-editor-row{
+  grid-template-columns:72px minmax(150px,1fr) minmax(170px,1fr) minmax(220px,1.35fr) minmax(190px,1.2fr) 130px 90px 74px 146px !important;
+  overflow:visible;
+}
+.suffix-editor-row .zone-field input{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:13px;}
+.suffix-enabled-cell,.suffix-proxy-cell{display:flex;align-items:end;min-height:64px;}
+.suffix-enabled-cell label,.suffix-proxy-cell label{width:100%;}
+.suffix-actions{display:flex;gap:8px;align-items:end;justify-content:flex-end;min-height:64px;}
+.suffix-actions .btn{height:42px;padding:0 12px;}
+@media (max-width: 1280px){
+  .suffix-editor-row{grid-template-columns:1fr 1fr !important;}
+  .suffix-actions{justify-content:flex-start;}
+}
+@media (max-width: 640px){
+  .suffix-editor-row{grid-template-columns:1fr !important;}
+}
+
+
+/* v79 管理员设置全面整理：去除 CSV 模块、分组显示、移动端与英文适配 */
+body:has(.admin-settings-v79) .content{
+  max-width:1600px;
+  width:100%;
+}
+.admin-settings-v79{
+  width:100%;
+  overflow:visible;
+}
+.admin-settings-v79 .settings-toolbar{
+  position:relative;
+  padding-bottom:16px;
+  border-bottom:1px solid var(--line);
+}
+.admin-settings-v79 .settings-toolbar p{margin:7px 0 0;color:var(--muted);line-height:1.6;}
+.admin-settings-v79 .settings-save-status{
+  color:#68768c;
+  font-size:13px;
+  font-weight:800;
+  white-space:nowrap;
+}
+.admin-settings-v79 .admin-tabs{
+  position:sticky;
+  top:0;
+  z-index:8;
+  display:flex;
+  gap:8px;
+  overflow-x:auto;
+  padding:12px 2px;
+  margin:0 -2px 8px;
+  background:rgba(255,255,255,.94);
+  backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--line);
+  scrollbar-width:thin;
+}
+.admin-settings-v79 .admin-tabs .tab{
+  flex:0 0 auto;
+  min-height:42px;
+  padding:0 16px;
+  border-radius:13px;
+  white-space:nowrap;
+}
+.admin-settings-v79 .tab-page{padding-top:18px;}
+.admin-settings-v79 .settings-grid{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:14px;
+}
+.admin-settings-v79 .settings-grid > .field,
+.admin-settings-v79 .settings-grid > .check{
+  min-width:0;
+  padding:16px;
+  border:1px solid var(--line);
+  border-radius:16px;
+  background:#fff;
+  box-shadow:0 7px 18px rgba(32,45,84,.035);
+}
+.admin-settings-v79 .settings-grid > .field:focus-within,
+.admin-settings-v79 .settings-grid > .check:focus-within{
+  border-color:color-mix(in srgb,var(--accent) 45%,var(--line));
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 10%,transparent);
+}
+.admin-settings-v79 .settings-grid input,
+.admin-settings-v79 .settings-grid select,
+.admin-settings-v79 .settings-grid textarea{
+  width:100%;
+  max-width:100%;
+}
+.admin-settings-v79 .settings-grid textarea[readonly]{
+  background:#f7f9fc;
+  color:#526078;
+  cursor:text;
+}
+.admin-settings-v79 .settings-section-heading{
+  display:flex;
+  align-items:center;
+  gap:13px;
+  margin:12px 0 0;
+  padding:16px 18px;
+  border:1px solid #dce5f2;
+  border-radius:18px;
+  background:linear-gradient(135deg,#f8fbff,#f7f4ff);
+}
+.admin-settings-v79 .settings-section-heading > span{
+  width:38px;
+  height:38px;
+  display:grid;
+  place-items:center;
+  flex:0 0 auto;
+  border-radius:12px;
+  color:#fff;
+  background:linear-gradient(135deg,var(--accent),var(--accent-2));
+  font-weight:1000;
+  font-size:12px;
+}
+.admin-settings-v79 .settings-section-heading h3{margin:0;font-size:18px;color:var(--text);}
+.admin-settings-v79 .settings-section-heading p{margin:4px 0 0;color:var(--muted);font-size:13px;line-height:1.5;}
+.admin-settings-v79 .readonly-box{line-height:1.65;}
+.admin-settings-v79 .readonly-box p:last-child{margin-bottom:0;}
+.admin-settings-v79 .dns-suffix-editor-block{overflow:hidden;}
+.admin-settings-v79 .suffix-editor-row{max-width:100%;}
+.admin-settings-v79 .notification-template{box-shadow:none;}
+.admin-settings-v79 .btn.primary.wide{
+  position:sticky;
+  bottom:14px;
+  z-index:5;
+  min-height:48px;
+  box-shadow:0 12px 32px rgba(79,99,246,.22);
+}
+html[data-theme="dark"] .admin-settings-v79 .admin-tabs{
+  background:rgba(15,23,42,.94);
+}
+html[data-theme="dark"] .admin-settings-v79 .settings-grid > .field,
+html[data-theme="dark"] .admin-settings-v79 .settings-grid > .check,
+html[data-theme="dark"] .admin-settings-v79 .settings-section-heading{
+  background:#111b2d;
+}
+@media (max-width:960px){
+  .admin-settings-v79 .settings-grid{grid-template-columns:1fr;}
+  .admin-settings-v79 .settings-toolbar{align-items:flex-start;}
+}
+@media (max-width:640px){
+  .admin-settings-v79{padding:16px!important;}
+  .admin-settings-v79 .settings-toolbar{gap:12px;}
+  .admin-settings-v79 .toolbar-actions{width:100%;}
+  .admin-settings-v79 .toolbar-actions .btn,.admin-settings-v79 .toolbar-actions .file-btn{flex:1;text-align:center;justify-content:center;}
+  .admin-settings-v79 .settings-save-status{width:100%;}
+  .admin-settings-v79 .settings-section-heading{padding:13px 14px;}
+  .admin-settings-v79 .settings-grid > .field,.admin-settings-v79 .settings-grid > .check{padding:14px;}
+  .admin-settings-v79 .btn.primary.wide{bottom:8px;}
+}
+
+
+/* v80 DNS 多根域名修复：不再右侧溢出，增加“允许申请”和单域名 Token */
+.admin-settings-v79 .dns-suffix-editor-block{
+  overflow: visible !important;
+}
+.admin-settings-v79 .suffix-editor-row.v80{
+  display:grid !important;
+  grid-template-columns: minmax(100px,.6fr) minmax(110px,.7fr) minmax(160px,1fr) minmax(170px,1fr) minmax(230px,1.2fr) minmax(160px,1fr) minmax(120px,.7fr) minmax(90px,.45fr) minmax(120px,.65fr) minmax(260px,1.2fr) minmax(150px,.75fr) !important;
+  gap:12px !important;
+  align-items:end !important;
+  width:100% !important;
+  max-width:100% !important;
+  box-sizing:border-box !important;
+  padding:16px !important;
+  overflow:hidden !important;
+}
+.admin-settings-v79 .suffix-editor-row.v80 label,
+.admin-settings-v79 .suffix-editor-row.v80 .suffix-toggle-cell{
+  min-width:0;
+}
+.admin-settings-v79 .suffix-editor-row.v80 input,
+.admin-settings-v79 .suffix-editor-row.v80 select{
+  width:100%;
+  min-width:0;
+  box-sizing:border-box;
+}
+.admin-settings-v79 .suffix-toggle-cell label{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  font-weight:800;
+  color:#64748b;
+  font-size:13px;
+}
+.admin-settings-v79 .suffix-toggle-cell input[type="checkbox"]{
+  width:42px;
+  height:42px;
+  accent-color:var(--accent);
+}
+.admin-settings-v79 .suffix-toggle-cell em,
+.admin-settings-v79 .suffix-token-field em{
+  display:block;
+  margin-top:5px;
+  color:#7b879b;
+  font-size:12px;
+  line-height:1.35;
+  font-style:normal;
+  font-weight:600;
+}
+.admin-settings-v79 .suffix-editor-row.v80 .suffix-actions{
+  min-height:42px;
+  display:flex;
+  gap:8px;
+  align-items:flex-end;
+  justify-content:flex-end;
+  flex-wrap:wrap;
+}
+.admin-settings-v79 .suffix-editor-row.v80 .suffix-token-field input{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+}
+.admin-settings-v79 #suffixes-json{
+  max-height:220px;
+  font-size:13px;
+}
+@media (max-width: 1500px){
+  .admin-settings-v79 .suffix-editor-row.v80{
+    grid-template-columns: repeat(3, minmax(0,1fr)) !important;
+  }
+  .admin-settings-v79 .suffix-editor-row.v80 .suffix-token-field{
+    grid-column:span 2;
+  }
+}
+@media (max-width: 760px){
+  .admin-settings-v79 .suffix-editor-row.v80{
+    grid-template-columns: 1fr !important;
+  }
+  .admin-settings-v79 .suffix-editor-row.v80 .suffix-token-field{
+    grid-column:auto;
+  }
+  .admin-settings-v79 .suffix-editor-row.v80 .suffix-actions{
+    justify-content:flex-start;
+  }
+}
+
+/* v81 管理员设置显示与翻译修复 */
+.admin-settings-v79 .settings-grid > .check,
+.admin-settings-v79 label.check,
+.admin-settings-v79 .event-grid label.check {
+  display: grid !important;
+  grid-template-columns: 24px minmax(0, 1fr) !important;
+  align-items: start !important;
+  justify-content: start !important;
+  gap: 4px 12px !important;
+  text-align: left !important;
+  min-height: auto !important;
+}
+.admin-settings-v79 label.check input[type="checkbox"],
+.admin-settings-v79 .event-grid label.check input[type="checkbox"] {
+  grid-column: 1 !important;
+  grid-row: 1 / span 2 !important;
+  justify-self: start !important;
+  align-self: start !important;
+  width: 18px !important;
+  height: 18px !important;
+  margin: 2px 0 0 0 !important;
+  accent-color: var(--accent, #4f63f6);
+}
+.admin-settings-v79 label.check em,
+.admin-settings-v79 .event-grid label.check em {
+  grid-column: 2 !important;
+  margin: 2px 0 0 !important;
+  white-space: normal !important;
+}
+.admin-settings-v79 .event-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)) !important;
+  align-items: stretch !important;
+}
+.admin-settings-v79 .event-grid label.check {
+  padding: 12px 14px !important;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 6px 16px rgba(32,45,84,.035);
+}
+.admin-settings-v79 .suffix-editor-row.v80 {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 14px !important;
+  align-items: start !important;
+  overflow: visible !important;
+  padding: 18px !important;
+  border-radius: 22px !important;
+}
+.admin-settings-v79 .suffix-editor-row.v80 label,
+.admin-settings-v79 .suffix-editor-row.v80 .suffix-toggle-cell {
+  min-width: 0 !important;
+  width: 100% !important;
+}
+.admin-settings-v79 .suffix-editor-row.v80 input,
+.admin-settings-v79 .suffix-editor-row.v80 select {
+  width: 100% !important;
+  min-width: 0 !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.admin-settings-v79 .suffix-editor-row.v80 .zone-field,
+.admin-settings-v79 .suffix-editor-row.v80 .suffix-token-field {
+  grid-column: span 2;
+}
+.admin-settings-v79 .suffix-editor-row.v80 .suffix-actions {
+  grid-column: span 2;
+  min-height: 0 !important;
+  align-items: end !important;
+  justify-content: flex-start !important;
+  padding-top: 22px;
+}
+.admin-settings-v79 .suffix-toggle-cell input[type="checkbox"] {
+  width: 36px !important;
+  height: 36px !important;
+}
+.admin-settings-v79 .suffix-toggle-cell em,
+.admin-settings-v79 .suffix-token-field em,
+.admin-settings-v79 .suffix-editor-row.v80 label span {
+  white-space: normal !important;
+  word-break: break-word !important;
+}
+.admin-settings-v79 .notification-template {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  align-items: start;
+}
+.admin-settings-v79 .notification-template h3,
+.admin-settings-v79 .notification-template .wide {
+  grid-column: 1 / -1;
+}
+.admin-settings-v79 .settings-grid > .field span,
+.admin-settings-v79 .settings-grid > .check,
+.admin-settings-v79 .suffix-editor-row.v80 label span,
+.admin-settings-v79 .suffix-toggle-cell label span {
+  line-height: 1.35;
+}
+@media (max-width: 1380px) {
+  .admin-settings-v79 .suffix-editor-row.v80 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .admin-settings-v79 .suffix-editor-row.v80 .zone-field,
+  .admin-settings-v79 .suffix-editor-row.v80 .suffix-token-field,
+  .admin-settings-v79 .suffix-editor-row.v80 .suffix-actions { grid-column: 1 / -1; }
+}
+@media (max-width: 760px) {
+  .admin-settings-v79 .suffix-editor-row.v80,
+  .admin-settings-v79 .notification-template { grid-template-columns: 1fr !important; }
+  .admin-settings-v79 .suffix-editor-row.v80 .zone-field,
+  .admin-settings-v79 .suffix-editor-row.v80 .suffix-token-field,
+  .admin-settings-v79 .suffix-editor-row.v80 .suffix-actions { grid-column: auto; }
+  .admin-settings-v79 .event-grid { grid-template-columns: 1fr !important; }
+}
+
+/* v82 analytics chart update: learn from BT panel style */
+.analytics-toolbar-v82{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;width:100%}
+.analytics-toolbar-v82 .toolbar-group{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.analytics-toolbar-v82 .toolbar-label{font-weight:900;color:#4b5565}
+.analytics-toolbar-v82 .bt-segment{background:#f5f7fb;border:1px solid #dbe4f0;border-radius:16px;padding:4px;gap:4px}
+.analytics-toolbar-v82 .bt-chip{border:none;background:transparent;border-radius:12px;padding:10px 14px;color:#5f6f86;min-width:64px}
+.analytics-toolbar-v82 .bt-chip.active{background:#1f9fe8;color:#fff;box-shadow:none}
+.analytics-toolbar-v82 .icon-btn{width:44px;height:44px;border-radius:12px;padding:0;font-size:22px;display:grid;place-items:center}
+.bt-legend{justify-content:flex-start;margin:4px 0 10px 4px}
+.line-chart-box{background:linear-gradient(180deg,#ffffff 0%,#fbfdff 100%);border-radius:18px}
+.line-area{opacity:.12}
+.line-area-0{fill:#2697ff}.line-area-1{fill:#17cdb5}.line-area-2{fill:#ff6f4d}
+.analytics-line-svg{height:360px!important}
+.chart-grid-line{stroke:#dde6f3;stroke-dasharray:4 6}
+.chart-axis{stroke:#b4c0d1}
+.chart-axis-text{fill:#7c889c;font-weight:800}
+.chart-hit{cursor:crosshair}
+.chart-hover-line.active{stroke:#94a3b8;opacity:.95}
+.chart-overview{margin-top:8px;padding:8px 6px 0}
+.overview-strip{background:#eef3ff;border:1px solid #d7e3fb;border-radius:14px;padding:6px 10px;height:68px;display:flex;align-items:center}
+.overview-svg{width:100%;height:52px;display:block}
+.overview-line{stroke-width:3;opacity:.8}
+.overview-meta{display:flex;align-items:center;justify-content:space-between;padding:6px 4px 0;color:#7b8798;font-weight:900;font-size:12px}
+.overview-meta em{font-style:normal;color:#90a0b8}
+.rich-tip{min-width:190px;max-width:280px;padding:12px 14px;border-color:#d4e7ff;box-shadow:0 16px 40px rgba(15,23,42,.18)}
+.rich-tip::before{display:none}
+.tip-title{font-size:15px;color:#24324a;font-weight:1000;margin-bottom:8px}
+.tip-row{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:2px 0;color:#334155}
+.tip-row b{font-size:15px}
+.tip-swatch{width:12px;height:12px;border-radius:999px;display:inline-block}
+.tip-swatch.line-0{background:#2697ff}.tip-swatch.line-1{background:#17cdb5}.tip-swatch.line-2{background:#ff6f4d}
+@media (max-width:900px){.analytics-toolbar-v82{align-items:flex-start}.analytics-toolbar-v82 .toolbar-group-right{width:100%}.analytics-toolbar-v82 .custom-range{width:100%}.analytics-toolbar-v82 .custom-range input{flex:1;min-width:140px}.analytics-line-svg{height:300px!important}}
+@media (max-width:560px){.analytics-toolbar-v82 .toolbar-label{width:100%}.analytics-toolbar-v82 .bt-chip{padding:8px 10px;min-width:auto}.overview-strip{height:58px}.overview-svg{height:42px}.rich-tip{max-width:220px}}
+
+/* v83 donut + multi-root layout fixes */
+.donut-wrap.email-style.compact-ring{
+  grid-template-columns:minmax(240px,1fr) 320px!important;
+  gap:36px;
+  align-items:center;
+}
+.donut-wrap.email-style.compact-ring .donut-svg{
+  width:320px!important;
+  height:320px!important;
+  justify-self:center;
+  overflow:visible;
+}
+.donut-wrap.email-style.compact-ring .donut-bg,
+.donut-wrap.email-style.compact-ring .donut-seg{
+  stroke-width:22;
+}
+.donut-wrap.email-style.compact-ring .donut-seg{
+  stroke-linecap:round;
+}
+.donut-wrap.email-style.compact-ring .donut-total{
+  font-size:34px;
+}
+.donut-wrap.email-style.compact-ring .donut-caption{
+  font-size:13px;
+}
+.donut-wrap.email-style.compact-ring .donut-legend{
+  display:grid;
+  gap:14px;
+  align-self:center;
+}
+.donut-wrap.email-style.compact-ring .donut-legend p{
+  grid-template-columns:auto minmax(120px,1fr) auto auto!important;
+  align-items:center;
+  padding:3px 0;
+}
+
+.admin-settings-v79 .suffix-editor-row.v83{
+  display:grid!important;
+  grid-template-columns:repeat(12,minmax(0,1fr))!important;
+  gap:14px!important;
+  align-items:start!important;
+  width:100%!important;
+  max-width:100%!important;
+  padding:18px!important;
+  overflow:visible!important;
+  box-sizing:border-box!important;
+  border-radius:22px!important;
+}
+.admin-settings-v79 .suffix-editor-row.v83 .enabled-toggle,
+.admin-settings-v79 .suffix-editor-row.v83 .register-toggle,
+.admin-settings-v79 .suffix-editor-row.v83 .proxy-toggle{grid-column:span 2;}
+.admin-settings-v79 .suffix-editor-row.v83 .name-field,
+.admin-settings-v79 .suffix-editor-row.v83 .root-field,
+.admin-settings-v79 .suffix-editor-row.v83 .default-type-field,
+.admin-settings-v79 .suffix-editor-row.v83 .ttl-field{grid-column:span 2;}
+.admin-settings-v79 .suffix-editor-row.v83 .zone-field,
+.admin-settings-v79 .suffix-editor-row.v83 .types-field,
+.admin-settings-v79 .suffix-editor-row.v83 .suffix-token-field{grid-column:span 4;}
+.admin-settings-v79 .suffix-editor-row.v83 .suffix-actions{grid-column:span 2;align-self:end;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-start;padding-top:22px;}
+.admin-settings-v79 .suffix-editor-row.v83 label,
+.admin-settings-v79 .suffix-editor-row.v83 .suffix-toggle-cell{min-width:0!important;width:100%!important;}
+.admin-settings-v79 .suffix-editor-row.v83 input,
+.admin-settings-v79 .suffix-editor-row.v83 select{
+  width:100%!important;
+  min-width:0!important;
+  height:44px;
+  box-sizing:border-box;
+}
+.admin-settings-v79 .suffix-editor-row.v83 .zone-field input,
+.admin-settings-v79 .suffix-editor-row.v83 .suffix-token-field input{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  font-size:13px;
+}
+.admin-settings-v79 .suffix-editor-row.v83 .suffix-toggle-cell label{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  font-weight:800;
+  color:#64748b;
+  font-size:13px;
+}
+.admin-settings-v79 .suffix-editor-row.v83 .suffix-toggle-cell input[type="checkbox"]{
+  width:36px!important;
+  height:36px!important;
+  accent-color:var(--accent);
+}
+.admin-settings-v79 .suffix-editor-row.v83 .suffix-toggle-cell em,
+.admin-settings-v79 .suffix-editor-row.v83 .suffix-token-field em,
+.admin-settings-v79 .suffix-editor-row.v83 label span{
+  white-space:normal!important;
+  word-break:break-word!important;
+  line-height:1.4;
+}
+.admin-settings-v79 .suffix-editor-row.v83 .btn.small{height:42px;padding:0 14px;}
+
+@media (max-width:1500px){
+  .admin-settings-v79 .suffix-editor-row.v83{grid-template-columns:repeat(6,minmax(0,1fr))!important;}
+  .admin-settings-v79 .suffix-editor-row.v83 .enabled-toggle,
+  .admin-settings-v79 .suffix-editor-row.v83 .register-toggle,
+  .admin-settings-v79 .suffix-editor-row.v83 .proxy-toggle,
+  .admin-settings-v79 .suffix-editor-row.v83 .name-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .root-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .default-type-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .ttl-field{grid-column:span 2;}
+  .admin-settings-v79 .suffix-editor-row.v83 .zone-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .types-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .suffix-token-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .suffix-actions{grid-column:span 3;}
+}
+@media (max-width:980px){
+  .donut-wrap.email-style.compact-ring{grid-template-columns:1fr!important;gap:20px;}
+  .donut-wrap.email-style.compact-ring .donut-svg{width:260px!important;height:260px!important;}
+  .admin-settings-v79 .suffix-editor-row.v83{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
+  .admin-settings-v79 .suffix-editor-row.v83 .enabled-toggle,
+  .admin-settings-v79 .suffix-editor-row.v83 .register-toggle,
+  .admin-settings-v79 .suffix-editor-row.v83 .proxy-toggle,
+  .admin-settings-v79 .suffix-editor-row.v83 .name-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .root-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .default-type-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .ttl-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .zone-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .types-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .suffix-token-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .suffix-actions{grid-column:span 1;}
+  .admin-settings-v79 .suffix-editor-row.v83 .zone-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .types-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .suffix-token-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .suffix-actions{grid-column:1 / -1;}
+}
+@media (max-width:640px){
+  .admin-settings-v79 .suffix-editor-row.v83{grid-template-columns:1fr!important;padding:14px!important;}
+  .admin-settings-v79 .suffix-editor-row.v83 .enabled-toggle,
+  .admin-settings-v79 .suffix-editor-row.v83 .register-toggle,
+  .admin-settings-v79 .suffix-editor-row.v83 .proxy-toggle,
+  .admin-settings-v79 .suffix-editor-row.v83 .name-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .root-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .default-type-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .ttl-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .zone-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .types-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .suffix-token-field,
+  .admin-settings-v79 .suffix-editor-row.v83 .suffix-actions{grid-column:auto;}
+  .donut-wrap.email-style.compact-ring .donut-svg{width:220px!important;height:220px!important;}
+}
+/* v86：邮箱验证码、根域名拖动排序与批量连通测试 */
+.email-code-row,
+.email-test-row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.email-code-row input,
+.email-test-row input{
+  flex:1 1 240px;
+  min-width:0;
+}
+.email-code-row .btn,
+.email-test-row .btn{
+  flex:0 0 auto;
+  white-space:nowrap;
+}
+.email-test-box .email-test-row{margin-top:12px;}
+#email-test-result{display:inline-block;line-height:1.5;}
+
+.admin-settings-v79 .suffix-editor-row.v86{
+  position:relative;
+  display:grid!important;
+  grid-template-columns:repeat(12,minmax(0,1fr))!important;
+  gap:14px!important;
+  align-items:start!important;
+  width:100%!important;
+  max-width:100%!important;
+  padding:50px 18px 18px!important;
+  overflow:visible!important;
+  box-sizing:border-box!important;
+  border-radius:22px!important;
+  cursor:grab;
+  transition:opacity .18s ease, transform .18s ease, box-shadow .18s ease;
+}
+.admin-settings-v79 .suffix-editor-row.v86:active{cursor:grabbing;}
+.admin-settings-v79 .suffix-editor-row.v86.is-dragging{
+  opacity:.55;
+  transform:scale(.995);
+  box-shadow:0 18px 45px rgba(15,23,42,.16);
+}
+.admin-settings-v79 .suffix-editor-row.v86 input,
+.admin-settings-v79 .suffix-editor-row.v86 select,
+.admin-settings-v79 .suffix-editor-row.v86 button{cursor:auto;}
+.admin-settings-v79 .suffix-editor-row.v86 .suffix-drag-handle{
+  position:absolute;
+  top:12px;
+  left:16px;
+  right:16px;
+  height:28px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  color:#64748b;
+  font-size:13px;
+  font-weight:800;
+  letter-spacing:.02em;
+  cursor:grab;
+  user-select:none;
+}
+.admin-settings-v79 .suffix-editor-row.v86 .suffix-drag-handle:active{cursor:grabbing;}
+.admin-settings-v79 .suffix-editor-row.v86 .enabled-toggle,
+.admin-settings-v79 .suffix-editor-row.v86 .register-toggle,
+.admin-settings-v79 .suffix-editor-row.v86 .proxy-toggle,
+.admin-settings-v79 .suffix-editor-row.v86 .name-field,
+.admin-settings-v79 .suffix-editor-row.v86 .root-field,
+.admin-settings-v79 .suffix-editor-row.v86 .default-type-field,
+.admin-settings-v79 .suffix-editor-row.v86 .ttl-field,
+.admin-settings-v79 .suffix-editor-row.v86 .register-order-field{grid-column:span 2;}
+.admin-settings-v79 .suffix-editor-row.v86 .zone-field,
+.admin-settings-v79 .suffix-editor-row.v86 .types-field{grid-column:span 4;}
+.admin-settings-v79 .suffix-editor-row.v86 .suffix-token-field{grid-column:span 6;}
+.admin-settings-v79 .suffix-editor-row.v86 .suffix-actions{
+  grid-column:span 4;
+  align-self:end;
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  justify-content:flex-start;
+  padding-top:22px;
+}
+.admin-settings-v79 .suffix-editor-row.v86 label,
+.admin-settings-v79 .suffix-editor-row.v86 .suffix-toggle-cell{min-width:0!important;width:100%!important;}
+.admin-settings-v79 .suffix-editor-row.v86 input,
+.admin-settings-v79 .suffix-editor-row.v86 select{
+  width:100%!important;
+  min-width:0!important;
+  height:44px;
+  box-sizing:border-box;
+}
+.admin-settings-v79 .suffix-editor-row.v86 .zone-field input,
+.admin-settings-v79 .suffix-editor-row.v86 .suffix-token-field input{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  font-size:13px;
+}
+.admin-settings-v79 .suffix-editor-row.v86 .suffix-toggle-cell label{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  font-weight:800;
+  color:#64748b;
+  font-size:13px;
+}
+.admin-settings-v79 .suffix-editor-row.v86 .suffix-toggle-cell input[type="checkbox"]{
+  width:36px!important;
+  height:36px!important;
+  accent-color:var(--accent);
+}
+.admin-settings-v79 .suffix-editor-row.v86 .suffix-toggle-cell em,
+.admin-settings-v79 .suffix-editor-row.v86 .suffix-token-field em,
+.admin-settings-v79 .suffix-editor-row.v86 .name-field em,
+.admin-settings-v79 .suffix-editor-row.v86 .register-order-field em,
+.admin-settings-v79 .suffix-editor-row.v86 label span{
+  white-space:normal!important;
+  word-break:break-word!important;
+  line-height:1.4;
+}
+.admin-settings-v79 .suffix-editor-row.v86 .btn.small{height:42px;padding:0 14px;}
+#cf-test-result{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  margin-top:12px;
+  width:100%;
+}
+#cf-test-result .cf-test-item{
+  display:block;
+  padding:7px 10px;
+  border-radius:9px;
+  background:#f1f5f9;
+  color:#475569;
+  font-size:13px;
+}
+#cf-test-result .cf-test-item.ok{background:#ecfdf5;color:#047857;}
+#cf-test-result .cf-test-item.fail{background:#fef2f2;color:#b91c1c;}
+
+@media (max-width:1500px){
+  .admin-settings-v79 .suffix-editor-row.v86{grid-template-columns:repeat(6,minmax(0,1fr))!important;}
+  .admin-settings-v79 .suffix-editor-row.v86 .enabled-toggle,
+  .admin-settings-v79 .suffix-editor-row.v86 .register-toggle,
+  .admin-settings-v79 .suffix-editor-row.v86 .proxy-toggle,
+  .admin-settings-v79 .suffix-editor-row.v86 .name-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .root-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .default-type-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .ttl-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .register-order-field{grid-column:span 2;}
+  .admin-settings-v79 .suffix-editor-row.v86 .zone-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .types-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .suffix-token-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .suffix-actions{grid-column:span 3;}
+}
+@media (max-width:980px){
+  .admin-settings-v79 .suffix-editor-row.v86{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
+  .admin-settings-v79 .suffix-editor-row.v86 .enabled-toggle,
+  .admin-settings-v79 .suffix-editor-row.v86 .register-toggle,
+  .admin-settings-v79 .suffix-editor-row.v86 .proxy-toggle,
+  .admin-settings-v79 .suffix-editor-row.v86 .name-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .root-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .default-type-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .ttl-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .register-order-field{grid-column:span 1;}
+  .admin-settings-v79 .suffix-editor-row.v86 .zone-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .types-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .suffix-token-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .suffix-actions{grid-column:1 / -1;}
+}
+@media (max-width:640px){
+  .email-code-row,.email-test-row{align-items:stretch;}
+  .email-code-row .btn,.email-test-row .btn{width:100%;}
+  .admin-settings-v79 .suffix-editor-row.v86{grid-template-columns:1fr!important;padding:48px 14px 14px!important;}
+  .admin-settings-v79 .suffix-editor-row.v86 .enabled-toggle,
+  .admin-settings-v79 .suffix-editor-row.v86 .register-toggle,
+  .admin-settings-v79 .suffix-editor-row.v86 .proxy-toggle,
+  .admin-settings-v79 .suffix-editor-row.v86 .name-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .root-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .default-type-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .ttl-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .register-order-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .zone-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .types-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .suffix-token-field,
+  .admin-settings-v79 .suffix-editor-row.v86 .suffix-actions{grid-column:auto;}
+}
+
+/* v89: compact Turnstile fallback / image captcha */
+.human-verification{display:grid;gap:8px;padding:10px 12px;border:1px solid #d8e0ee;border-radius:14px;background:#fff;min-height:0}
+.human-verification-status{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-height:20px;font-size:12px;line-height:1.45;color:#64748b}
+.human-turnstile-slot:empty{display:none}
+.human-image-slot{display:grid;gap:6px}
+.human-image-slot[hidden]{display:none!important}
+.image-captcha-row{display:grid;grid-template-columns:minmax(0,1fr) 168px;gap:10px;align-items:center}
+.image-captcha-answer{width:100%;height:52px;min-height:52px;border:1px solid #d8e0ee;border-radius:12px;background:#fff;padding:0 14px;outline:0;font-size:16px;line-height:1;letter-spacing:2px;text-transform:none;color:#111827}
+.image-captcha-answer:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,99,246,.10)}
+.image-captcha-answer::placeholder{letter-spacing:0;color:#94a3b8}
+.image-captcha-picture{width:168px;height:52px;min-height:52px;padding:0;overflow:hidden;border:1px solid #d8e0ee;border-radius:12px;background:#f8fafc;cursor:pointer;box-shadow:none}
+.image-captcha-picture:hover{border-color:#b7c3d6}
+.image-captcha-picture svg{display:block;width:100%;height:50px;object-fit:cover}
+.image-captcha-picture span{display:grid;place-items:center;height:50px;min-height:50px;color:#64748b;font-size:12px}
+.image-captcha-actions{display:flex;align-items:center;justify-content:flex-start;gap:10px;min-height:18px;font-size:12px;line-height:1.4}
+.human-switch-link{font-weight:700;text-decoration:none}
+.human-switch-link:hover{text-decoration:underline}
+.link-button{border:0;background:none;color:var(--accent);padding:1px 0;cursor:pointer;text-decoration:underline;font:inherit}
+.turnstile-loading{padding:12px;text-align:center;color:#64748b;font-size:12px}
+
+/* v88: captcha settings */
+.captcha-background-preview{margin-top:8px;min-height:48px;padding:10px;border:1px dashed #cbd5e1;border-radius:10px;color:#64748b;display:flex;align-items:center;gap:12px}
+.captcha-background-preview img{width:180px;height:64px;object-fit:cover;border-radius:8px;border:1px solid #dbe4f0}
+.template-variable-help{padding:14px 16px;border:1px solid #dbe4f0;border-radius:14px;background:#f8fbff}
+.template-variable-help>div{display:grid;grid-template-columns:max-content 1fr;gap:8px 14px;margin-top:10px;align-items:start}
+.template-variable-help code{font-weight:700;color:#334155;background:#eaf0ff;padding:3px 7px;border-radius:6px}
+.template-variable-help span{color:#64748b;line-height:1.55}
+
+/* v88: message deletion controls */
+.message-toolbar{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.message-select input{width:18px;height:18px;cursor:pointer}
+
+/* v88: administrator help center */
+.admin-help-hero{align-items:center}
+.admin-help-controls{display:grid;grid-template-columns:minmax(260px,2fr) minmax(220px,1fr) auto;gap:14px;align-items:end}
+.admin-help-match{padding:12px 14px;border-radius:10px;background:#eef3ff;color:#334155;font-weight:700;white-space:nowrap}
+.admin-help-category{scroll-margin-top:20px}
+.admin-help-item{border-top:1px solid #e7edf5}
+.admin-help-item:first-child{border-top:0}
+.admin-help-item[hidden]{display:none}
+.admin-help-item summary{list-style:none;display:flex;align-items:center;gap:12px;padding:15px 2px;cursor:pointer;color:#172033}
+.admin-help-item summary::-webkit-details-marker{display:none}
+.admin-help-item summary:after{content:'+';margin-left:auto;font-size:22px;color:#64748b}
+.admin-help-item[open] summary:after{content:'−'}
+.admin-help-number{display:grid;place-items:center;min-width:30px;height:30px;border-radius:9px;background:#eef3ff;color:var(--accent);font-weight:800;font-size:13px}
+.admin-help-answer{margin:0 0 16px 42px;padding:16px 18px;border-radius:12px;background:#f8fafc;color:#475569;line-height:1.75}
+.admin-help-answer p{margin:0 0 10px}
+.admin-help-answer ol{margin:8px 0 12px;padding-left:22px}
+.admin-help-answer li+li{margin-top:5px}
+.admin-help-prevention{padding-top:10px;border-top:1px dashed #cbd5e1}
+
+@media (max-width:760px){
+  .image-captcha-row{grid-template-columns:minmax(0,1fr) 148px;gap:8px}
+  .image-captcha-picture{width:148px;height:50px;min-height:50px}
+  .image-captcha-picture svg,.image-captcha-picture span{height:48px;min-height:48px}
+  .image-captcha-answer{height:50px;min-height:50px;font-size:15px}
+  .admin-help-controls{grid-template-columns:1fr}
+  .admin-help-match{white-space:normal}
+  .admin-help-answer{margin-left:0}
+  .template-variable-help>div{grid-template-columns:1fr}
+}
+
+@media (max-width:360px){
+  .human-verification{padding:9px 10px}
+  .image-captcha-row{grid-template-columns:1fr}
+  .image-captcha-picture{width:100%}
+}
+
+
+/* v91: native-size verification component without an extra wrapper card */
+.human-verification.turnstile-holder,
+.human-verification{
+  display:block!important;
+  width:100%!important;
+  max-width:100%!important;
+  min-height:0!important;
+  margin:10px 0 14px!important;
+  padding:0!important;
+  border:0!important;
+  border-radius:0!important;
+  background:transparent!important;
+  box-shadow:none!important;
+  overflow:visible!important;
+}
+.human-verification-status{display:none!important}
+.human-turnstile-slot{
+  display:flex;
+  align-items:center;
+  justify-content:flex-start;
+  width:100%;
+  min-height:65px;
+  padding:0;
+  border:0;
+  background:transparent;
+  overflow:visible;
+}
+.human-turnstile-slot:empty{display:none;min-height:0}
+.human-turnstile-slot iframe{display:block;max-width:100%!important}
+.human-verification.is-image-captcha{max-width:470px!important}
+.human-image-slot{display:block;max-width:470px}
+.human-image-slot[hidden]{display:none!important}
+.human-verification .turnstile-loading{
+  width:300px;
+  max-width:100%;
+  min-height:65px!important;
+  padding:0!important;
+  border:0!important;
+  border-radius:0!important;
+  background:transparent!important;
+  justify-content:flex-start!important;
+  place-items:center start!important;
+  text-align:left!important;
+  font-size:13px!important;
+  font-weight:600!important;
+}
+.login-compact-card .human-verification.turnstile-holder{overflow:visible!important}
+.image-captcha-row{max-width:470px}
+
+/* v91: readable, responsive full-card root-domain editor */
+.admin-settings-v79 .dns-suffix-editor-block{overflow:visible!important}
+.admin-settings-v79 .suffix-editor-row.v91{
+  position:relative;
+  display:grid!important;
+  grid-template-columns:repeat(12,minmax(0,1fr))!important;
+  gap:16px!important;
+  align-items:start!important;
+  width:100%!important;
+  max-width:100%!important;
+  padding:52px 18px 18px!important;
+  margin:0 0 16px!important;
+  overflow:visible!important;
+  box-sizing:border-box!important;
+  border:1px solid #e4eaf3!important;
+  border-radius:22px!important;
+  background:#f8fbff!important;
+  cursor:grab;
+  transition:opacity .18s ease,transform .18s ease,box-shadow .18s ease;
+}
+.admin-settings-v79 .suffix-editor-row.v91.is-dragging{opacity:.58;transform:scale(.995);box-shadow:0 18px 45px rgba(15,23,42,.14)}
+.admin-settings-v79 .suffix-editor-row.v91 input,
+.admin-settings-v79 .suffix-editor-row.v91 select,
+.admin-settings-v79 .suffix-editor-row.v91 button{cursor:auto}
+.admin-settings-v79 .suffix-editor-row.v91 .suffix-drag-handle{
+  position:absolute;top:12px;left:16px;right:16px;height:28px;
+  display:flex;align-items:center;gap:8px;color:#64748b;font-size:13px;font-weight:800;
+  cursor:grab;user-select:none
+}
+.admin-settings-v79 .suffix-editor-row.v91 label,
+.admin-settings-v79 .suffix-editor-row.v91 .suffix-toggle-cell{min-width:0!important;width:100%!important}
+.admin-settings-v79 .suffix-editor-row.v91 label{display:flex;flex-direction:column;gap:6px}
+.admin-settings-v79 .suffix-editor-row.v91 label span,
+.admin-settings-v79 .suffix-editor-row.v91 em{white-space:normal!important;word-break:break-word!important;line-height:1.45}
+.admin-settings-v79 .suffix-editor-row.v91 input,
+.admin-settings-v79 .suffix-editor-row.v91 select{
+  width:100%!important;min-width:0!important;height:44px!important;box-sizing:border-box!important;
+  overflow:hidden;text-overflow:ellipsis
+}
+.admin-settings-v79 .suffix-editor-row.v91 .enabled-toggle{grid-column:span 2}
+.admin-settings-v79 .suffix-editor-row.v91 .register-toggle{grid-column:span 2}
+.admin-settings-v79 .suffix-editor-row.v91 .name-field{grid-column:span 3}
+.admin-settings-v79 .suffix-editor-row.v91 .root-field{grid-column:span 2}
+.admin-settings-v79 .suffix-editor-row.v91 .zone-field{grid-column:span 3}
+.admin-settings-v79 .suffix-editor-row.v91 .types-field{grid-column:span 3}
+.admin-settings-v79 .suffix-editor-row.v91 .default-type-field{grid-column:span 2}
+.admin-settings-v79 .suffix-editor-row.v91 .ttl-field{grid-column:span 2}
+.admin-settings-v79 .suffix-editor-row.v91 .proxy-toggle{grid-column:span 2}
+.admin-settings-v79 .suffix-editor-row.v91 .register-order-field{grid-column:span 3}
+.admin-settings-v79 .suffix-editor-row.v91 .suffix-token-field{grid-column:span 8}
+.admin-settings-v79 .suffix-editor-row.v91 .suffix-actions{
+  grid-column:span 4;align-self:end;display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-start;padding-top:22px
+}
+.admin-settings-v79 .suffix-editor-row.v91 .suffix-toggle-cell label{display:flex;flex-direction:column;gap:6px;font-weight:800;color:#64748b;font-size:13px}
+.admin-settings-v79 .suffix-editor-row.v91 .suffix-toggle-cell input[type=checkbox]{width:36px!important;height:36px!important;accent-color:var(--accent)}
+.admin-settings-v79 .suffix-editor-row.v91 .zone-field input,
+.admin-settings-v79 .suffix-editor-row.v91 .suffix-token-field input{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:13px}
+.admin-settings-v79 .suffix-editor-row.v91 .btn.small{height:42px;padding:0 14px}
+@media(max-width:1500px){
+  .admin-settings-v79 .suffix-editor-row.v91{grid-template-columns:repeat(6,minmax(0,1fr))!important}
+  .admin-settings-v79 .suffix-editor-row.v91 .enabled-toggle,
+  .admin-settings-v79 .suffix-editor-row.v91 .register-toggle,
+  .admin-settings-v79 .suffix-editor-row.v91 .proxy-toggle{grid-column:span 2}
+  .admin-settings-v79 .suffix-editor-row.v91 .name-field,
+  .admin-settings-v79 .suffix-editor-row.v91 .root-field,
+  .admin-settings-v79 .suffix-editor-row.v91 .zone-field,
+  .admin-settings-v79 .suffix-editor-row.v91 .types-field{grid-column:span 3}
+  .admin-settings-v79 .suffix-editor-row.v91 .default-type-field,
+  .admin-settings-v79 .suffix-editor-row.v91 .ttl-field,
+  .admin-settings-v79 .suffix-editor-row.v91 .register-order-field{grid-column:span 2}
+  .admin-settings-v79 .suffix-editor-row.v91 .suffix-token-field,
+  .admin-settings-v79 .suffix-editor-row.v91 .suffix-actions{grid-column:1/-1}
+}
+@media(max-width:900px){
+  .admin-settings-v79 .suffix-editor-row.v91{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .admin-settings-v79 .suffix-editor-row.v91 .enabled-toggle,
+  .admin-settings-v79 .suffix-editor-row.v91 .register-toggle,
+  .admin-settings-v79 .suffix-editor-row.v91 .proxy-toggle,
+  .admin-settings-v79 .suffix-editor-row.v91 .name-field,
+  .admin-settings-v79 .suffix-editor-row.v91 .root-field,
+  .admin-settings-v79 .suffix-editor-row.v91 .default-type-field,
+  .admin-settings-v79 .suffix-editor-row.v91 .ttl-field,
+  .admin-settings-v79 .suffix-editor-row.v91 .register-order-field{grid-column:span 1}
+  .admin-settings-v79 .suffix-editor-row.v91 .zone-field,
+  .admin-settings-v79 .suffix-editor-row.v91 .types-field,
+  .admin-settings-v79 .suffix-editor-row.v91 .suffix-token-field,
+  .admin-settings-v79 .suffix-editor-row.v91 .suffix-actions{grid-column:1/-1}
+}
+@media(max-width:600px){
+  .admin-settings-v79 .suffix-editor-row.v91{grid-template-columns:1fr!important;padding:50px 14px 14px!important}
+  .admin-settings-v79 .suffix-editor-row.v91>*{grid-column:auto!important}
+  .human-verification.is-image-captcha,.human-image-slot,.image-captcha-row{max-width:100%!important}
+  .image-captcha-row{grid-template-columns:minmax(0,1fr) 138px!important}
+  .image-captcha-picture{width:138px!important}
+}
+
+/* v99 comprehensive analytics dashboard */
+.analytics-dashboard-v99{padding:0!important;background:transparent!important;border:0!important;box-shadow:none!important;overflow:visible!important}
+.analytics-dashboard-head{display:flex;align-items:flex-start;justify-content:space-between;gap:28px;padding:28px 30px;border:1px solid var(--line);border-radius:26px;background:linear-gradient(135deg,#fff 0%,#f6f9ff 58%,#eef5ff 100%);box-shadow:var(--shadow-soft)}
+.analytics-dashboard-head>div:first-child{max-width:760px}.analytics-dashboard-head .eyebrow{font-size:12px;letter-spacing:.18em;font-weight:1000;color:var(--accent);margin-bottom:8px}.analytics-dashboard-head h2{font-size:32px;margin:0 0 10px}.analytics-dashboard-head p{margin:0;color:var(--muted);font-weight:700;line-height:1.7}.analytics-generated{margin-top:14px;color:#7a8799;font-size:13px;font-weight:800}
+.analytics-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:14px 0}.analytics-actions .btn{min-height:42px}
+.analytics-view-tabs{position:sticky;top:0;z-index:12;display:flex;gap:8px;overflow:auto;padding:8px;margin:0 0 18px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.94);backdrop-filter:blur(14px);box-shadow:0 8px 24px rgba(34,57,95,.07)}
+.analytics-view-tabs button{border:0;background:transparent;color:#65748b;font-weight:950;padding:12px 18px;border-radius:13px;white-space:nowrap;cursor:pointer}.analytics-view-tabs button.active{background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff;box-shadow:0 8px 18px rgba(64,92,255,.18)}
+.analytics-panel{display:none;animation:analytics-panel-in .2s ease}.analytics-panel.active{display:block}@keyframes analytics-panel-in{from{opacity:.35;transform:translateY(5px)}to{opacity:1;transform:none}}
+.analytics-kpi-grid{display:grid;grid-template-columns:repeat(3,minmax(260px,1fr));gap:14px;margin-bottom:16px}.analytics-kpi-card{appearance:none;text-align:left;border:1px solid var(--line);background:#fff;border-radius:20px;padding:20px;display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:center;position:relative;cursor:pointer;transition:.18s;box-shadow:0 9px 25px rgba(31,50,84,.05)}.analytics-kpi-card:hover{transform:translateY(-2px);border-color:#b8c8f5;box-shadow:0 14px 30px rgba(31,50,84,.1)}.analytics-kpi-card.warning{border-color:#ffd2b8;background:linear-gradient(135deg,#fff,#fff8f3)}.analytics-kpi-icon{width:52px;height:52px;border-radius:16px;display:grid;place-items:center;background:#edf3ff;color:var(--accent);font-size:24px;font-weight:1000}.analytics-kpi-copy em{display:block;font-style:normal;color:#65748b;font-weight:900}.analytics-kpi-copy strong{display:block;font-size:32px;color:#172033;margin:4px 0}.analytics-kpi-copy small{display:block;color:#8390a3;font-weight:750;line-height:1.45}.analytics-kpi-change{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;border-top:1px dashed #dce4ef;padding-top:12px}.analytics-kpi-change b{font-size:13px;color:#5b687c}.analytics-kpi-change .trend{margin:0!important}
+.analytics-health-grid{display:grid;grid-template-columns:repeat(6,minmax(150px,1fr));gap:12px;margin-bottom:18px}.analytics-info-card{border:1px solid var(--line);border-radius:17px;background:#fff;padding:16px;min-height:112px}.analytics-info-card span{display:block;color:#718096;font-size:13px;font-weight:900}.analytics-info-card strong{display:block;font-size:25px;margin:9px 0 5px;color:#1f2a3d}.analytics-info-card small{color:#8491a3;font-weight:750;line-height:1.45}.analytics-info-card.good{background:#f1fff8;border-color:#c7f0da}.analytics-info-card.warn{background:#fff8f0;border-color:#ffd9b3}
+.analytics-wide{margin-bottom:18px}.analytics-section-head{display:flex;justify-content:space-between;align-items:flex-start;margin:5px 0 16px}.analytics-section-head h3{font-size:24px;margin:0 0 6px}.analytics-section-head p,.chart-titlebar p{margin:4px 0 0;color:var(--muted);font-weight:700;line-height:1.55}.analytics-three-col{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-bottom:18px}.analytics-two-col.balanced{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-bottom:18px}.analytics-dashboard-v99 .chart-card{border-radius:22px;box-shadow:0 9px 25px rgba(31,50,84,.045);overflow:hidden}.analytics-dashboard-v99 .chart-card h3{margin-top:0}.analytics-dashboard-v99 .chart-titlebar{align-items:flex-start}
+.analytics-funnel h4{margin:0 0 16px;font-size:18px}.analytics-funnel>div{display:grid;gap:9px}.funnel-step{width:var(--funnel-width);min-width:190px;margin:auto;background:linear-gradient(90deg,#3a82f7,#6254ef);color:#fff;padding:13px 16px;border-radius:12px;display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:10px;clip-path:polygon(4% 0,96% 0,100% 50%,96% 100%,4% 100%,0 50%)}.funnel-step:nth-child(2){filter:saturate(.9)}.funnel-step:nth-child(3){filter:saturate(.8)}.funnel-step:nth-child(4){filter:saturate(.7)}.funnel-step span{font-weight:850}.funnel-step strong{font-size:19px}.funnel-step em{font-style:normal;font-size:12px;opacity:.88}
+.analytics-bars{display:grid;gap:11px}.analytics-bar-row{display:grid;grid-template-columns:minmax(90px,1.1fr) minmax(100px,2.3fr) auto;gap:10px;align-items:center}.analytics-bar-row>span{font-size:13px;font-weight:850;color:#4c596c;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.analytics-bar-row>div{height:10px;background:#edf1f7;border-radius:99px;overflow:hidden}.analytics-bar-row i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--accent),var(--accent-2))}.analytics-bar-row b{font-size:13px;color:#273248}
+.analytics-table-tools{display:flex;justify-content:flex-end;margin:0 0 12px}.analytics-table-tools input{max-width:360px;height:42px}.analytics-table table{min-width:760px}.analytics-table th[data-sort]{cursor:pointer;user-select:none}.analytics-table th[data-sort]:hover{color:var(--accent)}.analytics-table td small{display:block;color:#8a96a8;margin-top:4px}.analytics-table.tall{max-height:620px;overflow:auto}.analytics-table.tall thead{position:sticky;top:0;z-index:2;background:#fff}.analytics-error-cell{max-width:300px;color:#c74756;white-space:normal}.analytics-table code{font-size:12px;word-break:break-all}
+.analytics-heatmap-wrap{min-width:850px;padding:10px 4px 4px}.analytics-heatmap-wrap{display:grid;gap:6px}.heatmap-hours,.heatmap-row{display:grid;grid-template-columns:52px repeat(24,1fr);gap:5px;align-items:center}.heatmap-hours b{font-size:10px;color:#8792a4;text-align:center}.heatmap-row>span{font-size:12px;font-weight:850;color:#66758b}.heatmap-row i,.heatmap-legend i{display:block;height:24px;border-radius:5px;background:rgba(62,105,245,var(--heat));border:1px solid rgba(73,101,181,.08);cursor:pointer}.heatmap-row i:hover{outline:2px solid var(--accent);outline-offset:1px}.heatmap-legend{display:flex;align-items:center;justify-content:flex-end;gap:5px;margin-top:7px;color:#7b8799;font-size:12px}.heatmap-legend i{width:22px;height:14px}
+.analytics-dashboard-v99 .donut-wrap{grid-template-columns:1fr 190px}.analytics-dashboard-v99 .donut-legend p{grid-template-columns:auto 1fr auto auto}.analytics-dashboard-v99 .donut-legend em{font-style:normal;color:#7c899c;font-size:12px}.analytics-dashboard-v99 .donut-total,.analytics-dashboard-v99 .donut-caption{transform:rotate(90deg);transform-origin:110px 110px}
+@media(max-width:1250px){.analytics-kpi-grid{grid-template-columns:repeat(2,minmax(250px,1fr))}.analytics-health-grid{grid-template-columns:repeat(3,minmax(150px,1fr))}.analytics-three-col{grid-template-columns:repeat(2,minmax(0,1fr))}.analytics-three-col>.chart-card:last-child:nth-child(odd){grid-column:1/-1}}
+@media(max-width:900px){.analytics-dashboard-head{flex-direction:column;padding:22px}.analytics-dashboard-head .analytics-toolbar-v75{width:100%}.analytics-three-col,.analytics-two-col.balanced{grid-template-columns:1fr}.analytics-three-col>.chart-card:last-child:nth-child(odd){grid-column:auto}.analytics-dashboard-v99 .donut-wrap{grid-template-columns:1fr}.analytics-health-grid{grid-template-columns:repeat(2,minmax(145px,1fr))}.analytics-heatmap-wrap{overflow:auto}.analytics-actions{justify-content:flex-start}}
+@media(max-width:620px){.analytics-kpi-grid{grid-template-columns:1fr}.analytics-health-grid{grid-template-columns:1fr 1fr}.analytics-dashboard-head h2{font-size:26px}.analytics-view-tabs{border-radius:14px}.analytics-view-tabs button{padding:10px 13px}.analytics-info-card{min-height:104px}.analytics-dashboard-v99 .chart-card{padding:15px}.funnel-step{min-width:160px}.analytics-actions .btn{flex:1}.analytics-generated{font-size:12px}}
+@media print{.sidebar,.topbar,.analytics-actions,.analytics-view-tabs,.analytics-toolbar-v75{display:none!important}.main,.content{margin:0!important;padding:0!important}.analytics-panel{display:block!important;break-before:page}.analytics-dashboard-v99 .chart-card,.analytics-dashboard-head{box-shadow:none!important;break-inside:avoid}.analytics-dashboard-v99{font-size:11px}}
+.analytics-dashboard-v99 .line-3{stroke:#9b6cff;background:#9b6cff;fill:#9b6cff}.analytics-dashboard-v99 .line-4{stroke:#f0a52b;background:#f0a52b;fill:#f0a52b}.analytics-dashboard-v99 .line-area-3{fill:#9b6cff}.analytics-dashboard-v99 .line-area-4{fill:#f0a52b}
+
+/* v100 analytics: denser data, varied chart types, responsive layout and non-blocking tooltips */
+.analytics-dashboard-v100{padding:0!important;background:transparent!important;border:0!important;box-shadow:none!important;overflow:visible!important}
+.analytics-dashboard-v100 .chart-card{border-radius:20px;box-shadow:0 8px 24px rgba(31,50,84,.045);overflow:visible;min-width:0}
+.analytics-dashboard-v100 .chart-card h3{margin-top:0}.analytics-dashboard-v100 .chart-titlebar{align-items:flex-start;flex-wrap:wrap}
+.analytics-dashboard-v100 .interactive-chart{min-width:0;min-height:0;overflow:visible}
+.analytics-dashboard-v100 .analytics-chart-stage{width:100%;overflow:hidden;min-height:260px}
+.analytics-dashboard-v100 .analytics-svg{width:100%;height:auto;aspect-ratio:1080/340;min-height:260px;max-height:410px;display:block}
+.analytics-dashboard-v100 .line-chart-box{min-height:0;background:transparent}
+.analytics-dashboard-v100 .line-area{opacity:.075;pointer-events:none}
+.analytics-dashboard-v100 .line-series{stroke-width:3;vector-effect:non-scaling-stroke;pointer-events:none}
+.analytics-dashboard-v100 .line-dot{vector-effect:non-scaling-stroke;pointer-events:none}
+.analytics-dashboard-v100 .chart-hit{cursor:crosshair;pointer-events:all}
+.analytics-dashboard-v100 .series-hidden{opacity:0!important;visibility:hidden!important}
+.analytics-dashboard-v100 .chart-legend{display:flex;justify-content:flex-start;align-items:center;gap:8px 14px;flex-wrap:wrap;margin:4px 0 10px}
+.analytics-legend-item{display:inline-flex;align-items:center;gap:7px;border:0;background:transparent;padding:5px 7px;border-radius:9px;color:#42516a;font-weight:850;cursor:pointer}
+.analytics-legend-item:hover{background:#f0f4fb}.analytics-legend-item[aria-pressed="false"]{opacity:.4;text-decoration:line-through}
+.analytics-legend-item .legend-dot{width:17px;height:8px}
+.analytics-global-tooltip{position:fixed;z-index:99999;pointer-events:none;min-width:180px;max-width:min(330px,calc(100vw - 24px));padding:12px 14px;background:rgba(255,255,255,.985);border:1px solid #c9dcf7;border-radius:12px;box-shadow:0 16px 44px rgba(15,23,42,.22);color:#27364d;font-weight:850;line-height:1.45;white-space:normal;transform:translateZ(0)}
+.analytics-global-tooltip[hidden]{display:none!important}.analytics-global-tooltip .tip-title{font-size:14px;margin-bottom:8px}.analytics-global-tooltip .tip-row{padding:3px 0}
+.analytics-dashboard-v100 .analytics-floating-tip{display:none!important}
+.analytics-overview-grid{display:grid;grid-template-columns:1.05fr 1.1fr 1.35fr;gap:16px;margin-bottom:18px}
+.analytics-insight-list{display:grid;gap:10px}.analytics-insight-list article{display:grid;grid-template-columns:8px 1fr;gap:11px;padding:11px 12px;border:1px solid #e1e8f3;border-radius:13px;background:#fbfcff}.analytics-insight-list article>span{border-radius:99px;background:#7d8ca3}.analytics-insight-list article.good>span{background:#1dbf8b}.analytics-insight-list article.warn>span{background:#f2a62a}.analytics-insight-list article.danger>span{background:#ef5b67}.analytics-insight-list article.info>span{background:#3f8ff4}.analytics-insight-list h4{font-size:14px;margin:0 0 4px}.analytics-insight-list p{font-size:12.5px;margin:0;color:#66758a;line-height:1.55;font-weight:720}
+.analytics-comparison-bars{display:grid;gap:15px}.comparison-row{display:grid;gap:6px}.comparison-label,.comparison-values{display:flex;justify-content:space-between;gap:10px;align-items:center}.comparison-label span{font-size:13px;font-weight:900;color:#39485f}.comparison-label b{font-size:12px;padding:2px 7px;border-radius:999px}.comparison-label b.up{color:#078b62;background:#e9fff6}.comparison-label b.down{color:#d9485c;background:#fff0f2}.comparison-label b.flat{color:#6c788a;background:#f2f4f8}.comparison-track{position:relative;height:21px;background:#eef2f8;border-radius:7px;overflow:hidden}.comparison-track i{position:absolute;left:0;display:block;border-radius:6px;cursor:help}.comparison-track .previous{top:3px;height:6px;background:#b9c5d7}.comparison-track .current{bottom:3px;height:8px;background:linear-gradient(90deg,#328cf5,#6657ef)}.comparison-values{font-size:11px;color:#8490a2}.comparison-values strong{color:#344256}.comparison-key{display:flex;justify-content:flex-end;gap:16px;font-size:11px;color:#68768b}.comparison-key span{display:flex;align-items:center;gap:5px}.comparison-key i{width:16px;height:7px;border-radius:3px}.comparison-key i.previous{background:#b9c5d7}.comparison-key i.current{background:#4c75f0}
+.analytics-donut-chart{width:100%;overflow:hidden}.analytics-donut-layout{display:grid;grid-template-columns:minmax(0,1fr) 180px;gap:20px;align-items:center;min-height:210px}.analytics-donut-svg{width:180px;height:180px;max-width:100%;justify-self:end;overflow:visible}.analytics-donut-bg{fill:none;stroke:#edf1f6;stroke-width:20}.analytics-donut-segment{fill:none;stroke-width:20;stroke-linecap:round;cursor:help;transition:opacity .16s,stroke-width .16s}.analytics-donut-segment:hover,.analytics-donut-segment:focus{stroke-width:24;outline:none}.analytics-donut-total{font-size:29px;font-weight:1000;fill:#111827}.analytics-donut-caption{font-size:12px;font-weight:900;fill:#7f8b9e}.analytics-donut-legend{display:grid;gap:8px;min-width:0}.analytics-donut-legend button{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:8px;align-items:center;border:0;background:transparent;padding:5px 4px;text-align:left;color:#435067;font-weight:820;cursor:help;min-width:0}.analytics-donut-legend button:hover{background:#f5f7fb;border-radius:9px}.analytics-donut-legend span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.analytics-donut-legend em{font-style:normal;color:#7f8b9d;font-size:11px}
+.grouped-column-chart .column-bar{cursor:help}.column-0{fill:#328cf5}.column-1{fill:#17c7ad}.column-2{fill:#ff704d}.column-3{fill:#9a6bff}.column-4{fill:#f0a529}
+.analytics-stacked-bars{display:grid;gap:11px}.stacked-row{display:grid;grid-template-columns:minmax(90px,140px) 1fr;gap:10px;align-items:center}.stacked-label{display:flex;justify-content:space-between;gap:6px;color:#47566c;font-size:12px}.stacked-label b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.stacked-label span{color:#8894a5}.stacked-track{display:flex;height:18px;background:#edf1f7;border-radius:7px;overflow:hidden}.stacked-track i{height:100%;min-width:2px;cursor:help}.stack-0{background:#328cf5}.stack-1{background:#f2aa2d}.stack-2{background:#ef5e68}.stack-3{background:#17c7ad}.stacked-legend{display:flex;justify-content:flex-end;gap:12px;flex-wrap:wrap;font-size:11px;color:#6d7a8e}.stacked-legend span{display:flex;align-items:center;gap:5px}.stacked-legend i{width:15px;height:8px;border-radius:3px}
+.analytics-gauge{text-align:center}.analytics-gauge svg{width:100%;max-width:260px;height:auto}.gauge-bg,.gauge-value{fill:none;stroke-width:18;stroke-linecap:round}.gauge-bg{stroke:#edf1f6}.gauge-value{stroke:#2f8df4;cursor:help}.gauge-number{font-size:29px;font-weight:1000;fill:#172033}.gauge-label{font-size:11px;font-weight:850;fill:#738096}.analytics-gauge p{margin:0;color:#738096;font-size:12px;font-weight:750}
+.analytics-radar svg{width:100%;height:auto;max-height:290px}.radar-grid{fill:none;stroke:#dfe6f1;stroke-width:1}.radar-axis{stroke:#e2e8f2;stroke-width:1}.radar-label{font-size:11px;fill:#637188;font-weight:850}.radar-value{fill:rgba(55,132,246,.18);stroke:#3784f6;stroke-width:2}.radar-dot{fill:#3784f6;stroke:#fff;stroke-width:2;cursor:help}
+.analytics-waffle{display:grid;grid-template-columns:minmax(150px,1fr) auto;gap:18px;align-items:center}.waffle-grid{display:grid;grid-template-columns:repeat(10,1fr);gap:3px}.waffle-grid i{aspect-ratio:1;border-radius:3px;background:#e8edf5;cursor:help}.waffle-grid i.filled{background:#22bfa2}.waffle-copy{text-align:right}.waffle-copy strong{display:block;font-size:31px}.waffle-copy span,.waffle-copy small{display:block;color:#748196;font-weight:800;font-size:12px;margin-top:3px}
+.analytics-treemap{display:flex!important;flex-wrap:wrap;align-content:stretch;gap:6px;min-height:230px}.analytics-treemap>div{flex-grow:var(--tree-size);flex-basis:calc(var(--tree-size)*1px);min-width:92px;min-height:76px;border-radius:12px;padding:12px;color:#fff;display:flex;flex-direction:column;justify-content:flex-end;cursor:help;overflow:hidden}.analytics-treemap b{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.analytics-treemap strong{font-size:22px;margin-top:5px}.analytics-treemap small{opacity:.85}.tree-0{background:#328cf5}.tree-1{background:#19bfa7}.tree-2{background:#ef6a54}.tree-3{background:#8e68ed}.tree-4{background:#d99a23}.tree-5{background:#4faac3}.tree-6{background:#6578d8}.tree-7{background:#6ca65a}
+.analytics-dashboard-v100 .chart-overview{margin-top:6px;border-top:1px dashed #e2e8f1;padding-top:8px}.analytics-dashboard-v100 .chart-overview .overview-svg{height:40px;width:100%;background:#f3f6fb;border-radius:9px}.analytics-dashboard-v100 .overview-meta{padding-top:4px}
+.analytics-dashboard-v100 .analytics-three-col,.analytics-dashboard-v100 .analytics-two-col.balanced{align-items:stretch}.analytics-dashboard-v100 .analytics-three-col>.chart-card,.analytics-dashboard-v100 .analytics-two-col>.chart-card{min-width:0}
+.analytics-dashboard-v100 .analytics-heatmap-wrap{min-width:760px}.analytics-dashboard-v100 .analytics-table{max-width:100%}
+@media(max-width:1400px){.analytics-overview-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.analytics-overview-grid>.chart-card:last-child{grid-column:1/-1}.analytics-donut-layout{grid-template-columns:minmax(0,1fr) 160px}.analytics-donut-svg{width:160px;height:160px}}
+@media(max-width:1050px){.analytics-overview-grid{grid-template-columns:1fr}.analytics-overview-grid>.chart-card:last-child{grid-column:auto}.analytics-donut-layout{grid-template-columns:minmax(0,1fr) 170px}.analytics-dashboard-v100 .analytics-chart-stage{overflow-x:auto}.analytics-dashboard-v100 .analytics-svg{min-width:720px}.analytics-dashboard-v100 .grouped-column-chart .analytics-svg{min-width:760px}}
+@media(max-width:760px){.analytics-donut-layout{grid-template-columns:1fr}.analytics-donut-svg{justify-self:center;width:175px;height:175px}.analytics-donut-legend{order:2}.analytics-waffle{grid-template-columns:1fr}.waffle-copy{text-align:left}.analytics-dashboard-v100 .analytics-chart-stage{margin-left:-5px;margin-right:-5px}.analytics-dashboard-v100 .chart-legend{overflow-x:auto;flex-wrap:nowrap;padding-bottom:4px}.stacked-row{grid-template-columns:100px 1fr}.analytics-global-tooltip{font-size:12px}}
+@media(max-width:520px){.analytics-donut-layout{min-height:0}.analytics-donut-svg{width:150px;height:150px}.analytics-treemap>div{min-width:78px}.analytics-dashboard-v100 .analytics-svg{min-width:650px}.analytics-dashboard-v100 .analytics-heatmap-wrap{min-width:700px}}
+.analytics-dashboard-v100 .line-3{stroke:#9b6cff;background:#9b6cff;fill:#9b6cff}.analytics-dashboard-v100 .line-4{stroke:#f0a52b;background:#f0a52b;fill:#f0a52b}.analytics-dashboard-v100 .line-5{stroke:#4faac3;background:#4faac3;fill:#4faac3}.analytics-dashboard-v100 .line-area-3{fill:#9b6cff}.analytics-dashboard-v100 .line-area-4{fill:#f0a52b}.analytics-dashboard-v100 .line-area-5{fill:#4faac3}.analytics-global-tooltip .tip-swatch.line-3{background:#9b6cff}.analytics-global-tooltip .tip-swatch.line-4{background:#f0a52b}.analytics-global-tooltip .tip-swatch.line-5{background:#4faac3}
+
+
+/* v104 domain availability and Cloudflare DNS import diagnostics */
+.domain-availability{
+  min-height:24px;
+  margin:9px 2px 2px;
+  font-size:14px;
+  line-height:1.5;
+  font-weight:800;
+  color:var(--muted);
+}
+.domain-availability.is-checking{color:var(--muted)}
+.domain-availability.is-available{color:var(--success)}
+.domain-availability.is-unavailable{color:var(--danger)}
+.loading-card.compact{min-height:180px}
+.dns-sync-warnings{margin-bottom:14px}
+.dns-sync-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:14px}
+.dns-sync-summary>div{padding:14px 16px;border:1px solid var(--line);border-radius:16px;background:var(--soft)}
+.dns-sync-summary strong{display:block;font-size:24px}
+.dns-sync-summary span{display:block;margin-top:4px;color:var(--muted);font-weight:700}
+.dns-sync-toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:10px 0 12px}
+.dns-sync-toolbar .check{display:flex;align-items:center;gap:9px;font-weight:800}
+.dns-sync-toolbar input[type="checkbox"],.dns-sync-table input[type="checkbox"]{width:20px;height:20px;accent-color:var(--accent)}
+.dns-sync-table-wrap{max-height:52vh;overflow:auto;border:1px solid var(--line);border-radius:16px}
+.dns-sync-table{min-width:980px}
+.dns-sync-table th{position:sticky;top:0;z-index:2;background:#f8fafc}
+.dns-sync-table td{vertical-align:top}
+.dns-sync-table small{color:var(--muted)}
+.dns-sync-content-value{display:inline-block;max-width:360px;white-space:normal;overflow-wrap:anywhere}
+@media(max-width:760px){
+  .admin-home-settings-v117 .home-settings-toolbar{padding:18px}
+  .admin-home-settings-v117 #homepage-settings-form{padding:18px 14px 24px}
+  .dns-sync-summary{grid-template-columns:1fr}
+  .dns-sync-toolbar{align-items:flex-start;flex-direction:column}
+  .domain-availability{font-size:13px}
+}
+
+/* v104: DNS import diagnostics and operation-log batch deletion */
+.dns-sync-summary-detailed{grid-template-columns:repeat(4,minmax(0,1fr))}
+.dns-sync-diagnostics{margin:14px 0;border:1px solid var(--line);border-radius:16px;background:var(--panel,#fff);overflow:hidden}
+.dns-sync-diagnostics>summary{cursor:pointer;padding:13px 16px;font-weight:800;background:var(--soft);user-select:none}
+.dns-sync-diagnostics .table-wrap{margin:0;border:0;border-top:1px solid var(--line);border-radius:0;max-height:300px;overflow:auto}
+.dns-sync-diagnostics table{min-width:860px}
+.dns-sync-skip-wrap table{min-width:900px}
+.danger-text{color:var(--danger,#dc2626)}
+.operation-delete-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:14px 0;padding:12px 14px;border:1px solid var(--line);border-radius:14px;background:var(--soft)}
+.operation-delete-toolbar #operation-log-selected-count{color:var(--muted);font-weight:700;margin-right:auto}
+.operation-log-select{display:flex;align-items:flex-start;padding-top:5px}
+.operation-log-select input{width:18px;height:18px}
+.operation-log-actions{display:flex;align-items:flex-start;margin-left:auto}
+.operation-log-item[data-operation-log-id]{align-items:flex-start}
+@media(max-width:980px){.dns-sync-summary-detailed{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.dns-sync-summary-detailed{grid-template-columns:1fr}.operation-delete-toolbar{align-items:stretch}.operation-delete-toolbar .btn{width:100%}.operation-delete-toolbar #operation-log-selected-count{width:100%;margin:0}.operation-log-actions{width:100%;margin-left:0}.operation-log-item[data-operation-log-id]{flex-wrap:wrap}.operation-log-main{min-width:0;flex:1}}
+
+
+
+
+/* v106: real mobile responsive scale.
+   Do not zoom/transform the whole page: iOS Safari otherwise keeps desktop widths
+   and produces clipped cards/tables. Compact each component while preserving a
+   true 100vw layout and preventing Safari text inflation. */
+@media (max-width: 768px) {
+  html {
+    font-size: 12px !important;
+    -webkit-text-size-adjust: 100% !important;
+    text-size-adjust: 100% !important;
+    overflow-x: hidden !important;
+  }
+  body {
+    zoom: 1 !important;
+    transform: none !important;
+    transform-origin: initial !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    min-height: 100dvh !important;
+    font-size: 11px !important;
+    overflow-x: hidden !important;
+  }
+  .app-shell,.main,.content { width:100% !important; max-width:100vw !important; min-width:0 !important; }
+  .content { padding:8px 8px 24px !important; }
+  .topbar { min-height:46px !important; padding:8px 10px !important; }
+  .topbar h1 { font-size:17px !important; max-width:calc(100vw - 126px) !important; }
+  .menu-btn { min-width:32px !important; height:30px !important; padding:4px 7px !important; }
+  .lang-toggle { min-width:40px !important; padding:5px 7px !important; font-size:11px !important; }
+
+  .sidebar { width:min(72vw,260px) !important; max-width:260px !important; left:calc(-1 * min(72vw,260px)) !important; padding:14px 12px !important; gap:14px !important; }
+  .brand { font-size:14px !important; gap:8px !important; }
+  .brand div { width:36px !important; height:36px !important; border-radius:12px !important; font-size:15px !important; }
+  .sidebar nav { gap:4px !important; }
+  .nav { font-size:12px !important; padding:8px 9px !important; gap:8px !important; border-radius:10px !important; }
+  .nav span { width:19px !important; }
+  .side-user { padding:9px !important; border-radius:12px !important; gap:6px !important; }
+
+  .btn { min-height:34px !important; padding:7px 10px !important; border-radius:10px !important; font-size:11px !important; gap:5px !important; }
+  .btn.small { min-height:28px !important; padding:5px 7px !important; font-size:10px !important; }
+  .card,.domain-card,.detail-hero,.detail-panel,.info-card,.stat { border-radius:14px !important; }
+  .card { padding:11px !important; margin-bottom:9px !important; }
+  .card h2,.info-card h2 { font-size:16px !important; margin-bottom:7px !important; }
+  .card p,.section-head p,.muted { font-size:11px !important; line-height:1.55 !important; }
+  .section-head { gap:6px !important; margin-bottom:10px !important; }
+  .notice { padding:8px 9px !important; border-radius:10px !important; font-size:11px !important; }
+
+  .field { gap:5px !important; }
+  .field span,.admin-settings-v79 .settings-grid > .field span { font-size:11px !important; }
+  .field input,.field select,.field textarea,
+  .admin-settings-v79 .settings-grid input,
+  .admin-settings-v79 .settings-grid select,
+  .admin-settings-v79 .settings-grid textarea {
+    min-height:39px !important;
+    padding:8px 9px !important;
+    border-radius:10px !important;
+    font-size:11px !important;
+  }
+  .field textarea,.admin-settings-v79 .settings-grid textarea { min-height:76px !important; }
+  .field em,.admin-settings-v79 .settings-grid .field em,.admin-settings-v79 .settings-grid .check em { font-size:10px !important; line-height:1.4 !important; }
+
+  .admin-settings-v79 { padding:10px !important; }
+  .admin-settings-v79 .settings-toolbar { gap:8px !important; margin-bottom:10px !important; }
+  .admin-settings-v79 .settings-toolbar h2 { font-size:18px !important; }
+  .admin-settings-v79 .settings-toolbar p { font-size:11px !important; margin-top:4px !important; }
+  .admin-settings-v79 .toolbar-actions { gap:6px !important; }
+  .admin-settings-v79 .admin-tabs {
+    display:flex !important;
+    flex-wrap:nowrap !important;
+    gap:5px !important;
+    padding:5px !important;
+    margin:10px 0 0 !important;
+    overflow-x:auto !important;
+    overscroll-behavior-x:contain !important;
+    -webkit-overflow-scrolling:touch !important;
+    scrollbar-width:none !important;
+  }
+  .admin-settings-v79 .admin-tabs::-webkit-scrollbar { display:none !important; }
+  .admin-settings-v79 .admin-tabs .tab {
+    flex:0 0 auto !important;
+    min-height:34px !important;
+    padding:7px 9px !important;
+    font-size:11px !important;
+    border-radius:9px !important;
+  }
+  .admin-settings-v79 .tab-page { padding-top:10px !important; }
+  .admin-settings-v79 .settings-section-heading { padding:9px 10px !important; border-radius:12px !important; gap:8px !important; }
+  .admin-settings-v79 .settings-section-heading > span { width:32px !important; height:32px !important; min-width:32px !important; border-radius:10px !important; font-size:11px !important; }
+  .admin-settings-v79 .settings-section-heading h3 { font-size:15px !important; }
+  .admin-settings-v79 .settings-section-heading p { font-size:10px !important; line-height:1.4 !important; }
+  .admin-settings-v79 .settings-grid { gap:8px !important; }
+  .admin-settings-v79 .settings-grid > .field,
+  .admin-settings-v79 .settings-grid > .check { padding:10px !important; border-radius:12px !important; }
+  .admin-settings-v79 .readonly-box { padding:10px !important; border-radius:11px !important; font-size:10.5px !important; line-height:1.5 !important; }
+
+  .table-wrap { max-width:100% !important; overflow-x:auto !important; -webkit-overflow-scrolling:touch !important; }
+  table { min-width:520px !important; }
+  th,td { padding:7px 8px !important; font-size:10px !important; }
+  th { font-size:9.5px !important; }
+  #dns-type-policy-table table { min-width:690px !important; }
+  #dns-type-policy-table input[type="text"],#dns-type-policy-table input:not([type]) { min-width:160px !important; height:34px !important; font-size:10.5px !important; }
+  #dns-type-policy-table input[type="checkbox"] { width:17px !important; height:17px !important; }
+  .worker-variable-table-wrap table { min-width:760px !important; }
+
+  .modal-backdrop { padding:0 !important; align-items:end !important; }
+  .modal,.modal.wide { width:100% !important; max-width:100% !important; max-height:90dvh !important; border-radius:16px 16px 0 0 !important; }
+  .modal-titlebar { padding:11px 12px !important; gap:9px !important; }
+  .modal-icon { width:30px !important; height:30px !important; font-size:15px !important; }
+  .modal-titlebar h2 { font-size:16px !important; }
+  .modal-titlebar p { font-size:10px !important; margin-top:2px !important; line-height:1.35 !important; }
+  .modal-x { font-size:28px !important; }
+  .modal-body { padding:11px !important; }
+  .modal-form { gap:9px !important; }
+  .modal-actions { gap:6px !important; padding-top:9px !important; }
+  .preview-box { padding:8px !important; border-radius:10px !important; }
+  .dns-note { padding:9px !important; border-radius:11px !important; font-size:10.5px !important; }
+  .turnstile-holder { min-height:48px !important; max-width:100% !important; overflow:hidden !important; }
+  .turnstile-holder iframe { max-width:100% !important; }
+
+  .suffix-editor-row.v83,.suffix-editor-row.v80 { min-width:0 !important; width:100% !important; }
+  .admin-settings-v79 .suffix-editor-row.v83 { grid-template-columns:1fr !important; gap:8px !important; padding:10px !important; }
+  .admin-settings-v79 .suffix-editor-row.v83 > * { grid-column:auto !important; min-width:0 !important; }
+  .admin-settings-v79 .suffix-editor-row.v83 .suffix-actions { padding-top:0 !important; }
+  .dns-sync-summary,.dns-sync-summary-detailed { grid-template-columns:repeat(2,minmax(0,1fr)) !important; gap:6px !important; }
+  .dns-sync-summary>div { padding:8px !important; border-radius:10px !important; }
+  .dns-sync-summary strong { font-size:16px !important; }
+  .dns-sync-summary span { font-size:9.5px !important; }
+  .dns-sync-toolbar { gap:7px !important; margin:7px 0 !important; }
+  .dns-sync-table { min-width:760px !important; }
+}
+
+@media (max-width: 390px) {
+  .content { padding-left:6px !important; padding-right:6px !important; }
+  .admin-settings-v79 { padding:8px !important; }
+  .admin-settings-v79 .admin-tabs .tab { font-size:10.5px !important; padding:6px 8px !important; }
+  .modal-body { padding:9px !important; }
+  .dns-sync-summary,.dns-sync-summary-detailed { grid-template-columns:1fr 1fr !important; }
+}
+
+/* v107 mobile layout hardening: remove gutter shadows, make DNS settings truly responsive,
+   compact analytics touch tooltips, prevent login overflow, and paginate domain management. */
+.domain-pagination-toolbar{
+  display:grid;
+  grid-template-columns:minmax(220px,1fr) auto auto;
+  gap:12px;
+  align-items:end;
+  margin:0 0 14px;
+  padding:12px;
+  border:1px solid var(--line);
+  border-radius:16px;
+  background:#f8fafc;
+}
+.domain-root-filter{display:grid;gap:5px;min-width:0}.domain-root-filter span{font-size:12px;color:var(--muted);font-weight:900}.domain-root-filter select{width:100%;min-width:0;border:1px solid #d8e0ee;border-radius:11px;background:#fff;min-height:38px;padding:7px 10px;font:inherit;font-weight:800;color:#26334a}
+.domain-page-summary{display:grid;gap:2px;white-space:nowrap}.domain-page-summary strong{font-size:13px}.domain-page-summary span{font-size:11px;color:var(--muted);font-weight:750}.domain-page-actions{display:flex;gap:6px}
+.domain-card-compact-list .domain-list-dns{display:flex;align-items:center;gap:10px;min-width:0;padding:10px 12px;border:1px solid var(--line);border-radius:13px;background:#f8fafc}.domain-card-compact-list .domain-list-dns span{color:var(--muted);font-weight:900;flex:none}.domain-card-compact-list .domain-list-dns strong{min-width:0;overflow-wrap:anywhere;word-break:break-word}
+
+@media (max-width: 768px) {
+  /* Remove the gray/blurred side gutters and desktop shadows on iPhone Safari. */
+  body{background:#f6f8ff!important;background-image:none!important;}
+  .main,.content,.admin-settings-v79,.analytics-dashboard-v100,.domain-management-card{box-shadow:none!important;filter:none!important;}
+  .card,.domain-card,.detail-hero,.detail-panel,.stat,.info-card,.analytics-dashboard-v100 .chart-card,.analytics-dashboard-head{box-shadow:none!important;}
+  .app-footer{margin:0!important;padding:12px 10px calc(14px + env(safe-area-inset-bottom))!important;max-width:100%!important;overflow-wrap:anywhere;}
+
+  /* Drawer should not cast a permanent shadow while closed. */
+  .sidebar{box-shadow:none!important;}
+  .sidebar.open{box-shadow:14px 0 32px rgba(15,23,42,.18)!important;}
+  .sidebar-mask{backdrop-filter:none!important;}
+
+  /* DNS policy becomes a native mobile card list; no horizontal drag is required. */
+  #dns-type-policy-table{margin:0!important;padding:0!important;overflow:visible!important;max-width:100%!important;}
+  #dns-type-policy-table table,
+  #dns-type-policy-table tbody{display:block!important;width:100%!important;min-width:0!important;}
+  #dns-type-policy-table thead{display:none!important;}
+  #dns-type-policy-table tr[data-dns-type-policy]{
+    display:grid!important;
+    grid-template-columns:76px minmax(0,1fr)!important;
+    gap:7px 9px!important;
+    width:100%!important;
+    min-width:0!important;
+    padding:10px 0!important;
+    border-bottom:1px solid var(--line)!important;
+  }
+  #dns-type-policy-table tr[data-dns-type-policy]:last-child{border-bottom:0!important;}
+  #dns-type-policy-table td{
+    display:grid!important;
+    grid-template-columns:88px minmax(0,1fr)!important;
+    gap:7px!important;
+    align-items:center!important;
+    width:100%!important;
+    min-width:0!important;
+    padding:0!important;
+    border:0!important;
+  }
+  #dns-type-policy-table td::before{content:attr(data-mobile-label);font-size:10px;color:#7a8799;font-weight:850;line-height:1.25;}
+  #dns-type-policy-table td:first-child{grid-row:1 / span 3;grid-column:1;display:flex!important;align-items:flex-start!important;padding-top:4px!important;}
+  #dns-type-policy-table td:first-child::before{display:none!important;}
+  #dns-type-policy-table td:first-child strong{font-size:13px!important;color:#111827;}
+  #dns-type-policy-table td:nth-child(n+2){grid-column:2;}
+  #dns-type-policy-table input:not([type="checkbox"]){width:100%!important;min-width:0!important;max-width:100%!important;height:34px!important;font-size:10.5px!important;padding:6px 8px!important;}
+  #dns-type-policy-table .check{justify-content:flex-start!important;font-size:10.5px!important;}
+  #dns-type-policy-table input[type="checkbox"]{width:18px!important;height:18px!important;}
+
+  /* Variable tables keep touch scrolling, but stay within the viewport. */
+  .worker-variable-table-wrap{max-width:100%!important;overflow-x:auto!important;overscroll-behavior-x:contain!important;touch-action:pan-x pan-y!important;-webkit-overflow-scrolling:touch!important;}
+  .worker-variable-table-wrap table{min-width:620px!important;}
+
+  /* Login form cannot exceed its card, including Safari autofill rendering. */
+  .login-split-wrap,.login-compact-card,.login-compact-form,.login-field,.login-input-wrap{width:100%!important;max-width:100%!important;min-width:0!important;box-sizing:border-box!important;}
+  .login-compact-card{overflow:hidden!important;}
+  .login-input-wrap{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;gap:7px!important;overflow:hidden!important;padding:0 10px!important;}
+  .login-input-wrap input{display:block!important;width:100%!important;max-width:100%!important;min-width:0!important;box-sizing:border-box!important;font-size:14px!important;padding:0!important;}
+  .login-input-wrap input:-webkit-autofill{-webkit-text-size-adjust:100%!important;}
+  .password-eye{width:32px!important;min-width:32px!important;padding:0!important;font-size:18px!important;}
+  .login-row{min-width:0!important;gap:8px!important;}.login-link-btn{font-size:12px!important;white-space:nowrap!important;}.login-check{font-size:12px!important;min-width:0!important;}.login-check input{width:18px!important;height:18px!important;}
+
+  /* Analytics touch hint: compact and positioned away from the finger. */
+  .analytics-global-tooltip,.analytics-global-tooltip.is-mobile-tip{
+    min-width:0!important;
+    width:auto!important;
+    max-width:min(220px,calc(100vw - 20px))!important;
+    max-height:180px!important;
+    overflow:auto!important;
+    padding:8px 9px!important;
+    border-radius:9px!important;
+    font-size:10.5px!important;
+    line-height:1.32!important;
+    box-shadow:0 8px 20px rgba(15,23,42,.16)!important;
+  }
+  .analytics-global-tooltip .tip-title{font-size:11px!important;margin-bottom:4px!important;}
+  .analytics-global-tooltip .tip-row{padding:1px 0!important;}
+  .analytics-dashboard-v100 .chart-legend{display:flex!important;flex-wrap:nowrap!important;overflow-x:auto!important;gap:5px!important;padding:0 0 5px!important;-webkit-overflow-scrolling:touch!important;}
+  .analytics-legend-item{flex:0 0 auto!important;white-space:nowrap!important;font-size:10px!important;padding:4px 5px!important;}
+
+  /* Root-domain pagination and compact domain cards. */
+  .domain-pagination-toolbar{grid-template-columns:1fr!important;gap:7px!important;padding:9px!important;border-radius:12px!important;margin-bottom:9px!important;}
+  .domain-root-filter select{min-height:34px!important;font-size:11px!important;padding:6px 8px!important;}
+  .domain-page-summary{white-space:normal!important;}.domain-page-summary strong{font-size:11px!important}.domain-page-summary span{font-size:10px!important}.domain-page-actions{display:grid!important;grid-template-columns:1fr 1fr!important;}
+  .domain-card-compact-list .domain-list-dns{padding:8px 9px!important;border-radius:10px!important;font-size:10.5px!important;}
+  .domain-card-compact-list .domain-head{grid-template-columns:auto minmax(0,1fr) auto!important;}
+  .domain-card-compact-list .domain-title h3{font-size:15px!important;}
+  .domain-card-compact-list .domain-title code{font-size:10px!important;}
+}
+
+@media (max-width: 390px) {
+  #dns-type-policy-table tr[data-dns-type-policy]{grid-template-columns:58px minmax(0,1fr)!important;gap:6px!important;}
+  #dns-type-policy-table td{grid-template-columns:72px minmax(0,1fr)!important;}
+  .analytics-global-tooltip,.analytics-global-tooltip.is-mobile-tip{max-width:min(200px,calc(100vw - 16px))!important;font-size:10px!important;}
+}
+
+/* v112 public website portal ------------------------------------------------ */
+.public-site{min-height:100vh;background:#fff;color:var(--text);overflow-x:hidden}
+.public-site .public-main{max-width:none;padding:0}
+.public-header{position:sticky;top:0;z-index:80;background:rgba(255,255,255,.9);backdrop-filter:blur(18px);border-bottom:1px solid #e9edf5}
+.public-header-inner{height:76px;max-width:1240px;margin:auto;padding:0 28px;display:flex;align-items:center;gap:30px}
+.public-brand{display:flex;align-items:center;gap:11px;min-width:0;font-weight:950}
+.public-brand i{width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg,var(--accent),var(--accent-2));display:grid;place-items:center;color:#fff;font-style:normal;box-shadow:0 10px 26px rgba(79,99,246,.22);overflow:hidden;flex:none}
+.public-brand i img{width:100%;height:100%;object-fit:cover}.public-brand i span{font-size:17px}.public-brand>b{font-size:17px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.public-nav-desktop{display:flex;align-items:center;gap:4px;margin-left:auto}.public-nav-desktop a{padding:10px 12px;border-radius:11px;color:#64748b;font-size:14px;font-weight:850}.public-nav-desktop a:hover,.public-nav-desktop a.active{background:#f1f4ff;color:var(--accent)}
+.public-header-actions{display:flex;gap:8px;align-items:center}.public-header-actions .btn{min-height:40px;padding:9px 14px}.public-header-actions .lang-toggle{position:static!important;inset:auto!important;min-width:42px}
+.public-nav-mobile{display:none;position:relative}.public-nav-mobile summary{list-style:none;width:40px;height:40px;border:1px solid #dce3ef;border-radius:12px;display:grid;place-items:center;font-size:19px;cursor:pointer}.public-nav-mobile summary::-webkit-details-marker{display:none}.public-mobile-menu{position:absolute;right:0;top:48px;width:min(270px,calc(100vw - 24px));padding:10px;background:#fff;border:1px solid #dce3ef;border-radius:16px;box-shadow:0 20px 45px rgba(15,23,42,.14);display:grid;gap:3px}.public-mobile-menu a{padding:10px 12px;border-radius:9px;font-weight:850;color:#475569}.public-mobile-menu a.active,.public-mobile-menu a:hover{background:#f1f4ff;color:var(--accent)}.public-mobile-menu hr{width:100%;border:0;border-top:1px solid #eef2f7;margin:5px 0}
+.public-notice{max-width:1180px;margin:18px auto 0;padding:12px 16px;border:1px solid #d9e7ff;border-radius:14px;background:#f1f6ff;color:#36598d;display:flex;gap:10px;align-items:flex-start;font-size:14px}.public-notice b{color:var(--accent)}
+.public-hero{max-width:1100px;margin:0 auto;text-align:center;padding:105px 24px 78px}.public-hero-badge,.public-page-hero>span{display:inline-flex;padding:7px 10px;border-radius:999px;background:#f0f3ff;color:var(--accent);font-size:11px;font-weight:950;letter-spacing:.1em}.public-hero h1{margin:18px 0 14px;font-size:68px;line-height:1.04;letter-spacing:-3px}.public-hero h1 em{font-style:normal;color:var(--accent)}.public-hero>p{max-width:760px;margin:0 auto 28px;color:#64748b;font-size:18px;line-height:1.75}.public-hero-actions{display:flex;justify-content:center;gap:10px;margin-top:19px}
+.public-domain-search{max-width:820px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr) 180px auto;gap:8px;align-items:start;position:relative}.public-search-input{min-width:0;display:flex;align-items:center;gap:8px;height:56px;padding:0 16px;background:#fff;border:1px solid #d9e0ed;border-radius:16px;box-shadow:0 12px 34px rgba(15,23,42,.06)}.public-search-input span{font-size:22px;color:var(--accent)}.public-search-input input{min-width:0;width:100%;border:0;outline:0;background:transparent;color:#172033;font-size:15px}.public-domain-search select{height:56px;border:1px solid #d9e0ed;border-radius:16px;background:#fff;padding:0 13px;color:#334155;font-weight:800}.public-domain-search>.btn{height:56px;border-radius:16px;padding:0 22px}.public-domain-search-result{grid-column:1/-1;min-height:0;text-align:left;font-size:13px;padding:0 6px;display:flex;gap:9px;align-items:center;flex-wrap:wrap}.public-domain-search-result:empty{display:none}.public-domain-search-result.checking{color:#8793a6}.public-domain-search-result.success{color:#047857}.public-domain-search-result.error{color:#c2413b}.public-domain-search-result b{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#172033}.public-domain-search-result a{font-weight:900;color:var(--accent);margin-left:auto}
+.public-stats{max-width:1180px;margin:0 auto 86px;border:1px solid #e5eaf2;border-radius:22px;display:grid;grid-template-columns:repeat(4,1fr);overflow:hidden;background:#fff}.public-stats>div{padding:24px 20px;text-align:center;border-right:1px solid #e9edf4}.public-stats>div:last-child{border-right:0}.public-stats strong{display:block;font-size:34px;letter-spacing:-1px}.public-stats span{display:block;margin-top:4px;color:#7a8799;font-size:12px;font-weight:800}
+.public-section{max-width:1180px;margin:0 auto;padding:76px 24px}.public-section>header{display:flex;align-items:flex-start;gap:14px;margin-bottom:28px}.public-section>header>span{width:38px;height:38px;display:grid;place-items:center;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff;font-weight:900;flex:none}.public-section>header h2{font-size:31px;margin:0 0 5px;letter-spacing:-.5px}.public-section>header p{margin:0;color:#7a8799;line-height:1.6}.public-section>header>a{margin-left:auto;color:var(--accent);font-weight:900;padding-top:9px}.public-soft-section{max-width:none;padding-left:max(24px,calc((100% - 1132px)/2));padding-right:max(24px,calc((100% - 1132px)/2));background:linear-gradient(180deg,#f8f9ff,#fff)}
+.public-feature-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.public-feature-grid article{padding:24px;border:1px solid #e3e8f0;border-radius:20px;background:#fff;transition:.2s}.public-feature-grid article:hover{transform:translateY(-3px);border-color:#cad4ff;box-shadow:0 16px 40px rgba(15,23,42,.07)}.public-feature-grid article i{width:38px;height:38px;border-radius:12px;background:#f1f4ff;color:var(--accent);display:grid;place-items:center;font-style:normal;font-weight:900}.public-feature-grid h3{font-size:17px;margin:18px 0 8px}.public-feature-grid p{margin:0;color:#748196;font-size:13px;line-height:1.7}.public-feature-grid-3{grid-template-columns:repeat(3,1fr)}
+.public-suffix-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.public-suffix-card{padding:22px;border:1px solid #e3e8f0;border-radius:20px;background:#fff;min-width:0}.public-suffix-card>div{display:flex;align-items:center;gap:12px}.public-suffix-card>div span{font-size:11px;color:var(--accent);font-weight:950}.public-suffix-card h3{font-size:21px;margin:0;overflow-wrap:anywhere}.public-suffix-card p{color:#64748b;margin:13px 0 6px}.public-suffix-card small{color:#8b96a8;display:block;overflow-wrap:anywhere}.public-suffix-card a{display:inline-block;margin-top:18px;color:var(--accent);font-weight:900;font-size:13px}
+.public-steps{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}.public-steps article{padding:20px 16px;border-top:2px solid #e8ecf3}.public-steps b{color:var(--accent);font-size:12px}.public-steps h3{margin:12px 0 6px;font-size:16px}.public-steps p{color:#7a8799;font-size:12px;margin:0;line-height:1.6}
+.public-infra-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.public-infra-grid article{display:flex;align-items:center;gap:14px;padding:21px;border:1px solid #e3e8f0;border-radius:18px}.public-infra-grid article>b{width:48px;height:48px;border-radius:15px;background:#f1f4ff;display:grid;place-items:center;color:var(--accent);font-size:22px}.public-infra-grid h3{margin:0 0 4px}.public-infra-grid p{margin:0;color:#8190a4;font-size:12px}
+.public-faq-list{border:1px solid #e2e8f0;border-radius:18px;overflow:hidden}.public-faq-list details{background:#fff;border-bottom:1px solid #edf0f5}.public-faq-list details:last-child{border-bottom:0}.public-faq-list summary{list-style:none;cursor:pointer;padding:18px 20px;font-weight:900;display:flex;justify-content:space-between;gap:20px}.public-faq-list summary::-webkit-details-marker{display:none}.public-faq-list summary::after{content:'+';color:#7d889a}.public-faq-list details[open] summary::after{content:'−'}.public-faq-list details p{padding:0 20px 19px;margin:0;color:#68768a;line-height:1.75;font-size:13px}
+.public-cta{max-width:1132px;margin:60px auto 90px;padding:34px 38px;border-radius:26px;background:linear-gradient(135deg,#151d35,#27336b);color:#fff;display:flex;justify-content:space-between;align-items:center;gap:30px;box-shadow:0 24px 60px rgba(15,23,42,.16)}.public-cta span{color:#aebcff;font-size:12px;font-weight:900}.public-cta h2{margin:7px 0 6px;font-size:28px}.public-cta p{margin:0;color:#c6cee0}.public-cta>div:last-child{display:flex;gap:8px}.public-cta .btn.secondary{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.2);color:#fff}
+.public-footer{background:#111827;color:#e6ebf3;padding:55px 24px 26px}.public-footer-grid{max-width:1180px;margin:auto;display:grid;grid-template-columns:2fr repeat(3,1fr);gap:45px}.public-footer-grid>div{display:grid;align-content:start;gap:9px}.public-footer-grid>div>b{font-size:13px;margin-bottom:5px;color:#fff}.public-footer-grid a{color:#aab4c4;font-size:12px}.public-footer-grid a:hover{color:#fff}.public-footer-grid p{max-width:360px;color:#919caf;font-size:12px;line-height:1.7}.public-footer .public-brand b{color:#fff}.public-footer-bottom{max-width:1180px;margin:38px auto 0;padding-top:20px;border-top:1px solid rgba(255,255,255,.1);display:flex;gap:18px;flex-wrap:wrap;color:#8995a7;font-size:11px}
+.public-page-hero{max-width:1180px;margin:auto;padding:80px 24px 30px}.public-page-hero h1{font-size:48px;margin:15px 0 10px;letter-spacing:-1.8px}.public-page-hero p{max-width:720px;color:#6d7b90;font-size:15px;line-height:1.75;margin:0}.public-page-section{padding-top:28px}
+.public-available-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.public-available-grid>article{border:1px solid #e0e6ef;border-radius:20px;padding:22px;background:#fff;display:grid;gap:14px}.public-domain-card-top{display:flex;justify-content:space-between;align-items:center;gap:10px}.public-domain-card-top span{font-size:11px;color:#9aa4b4}.public-domain-card-top b{font-size:20px;overflow-wrap:anywhere}.public-available-grid p{margin:0;color:#718096}.public-available-grid dl{margin:0;display:grid;gap:8px}.public-available-grid dl div{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-top:1px solid #eef1f5}.public-available-grid dt{color:#8a95a6;font-size:11px}.public-available-grid dd{margin:0;text-align:right;font-size:11px;font-weight:850;overflow-wrap:anywhere}.public-card-actions{display:flex;gap:7px;margin-top:auto}.public-card-actions .btn{flex:1}.public-query-panel{padding-top:20px}.public-query-panel .public-domain-search{max-width:none}
+.public-mini-guide{padding-top:0;display:grid;grid-template-columns:1fr 1fr;gap:14px}.public-mini-guide>div{padding:22px;border-radius:18px;background:#f8faff;border:1px solid #e4e9f2}.public-mini-guide b{font-size:15px}.public-mini-guide p{color:#738096;line-height:1.7;font-size:12px;margin:8px 0 0}
+.public-knowledge-tools{max-width:1000px;margin:20px auto 16px;padding:0 24px;display:flex;align-items:center;gap:10px}.public-knowledge-tools input{flex:1;min-width:0;height:48px;border:1px solid #dce3ed;border-radius:14px;padding:0 15px;outline:0}.public-knowledge-tools input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,99,246,.1)}.public-knowledge-tools span{color:#8a95a6;font-size:11px;white-space:nowrap}.public-knowledge-list{max-width:1000px;margin:0 auto 90px;padding:0 24px}.public-knowledge-category{margin-top:24px}.public-knowledge-category>header h2{margin:0 0 3px;font-size:20px}.public-knowledge-category>header p{margin:0 0 10px;color:#8a95a6;font-size:12px}.public-knowledge-category details{border:1px solid #e4e8ef;border-radius:13px;background:#fff;margin:8px 0;overflow:hidden}.public-knowledge-category summary{list-style:none;padding:15px 16px;font-weight:850;cursor:pointer}.public-knowledge-category summary::-webkit-details-marker{display:none}.public-knowledge-category details>div{padding:0 16px 16px;color:#68768b;line-height:1.75;font-size:13px}.public-knowledge-category details>div a{color:var(--accent);text-decoration:underline}
+.public-privacy-showcase{min-height:260px;border:1px dashed #cfd7e5;border-radius:24px;background:#f9fbff;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:35px}.public-privacy-showcase i{width:48px;height:48px;border-radius:16px;background:#eef2ff;color:var(--accent);display:grid;place-items:center;margin:auto;font-style:normal;font-size:20px}.public-privacy-showcase h2{margin:14px 0 7px}.public-privacy-showcase p{max-width:650px;color:#728096;line-height:1.7}.public-privacy-showcase .btn{margin-top:12px}
+.public-nav-directory{max-width:1000px;margin:30px auto 90px;padding:0 24px;display:grid;grid-template-columns:1fr 1fr;gap:14px}.public-nav-directory article{border:1px solid #e2e7ef;border-radius:20px;padding:20px;background:#fff}.public-nav-directory h2{font-size:17px;margin:0 0 10px}.public-nav-directory article>a{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 12px;padding:12px 8px;border-top:1px solid #eef1f5}.public-nav-directory article>a b{font-size:13px}.public-nav-directory article>a span{font-size:11px;color:#8490a1;grid-column:1}.public-nav-directory article>a i{grid-row:1/3;grid-column:2;align-self:center;font-style:normal;color:var(--accent)}
+.public-about-grid{max-width:1100px;margin:30px auto 70px;padding:0 24px;display:grid;grid-template-columns:1fr 1fr;gap:14px}.public-about-grid article{padding:27px;border:1px solid #e2e7ef;border-radius:20px;background:#fff}.public-about-grid article.large{grid-column:1/-1;background:linear-gradient(135deg,#f5f7ff,#fff)}.public-about-grid span{color:var(--accent);font-size:11px;font-weight:900}.public-about-grid h2{margin:10px 0 7px;font-size:21px}.public-about-grid p{margin:0;color:#6e7b90;line-height:1.8;font-size:13px}
+.public-contact-grid{max-width:1000px;margin:30px auto 90px;padding:0 24px;display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.public-contact-grid article{padding:26px;border:1px solid #e2e7ef;border-radius:20px;background:#fff}.public-contact-grid i{width:40px;height:40px;border-radius:13px;background:#f0f3ff;color:var(--accent);display:grid;place-items:center;font-style:normal;font-weight:900}.public-contact-grid h2{font-size:17px;margin:17px 0 7px}.public-contact-grid p{color:#718096;font-size:12px;line-height:1.7;min-height:64px}.public-contact-grid a{color:var(--accent);font-size:12px;font-weight:900}.public-faq-page{padding-top:20px;padding-bottom:90px}.public-empty{padding:40px;border:1px dashed #d4dbe7;border-radius:18px;color:#8491a4;text-align:center;grid-column:1/-1}
+
+@media(max-width:980px){
+  .public-nav-desktop{display:none}.public-nav-mobile{display:block;margin-left:auto}.public-header-actions .public-login-btn,.public-header-actions .public-register-btn,.public-header-actions .public-account-btn{display:none}.public-header-inner{height:68px;padding:0 18px;gap:10px}.public-brand>b{max-width:250px}
+  .public-feature-grid,.public-suffix-grid,.public-available-grid{grid-template-columns:repeat(2,1fr)}.public-steps{grid-template-columns:repeat(3,1fr)}.public-footer-grid{grid-template-columns:2fr 1fr 1fr}.public-footer-grid>div:last-child{grid-column:2}.public-contact-grid{grid-template-columns:1fr 1fr}.public-contact-grid article:last-child{grid-column:1/-1}
+}
+@media(max-width:768px){
+  .public-site{font-size:14px!important}.public-site .btn{min-height:40px!important;padding:9px 13px!important;font-size:12px!important;border-radius:11px!important}.public-header-inner{padding:0 13px}.public-brand i{width:36px;height:36px;border-radius:12px}.public-brand>b{font-size:14px;max-width:180px}.public-header-actions{margin-left:auto}.public-header-actions .lang-toggle{font-size:11px!important}
+  .public-notice{margin:10px 10px 0;font-size:11px;padding:9px 10px}.public-hero{padding:62px 14px 45px}.public-hero-badge{font-size:9px}.public-hero h1{font-size:40px;letter-spacing:-1.5px;margin-top:14px}.public-hero>p{font-size:13px;line-height:1.7;margin-bottom:20px}.public-domain-search{grid-template-columns:minmax(0,1fr) 112px;gap:6px}.public-search-input{height:45px;padding:0 10px;border-radius:12px}.public-search-input input{font-size:12px}.public-domain-search select{height:45px;padding:0 7px;border-radius:12px;font-size:11px;min-width:0}.public-domain-search>.btn{grid-column:1/-1;height:42px!important}.public-domain-search-result{font-size:10.5px;padding:2px;gap:6px}.public-domain-search-result a{margin-left:0;width:100%}.public-hero-actions{margin-top:13px}.public-stats{margin:0 10px 46px;border-radius:15px;grid-template-columns:1fr 1fr}.public-stats>div{padding:16px 8px;border-right:1px solid #e9edf4;border-bottom:1px solid #e9edf4}.public-stats>div:nth-child(2){border-right:0}.public-stats>div:nth-child(n+3){border-bottom:0}.public-stats strong{font-size:25px}.public-stats span{font-size:10px}
+  .public-section,.public-soft-section{padding:42px 12px}.public-section>header{gap:9px;margin-bottom:18px}.public-section>header>span{width:31px;height:31px;border-radius:10px;font-size:10px}.public-section>header h2{font-size:21px}.public-section>header p{font-size:11px;line-height:1.55}.public-section>header>a{font-size:10.5px;padding-top:5px;white-space:nowrap}.public-feature-grid,.public-suffix-grid,.public-available-grid,.public-infra-grid,.public-contact-grid{grid-template-columns:1fr}.public-feature-grid article,.public-suffix-card,.public-available-grid>article,.public-contact-grid article{padding:18px;border-radius:15px}.public-feature-grid article i{width:32px;height:32px}.public-feature-grid h3{font-size:15px;margin:12px 0 5px}.public-feature-grid p,.public-suffix-card p{font-size:11px}.public-suffix-card h3{font-size:17px}.public-steps{grid-template-columns:1fr 1fr}.public-steps article{padding:14px 10px}.public-infra-grid article{padding:15px;border-radius:14px}.public-infra-grid article>b{width:40px;height:40px}.public-faq-list{border-radius:14px}.public-faq-list summary{padding:14px;font-size:12px}.public-faq-list details p{padding:0 14px 14px;font-size:11px}.public-cta{margin:30px 10px 50px;padding:23px 18px;border-radius:18px;display:grid}.public-cta h2{font-size:20px}.public-cta p{font-size:11px}.public-cta>div:last-child{display:grid;grid-template-columns:1fr 1fr}
+  .public-footer{padding:36px 16px 22px}.public-footer-grid{grid-template-columns:1fr 1fr;gap:25px 18px}.public-footer-grid>div:first-child{grid-column:1/-1}.public-footer-grid>div:last-child{grid-column:auto}.public-footer-bottom{margin-top:28px;gap:9px;font-size:9px}.public-page-hero{padding:52px 14px 20px}.public-page-hero h1{font-size:31px;letter-spacing:-1px;margin:12px 0 6px}.public-page-hero p{font-size:12px}.public-page-hero>span{font-size:9px}.public-page-section{padding-top:14px}.public-domain-card-top b{font-size:17px}.public-available-grid dl div{padding:7px 0}.public-card-actions .btn{font-size:11px!important}.public-mini-guide{grid-template-columns:1fr;padding:0 10px 42px}.public-knowledge-tools{padding:0 12px}.public-knowledge-tools input{height:42px;font-size:11px}.public-knowledge-list{padding:0 12px;margin-bottom:50px}.public-knowledge-category>header h2{font-size:17px}.public-knowledge-category details summary{padding:12px;font-size:12px}.public-knowledge-category details>div{padding:0 12px 13px;font-size:11px}.public-nav-directory{grid-template-columns:1fr;padding:0 12px;margin-bottom:50px}.public-about-grid{grid-template-columns:1fr;padding:0 12px;margin-bottom:40px}.public-about-grid article.large{grid-column:auto}.public-about-grid article{padding:20px}.public-about-grid h2{font-size:18px}.public-about-grid p{font-size:11px}.public-contact-grid{padding:0 12px;margin-bottom:50px}.public-contact-grid article:last-child{grid-column:auto}.public-contact-grid p{min-height:0}.public-privacy-showcase{min-height:220px;padding:25px 15px;border-radius:17px}.public-privacy-showcase h2{font-size:18px}.public-privacy-showcase p{font-size:11px}.public-faq-page{padding-bottom:50px}
+}
+@media(max-width:390px){.public-brand>b{max-width:145px}.public-hero h1{font-size:36px}.public-steps{grid-template-columns:1fr 1fr}.public-footer-grid{grid-template-columns:1fr 1fr}}
+/* ------------------------------------------------------------------------- */
+.public-legal-page{max-width:920px;margin:28px auto 90px;padding:28px 32px;border:1px solid #e2e7ef;border-radius:22px;background:#fff;color:#334155;line-height:1.85}.public-legal-page h2{font-size:20px;color:#111827;margin:24px 0 8px}.public-legal-page h3{font-size:16px;color:#1f2937;margin:20px 0 6px}.public-legal-page p,.public-legal-page li{font-size:13px;color:#64748b}.public-legal-page>h2:first-child{margin-top:0}@media(max-width:768px){.public-legal-page{margin:15px 10px 50px;padding:18px 15px;border-radius:15px}.public-legal-page h2{font-size:16px}.public-legal-page h3{font-size:14px}.public-legal-page p,.public-legal-page li{font-size:11px}}
+
+
+/* v112 public portal refinements */
+.public-availability-focus{max-width:1000px;margin:24px auto 16px;padding:34px;border:1px solid #e1e6ef;border-radius:24px;background:linear-gradient(135deg,#fff,#f7f9ff);box-shadow:0 18px 55px rgba(24,37,69,.06);display:grid;gap:24px}.public-availability-copy{max-width:720px}.public-availability-copy>span{font-size:10px;font-weight:900;letter-spacing:.14em;color:var(--accent)}.public-availability-copy h2{font-size:28px;letter-spacing:-.6px;margin:8px 0}.public-availability-copy p{margin:0;color:#718096;line-height:1.75}.public-availability-focus .public-domain-search{max-width:none;margin:0}.public-availability-guide{padding-top:4px!important}
+.public-featured-domain-section{padding-top:20px}.public-featured-domain-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.public-featured-domain-card{min-width:0;border:1px solid #e1e5ec;border-radius:18px;background:#fff;padding:20px 22px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;box-shadow:0 8px 25px rgba(26,37,62,.07)}.public-featured-domain-main{min-width:0}.public-featured-domain-main h2{margin:0 0 7px;font-size:21px;letter-spacing:-.25px;overflow-wrap:anywhere}.public-featured-domain-main p{margin:0;color:#778292;font-size:12px;line-height:1.55;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}.public-domain-open-status{display:inline-flex;align-items:center;gap:7px;margin-top:10px;color:#27ae60;font-size:12px;font-weight:800}.public-domain-open-status i{width:9px;height:9px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 4px rgba(34,197,94,.1)}.public-featured-domain-actions{display:grid;gap:9px;justify-items:end}.public-featured-domain-actions>b{background:#1478f2;color:#fff;border-radius:7px;padding:8px 13px;font-size:12px;white-space:nowrap}.public-featured-apply{background:#22a447!important;border-color:#22a447!important;color:#fff!important;min-width:104px}.public-featured-apply:hover{filter:brightness(.96)}
+.public-nav-reference-head{max-width:1000px;margin:0 auto;padding:50px 24px 18px}.public-nav-reference-head h1{margin:0;font-size:36px;letter-spacing:-1px}.public-nav-reference-head p{margin:8px 0 0;color:#778292;font-size:14px}.public-nav-directory.reference-style{margin-top:10px}.public-nav-directory.reference-style article{padding:26px 30px;border-radius:18px;min-height:270px}.public-nav-directory.reference-style h2{font-size:19px;margin:0 0 28px}.public-nav-reference-links{display:grid;gap:24px}.public-nav-directory.reference-style .public-nav-reference-links>a{display:block!important;padding:0!important;border:0!important;grid-template-columns:none!important}.public-nav-directory.reference-style .public-nav-reference-links>a b{display:block;font-size:14px;line-height:1.2;margin-bottom:3px;color:#121827}.public-nav-directory.reference-style .public-nav-reference-links>a span{display:block!important;font-size:11px;color:#7d8796;line-height:1.45}.public-nav-directory.reference-style .public-nav-reference-links>a:hover b{color:var(--accent)}
+@media(max-width:780px){.public-availability-focus{margin:16px 10px;padding:22px 14px;border-radius:18px}.public-availability-copy h2{font-size:22px}.public-availability-copy p{font-size:11px}.public-featured-domain-grid{grid-template-columns:1fr;gap:12px}.public-featured-domain-card{padding:17px;grid-template-columns:minmax(0,1fr) auto;gap:10px;border-radius:15px}.public-featured-domain-main h2{font-size:17px}.public-featured-domain-main p{font-size:10.5px}.public-domain-open-status{font-size:10.5px}.public-featured-domain-actions>b{font-size:10px;padding:6px 9px}.public-featured-apply{min-width:86px;font-size:10.5px!important;padding:8px 10px!important}.public-nav-reference-head{padding:38px 14px 10px}.public-nav-reference-head h1{font-size:30px}.public-nav-reference-head p{font-size:11px}.public-nav-directory.reference-style{padding:0 12px}.public-nav-directory.reference-style article{min-height:0;padding:21px 22px}.public-nav-directory.reference-style h2{font-size:17px;margin-bottom:20px}.public-nav-reference-links{gap:19px}}
+
+/* v113 - FLORE-owned public homepage, navigation hub, and case-sensitive captcha helper */
+.captcha-case-note{display:block;margin-top:7px;color:#64748b;font-size:12px;font-weight:700;line-height:1.45}
+.public-home-v113-hero{max-width:1180px;margin:54px auto 26px;padding:0 24px;display:grid;grid-template-columns:minmax(0,1.08fr) minmax(360px,.92fr);gap:34px;align-items:stretch}
+.public-home-v113-copy{border:1px solid #e3e8f2;border-radius:30px;padding:54px 50px;background:linear-gradient(145deg,#fff 12%,#f6f8ff 100%);position:relative;overflow:hidden;min-height:390px;display:flex;flex-direction:column;justify-content:center}
+.public-home-v113-copy:after{content:"";position:absolute;width:230px;height:230px;border-radius:50%;right:-80px;top:-90px;background:linear-gradient(135deg,var(--accent,#4f63f6),var(--accent2,#7c4dff));opacity:.12}
+.public-home-v113-badge{font-size:11px;letter-spacing:.16em;font-weight:900;color:var(--accent,#4f63f6);margin-bottom:24px}
+.public-home-v113-copy h1{margin:0;max-width:760px;font-size:clamp(42px,5.4vw,72px);line-height:1.02;letter-spacing:-2.6px;color:#111827}
+.public-home-v113-copy h1 em{display:block;font-style:normal;color:var(--accent,#4f63f6);margin-top:7px}
+.public-home-v113-copy>p{max-width:690px;margin:22px 0 0;font-size:15px;line-height:1.8;color:#687386}
+.public-home-v113-actions{display:flex;gap:12px;margin-top:30px;flex-wrap:wrap}
+.public-home-v113-tool{border-radius:30px;padding:32px;background:#111827;color:#fff;display:flex;flex-direction:column;justify-content:center;min-height:390px;box-shadow:0 20px 55px rgba(17,24,39,.14)}
+.public-home-v113-tool-head{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin-bottom:22px}.public-home-v113-tool-head span{font-size:10px;letter-spacing:.15em;color:#a8b4cb;font-weight:900}.public-home-v113-tool-head b{font-size:19px;text-align:right}
+.public-home-v113-tool .public-domain-search{display:grid;grid-template-columns:1fr;gap:10px;margin:0}.public-home-v113-tool .public-search-input,.public-home-v113-tool .public-domain-search select{background:#fff}.public-home-v113-tool .public-domain-search-result{color:#111827;background:#fff;border-radius:14px}.public-home-v113-tool>p{margin:14px 2px 0;font-size:11px;line-height:1.55;color:#aab4c5}
+.public-home-v113-stats{max-width:1132px;margin:0 auto 26px;border-radius:22px}
+.public-home-v113-section{max-width:1180px}
+.public-home-v113-cta{max-width:1132px}
+.public-home-v113.layout-compact .public-home-v113-hero{grid-template-columns:1fr;max-width:1000px}.public-home-v113.layout-compact .public-home-v113-copy{min-height:300px;text-align:center;align-items:center}.public-home-v113.layout-compact .public-home-v113-copy>p{max-width:760px}.public-home-v113.layout-compact .public-home-v113-tool{min-height:auto;padding:25px}.public-home-v113.layout-compact .public-home-v113-tool .public-domain-search{grid-template-columns:minmax(0,1fr) 190px auto}
+.public-home-v113.layout-data .public-home-v113-hero{grid-template-columns:.9fr 1.1fr}.public-home-v113.layout-data .public-home-v113-copy{background:#111827}.public-home-v113.layout-data .public-home-v113-copy h1{color:#fff}.public-home-v113.layout-data .public-home-v113-copy>p{color:#b7c1d2}.public-home-v113.layout-data .public-home-v113-tool{background:linear-gradient(145deg,#f7f9ff,#fff);color:#111827;border:1px solid #e3e8f2;box-shadow:none}.public-home-v113.layout-data .public-home-v113-tool>p{color:#778292}
+.public-nav-hub-v113-head{max-width:1180px;margin:0 auto;padding:56px 24px 24px;display:flex;align-items:flex-end;justify-content:space-between;gap:28px}.public-nav-hub-v113-head span{font-size:10px;letter-spacing:.18em;font-weight:900;color:var(--accent,#4f63f6)}.public-nav-hub-v113-head h1{font-size:42px;letter-spacing:-1.3px;margin:9px 0 5px}.public-nav-hub-v113-head p{margin:0;color:#778292;font-size:13px}
+.public-nav-hub-v113{max-width:1180px;margin:0 auto 70px;padding:0 24px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.public-nav-hub-v113 article{border:1px solid #e1e6ef;border-radius:22px;background:#fff;overflow:hidden;min-width:0}.public-nav-hub-v113-title{padding:20px 18px 15px;background:linear-gradient(145deg,#f8f9ff,#fff);border-bottom:1px solid #edf0f5}.public-nav-hub-v113-title span{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:10px;background:#eef1ff;color:var(--accent,#4f63f6);font-size:10px;font-weight:900}.public-nav-hub-v113-title h2{font-size:17px;margin:12px 0 0}.public-nav-hub-v113 article>div:last-child{padding:8px 10px 12px}.public-nav-hub-v113 a{display:grid;grid-template-columns:28px minmax(0,1fr) 18px;gap:9px;align-items:start;padding:12px 9px;border-radius:12px;color:#111827;text-decoration:none}.public-nav-hub-v113 a:hover{background:#f6f8ff}.public-nav-hub-v113 a i{font-style:normal;color:#a2abba;font-size:9px;padding-top:2px}.public-nav-hub-v113 a b{display:block;font-size:12.5px}.public-nav-hub-v113 a small{display:block;margin-top:3px;color:#7b8596;font-size:9.5px;line-height:1.45}.public-nav-hub-v113 a em{font-style:normal;color:#a2abba;font-size:13px}
+@media(max-width:980px){.public-home-v113-hero{grid-template-columns:1fr}.public-home-v113-copy,.public-home-v113-tool{min-height:auto}.public-nav-hub-v113{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:640px){.captcha-case-note{font-size:10px}.public-home-v113-hero{margin-top:20px;padding:0 12px;gap:12px}.public-home-v113-copy{padding:28px 21px;border-radius:20px}.public-home-v113-copy h1{font-size:37px;letter-spacing:-1.4px}.public-home-v113-copy>p{font-size:11px;line-height:1.7}.public-home-v113-badge{font-size:8.5px;margin-bottom:16px}.public-home-v113-actions{margin-top:22px}.public-home-v113-tool{padding:20px 16px;border-radius:20px}.public-home-v113-tool-head{align-items:start}.public-home-v113-tool-head b{font-size:15px}.public-home-v113.layout-compact .public-home-v113-tool .public-domain-search{grid-template-columns:1fr}.public-home-v113-stats{margin-left:12px;margin-right:12px}.public-nav-hub-v113-head{padding:34px 14px 16px;align-items:start}.public-nav-hub-v113-head h1{font-size:30px}.public-nav-hub-v113-head p{font-size:10px}.public-nav-hub-v113{padding:0 12px;grid-template-columns:1fr;gap:10px}.public-nav-hub-v113 article{border-radius:17px}.public-nav-hub-v113-title{padding:16px}.public-nav-hub-v113 article>div:last-child{padding:5px 8px 10px}.public-nav-hub-v113 a{padding:10px 8px}.public-nav-hub-v113 a b{font-size:12px}.public-nav-hub-v113 a small{font-size:9px}}
+
+/* v114 — support center, tickets, and clickable sidebar brand */
+.brand-home-link{cursor:pointer;border-radius:16px;padding:4px 6px;margin:-4px -6px;transition:.18s}
+.brand-home-link:hover{background:rgba(255,255,255,.08);transform:translateY(-1px)}
+.brand-home-link strong{line-height:1.35}
+.support-nav-group{display:grid;gap:4px}
+.support-nav-toggle{width:100%;border:0;background:transparent;text-align:left}
+.support-nav-toggle .support-nav-chevron{margin-left:auto;width:auto!important;transition:.18s;opacity:.75}
+.support-nav-group.open .support-nav-chevron{transform:rotate(180deg)}
+.support-subnav{display:none;margin-left:20px;padding:4px 0 4px 15px;border-left:1px solid rgba(255,255,255,.14);gap:4px}
+.support-nav-group.open .support-subnav{display:grid}
+.support-subnav-link{display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:10px;color:#94a3b8;font-size:13px;font-weight:800;transition:.15s}
+.support-subnav-link span{width:19px;text-align:center;color:#cbd5e1}
+.support-subnav-link:hover,.support-subnav-link.active{background:rgba(255,255,255,.08);color:#fff}
+.support-subnav-link b{font-weight:800}
+
+.support-page-head{display:flex;align-items:center;justify-content:space-between;gap:22px;padding:26px;margin-bottom:20px}
+.support-page-head h2{font-size:30px;margin:6px 0 8px}.support-page-head p{color:var(--muted);line-height:1.75;margin:0;max-width:800px}
+.support-eyebrow{display:inline-flex;font-size:11px;font-weight:1000;letter-spacing:.14em;color:var(--accent);background:#eef3ff;border-radius:999px;padding:6px 9px}
+.support-ticket-compose{padding:26px;margin-bottom:20px}.support-inline-control{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}.support-inline-control .btn{min-height:54px}
+.support-context-check{padding:14px 16px;border:1px dashed #ccd7ef;border-radius:15px;background:#f8faff}.support-context-check input{width:18px;height:18px}.support-form-actions{display:flex;gap:10px;align-items:center}
+.support-tip-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:22px}.support-tip-grid article{background:#fff;border:1px solid var(--line);border-radius:18px;padding:20px}.support-tip-grid article>b{width:34px;height:34px;display:grid;place-items:center;border-radius:11px;background:#eef3ff;color:var(--accent);font-weight:1000}.support-tip-grid h3{margin:14px 0 6px;font-size:16px}.support-tip-grid p{margin:0;color:var(--muted);line-height:1.65;font-size:14px}
+.support-ticket-toolbar{padding:20px;margin-bottom:16px;display:grid;grid-template-columns:minmax(220px,1.5fr) repeat(3,minmax(130px,.7fr));gap:12px;align-items:end}
+.support-ticket-list{display:grid;gap:10px}.support-ticket-row{padding:18px 20px;display:flex;justify-content:space-between;align-items:center;gap:18px;transition:.18s}.support-ticket-row:hover{transform:translateY(-1px);border-color:#cbd7fa}.support-ticket-row-main{min-width:0}.support-ticket-row-id{font:800 12px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--accent);margin-bottom:6px}.support-ticket-row h3{margin:0 0 7px;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.support-ticket-row p{margin:0;color:var(--muted);font-size:13px}.support-ticket-row-meta{display:flex;align-items:center;gap:8px;flex:none}.support-ticket-arrow{font-size:28px;color:#94a3b8;margin-left:3px}
+.support-ticket-badge{display:inline-flex;align-items:center;border-radius:999px;padding:6px 9px;font-size:12px;font-weight:900;border:1px solid transparent}.support-ticket-badge.neutral{background:#f1f5f9;color:#475569}.support-ticket-badge.info{background:#edf4ff;color:#2456a6}.support-ticket-badge.warning{background:#fff7e6;color:#a16207}.support-ticket-badge.purple{background:#f3efff;color:#6d46d9}.support-ticket-badge.success{background:#eafbf3;color:#087a53}.support-ticket-badge.danger{background:#fff0f1;color:#c22338}
+.support-empty{text-align:center;padding:42px}.support-empty strong{font-size:18px}.support-empty p{color:var(--muted)}
+.support-ticket-detail-head{padding:24px;display:flex;justify-content:space-between;gap:24px;margin-bottom:18px}.support-back{display:inline-block;color:var(--muted);font-size:13px;margin-bottom:12px}.support-ticket-number{display:block;font:900 12px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--accent);margin-bottom:7px}.support-ticket-detail-head h2{margin:0 0 12px;font-size:27px}.support-ticket-detail-badges{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.support-ticket-detail-badges>span:not(.support-ticket-badge){font-size:12px;font-weight:900;color:#475569;background:#f4f6fa;padding:6px 9px;border-radius:999px}.support-ticket-detail-side{display:grid;grid-template-columns:auto auto;gap:5px 16px;align-content:start;min-width:245px;padding:14px 16px;background:#f8faff;border-radius:16px}.support-ticket-detail-side small{color:var(--muted)}.support-ticket-detail-side b{font-size:13px;text-align:right}
+.support-ticket-layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px;align-items:start}.support-ticket-thread{display:grid;gap:12px}.support-thread-item{background:#fff;border:1px solid var(--line);border-radius:20px;padding:20px}.support-thread-item.admin{border-color:#cad7ff;background:linear-gradient(180deg,#fbfcff,#f5f8ff)}.support-thread-item header{display:flex;justify-content:space-between;gap:16px;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid #edf0f5}.support-thread-item header>div{display:grid;gap:3px}.support-thread-item header small,.support-thread-item time{color:var(--muted);font-size:12px}.support-thread-body{line-height:1.8;word-break:break-word}.support-reply-box{padding:18px;display:grid;gap:12px}.support-reply-box .btn{justify-self:start}
+.support-ticket-controls{padding:20px;position:sticky;top:105px;display:grid;gap:14px}.support-ticket-controls h3{margin:0}.support-ticket-controls hr{width:100%;border:0;border-top:1px solid var(--line)}.support-copy-id{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#f8faff;border-radius:12px;padding:10px}.support-client-context summary{font-weight:800;cursor:pointer}.support-client-context pre{white-space:pre-wrap;word-break:break-all;background:#0f172a;color:#dbeafe;padding:12px;border-radius:12px;font-size:11px;max-height:260px;overflow:auto}
+.support-contact-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}.support-contact-grid article{padding:24px}.support-contact-grid article>span{font:900 12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--accent)}.support-contact-grid h3{font-size:20px;margin:12px 0 8px}.support-contact-grid p{color:var(--muted);line-height:1.75;min-height:52px}.support-contact-grid article>div{display:flex;gap:8px;flex-wrap:wrap}.support-security-note{margin-top:18px;line-height:1.7}
+.support-quick-card{padding:22px}.support-quick-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:14px}.support-quick-grid a{display:grid;grid-template-columns:38px 1fr;grid-template-rows:auto auto;gap:2px 10px;padding:16px;border:1px solid var(--line);border-radius:16px;background:#fff}.support-quick-grid a>span{grid-row:1/3;width:38px;height:38px;border-radius:12px;background:#eef3ff;color:var(--accent);display:grid;place-items:center;font-weight:900}.support-quick-grid b{font-size:15px}.support-quick-grid small{color:var(--muted);line-height:1.5}
+
+@media(max-width:900px){
+  .support-page-head{align-items:flex-start}.support-ticket-toolbar{grid-template-columns:1fr 1fr}.support-ticket-layout{grid-template-columns:1fr}.support-ticket-controls{position:static}.support-contact-grid{grid-template-columns:1fr}.support-tip-grid,.support-quick-grid{grid-template-columns:1fr}.support-ticket-detail-head{display:grid}.support-ticket-detail-side{min-width:0}
+}
+@media(max-width:620px){
+  .brand-home-link{padding:2px 4px;margin:-2px -4px}.support-subnav{margin-left:14px;padding-left:10px}.support-subnav-link{padding:8px 9px;font-size:12px}
+  .support-page-head{padding:18px;display:grid}.support-page-head h2{font-size:23px}.support-page-head .btn{justify-self:start}.support-ticket-compose{padding:18px}.support-inline-control{grid-template-columns:1fr}.support-ticket-toolbar{grid-template-columns:1fr;padding:16px}.support-ticket-row{padding:15px;align-items:flex-start}.support-ticket-row-meta{display:grid;justify-items:end}.support-ticket-row h3{white-space:normal;font-size:15px}.support-ticket-row p{line-height:1.55}.support-ticket-detail-head{padding:18px}.support-ticket-detail-head h2{font-size:21px}.support-ticket-detail-side{grid-template-columns:1fr 1fr}.support-thread-item{padding:16px}.support-thread-item header{display:grid;gap:6px}.support-ticket-controls{padding:16px}.support-form-actions{display:grid;grid-template-columns:1fr}.support-form-actions .btn{width:100%}.support-contact-grid article{padding:18px}.support-quick-card{padding:16px}
+}
+
+
+/* v115 — public contact / abuse channels */
+.public-contact-grid-v115 .public-contact-channel-card{display:flex;flex-direction:column}.public-contact-email{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:auto}.public-contact-email>a{display:inline-flex;align-items:center;min-height:38px;padding:0 12px;border:1px solid #dce3ef;border-radius:11px;background:#f8faff;color:#1f3f82!important;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px!important;overflow-wrap:anywhere}.public-contact-email .btn{min-height:38px;padding:8px 12px}.public-contact-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:auto}.public-contact-actions .btn{color:inherit;font-size:12px}.public-contact-note{max-width:952px;margin:-58px auto 90px;padding:17px 20px;border:1px solid #dbe5f4;border-radius:16px;background:#f7faff;display:flex;gap:12px;align-items:flex-start;color:#64748b;font-size:12px;line-height:1.7}.public-contact-note b{color:#1e3a6d;white-space:nowrap}.public-contact-note.danger{border-color:#f0d7d7;background:#fff8f8}.public-contact-note.danger b{color:#b42318}.public-abuse-grid article:nth-child(3) i{background:#eefbf4;color:#16834a}
+@media(max-width:768px){.public-contact-email{align-items:stretch}.public-contact-email>a{width:100%;justify-content:center}.public-contact-email .btn,.public-contact-actions .btn{width:100%}.public-contact-note{margin:-30px 12px 50px;padding:14px;display:grid;gap:4px;font-size:10.5px}.public-contact-note b{white-space:normal}}
+
+/* v116 repair — styles for v114 public homepage and navigation markup */
+.captcha-case-note{display:block;margin-top:7px;color:#64748b;font-size:12px;font-weight:700;line-height:1.45}
+.public-home-v114-hero{max-width:1180px;margin:54px auto 26px;padding:0 24px;display:grid;grid-template-columns:minmax(0,1.08fr) minmax(360px,.92fr);gap:34px;align-items:stretch}
+.public-home-v114-copy{border:1px solid #e3e8f2;border-radius:30px;padding:54px 50px;background:linear-gradient(145deg,#fff 12%,#f6f8ff 100%);position:relative;overflow:hidden;min-height:390px;display:flex;flex-direction:column;justify-content:center}
+.public-home-v114-copy:after{content:"";position:absolute;width:230px;height:230px;border-radius:50%;right:-80px;top:-90px;background:linear-gradient(135deg,var(--accent,#4f63f6),var(--accent2,#7c4dff));opacity:.12}
+.public-home-v114-badge{font-size:11px;letter-spacing:.16em;font-weight:900;color:var(--accent,#4f63f6);margin-bottom:24px}
+.public-home-v114-copy h1{margin:0;max-width:760px;font-size:clamp(42px,5.4vw,72px);line-height:1.02;letter-spacing:-2.6px;color:#111827}
+.public-home-v114-copy h1 em{display:block;font-style:normal;color:var(--accent,#4f63f6);margin-top:7px}
+.public-home-v114-copy>p{max-width:690px;margin:22px 0 0;font-size:15px;line-height:1.8;color:#687386}
+.public-home-v114-actions{display:flex;gap:12px;margin-top:30px;flex-wrap:wrap}
+.public-home-v114-tool{border-radius:30px;padding:32px;background:#111827;color:#fff;display:flex;flex-direction:column;justify-content:center;min-height:390px;box-shadow:0 20px 55px rgba(17,24,39,.14)}
+.public-home-v114-tool-head{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin-bottom:22px}.public-home-v114-tool-head span{font-size:10px;letter-spacing:.15em;color:#a8b4cb;font-weight:900}.public-home-v114-tool-head b{font-size:19px;text-align:right}
+.public-home-v114-tool .public-domain-search{display:grid;grid-template-columns:1fr;gap:10px;margin:0}.public-home-v114-tool .public-search-input,.public-home-v114-tool .public-domain-search select{background:#fff}.public-home-v114-tool .public-domain-search-result{color:#111827;background:#fff;border-radius:14px}.public-home-v114-tool>p{margin:14px 2px 0;font-size:11px;line-height:1.55;color:#aab4c5}
+.public-home-v114-stats{max-width:1132px;margin:0 auto 26px;border-radius:22px}
+.public-home-v114-section{max-width:1180px}
+.public-home-v114-cta{max-width:1132px}
+.public-home-v114.layout-compact .public-home-v114-hero{grid-template-columns:1fr;max-width:1000px}.public-home-v114.layout-compact .public-home-v114-copy{min-height:300px;text-align:center;align-items:center}.public-home-v114.layout-compact .public-home-v114-copy>p{max-width:760px}.public-home-v114.layout-compact .public-home-v114-tool{min-height:auto;padding:25px}.public-home-v114.layout-compact .public-home-v114-tool .public-domain-search{grid-template-columns:minmax(0,1fr) 190px auto}
+.public-home-v114.layout-data .public-home-v114-hero{grid-template-columns:.9fr 1.1fr}.public-home-v114.layout-data .public-home-v114-copy{background:#111827}.public-home-v114.layout-data .public-home-v114-copy h1{color:#fff}.public-home-v114.layout-data .public-home-v114-copy>p{color:#b7c1d2}.public-home-v114.layout-data .public-home-v114-tool{background:linear-gradient(145deg,#f7f9ff,#fff);color:#111827;border:1px solid #e3e8f2;box-shadow:none}.public-home-v114.layout-data .public-home-v114-tool>p{color:#778292}
+.public-nav-hub-v114-head{max-width:1180px;margin:0 auto;padding:56px 24px 24px;display:flex;align-items:flex-end;justify-content:space-between;gap:28px}.public-nav-hub-v114-head span{font-size:10px;letter-spacing:.18em;font-weight:900;color:var(--accent,#4f63f6)}.public-nav-hub-v114-head h1{font-size:42px;letter-spacing:-1.3px;margin:9px 0 5px}.public-nav-hub-v114-head p{margin:0;color:#778292;font-size:13px}
+.public-nav-hub-v114{max-width:1180px;margin:0 auto 70px;padding:0 24px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.public-nav-hub-v114 article{border:1px solid #e1e6ef;border-radius:22px;background:#fff;overflow:hidden;min-width:0}.public-nav-hub-v114-title{padding:20px 18px 15px;background:linear-gradient(145deg,#f8f9ff,#fff);border-bottom:1px solid #edf0f5}.public-nav-hub-v114-title span{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:10px;background:#eef1ff;color:var(--accent,#4f63f6);font-size:10px;font-weight:900}.public-nav-hub-v114-title h2{font-size:17px;margin:12px 0 0}.public-nav-hub-v114 article>div:last-child{padding:8px 10px 12px}.public-nav-hub-v114 a{display:grid;grid-template-columns:28px minmax(0,1fr) 18px;gap:9px;align-items:start;padding:12px 9px;border-radius:12px;color:#111827;text-decoration:none}.public-nav-hub-v114 a:hover{background:#f6f8ff}.public-nav-hub-v114 a i{font-style:normal;color:#a2abba;font-size:9px;padding-top:2px}.public-nav-hub-v114 a b{display:block;font-size:12.5px}.public-nav-hub-v114 a small{display:block;margin-top:3px;color:#7b8596;font-size:9.5px;line-height:1.45}.public-nav-hub-v114 a em{font-style:normal;color:#a2abba;font-size:13px}
+@media(max-width:980px){.public-home-v114-hero{grid-template-columns:1fr}.public-home-v114-copy,.public-home-v114-tool{min-height:auto}.public-nav-hub-v114{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:640px){.captcha-case-note{font-size:10px}.public-home-v114-hero{margin-top:20px;padding:0 12px;gap:12px}.public-home-v114-copy{padding:28px 21px;border-radius:20px}.public-home-v114-copy h1{font-size:37px;letter-spacing:-1.4px}.public-home-v114-copy>p{font-size:11px;line-height:1.7}.public-home-v114-badge{font-size:8.5px;margin-bottom:16px}.public-home-v114-actions{margin-top:22px}.public-home-v114-tool{padding:20px 16px;border-radius:20px}.public-home-v114-tool-head{align-items:start}.public-home-v114-tool-head b{font-size:15px}.public-home-v114.layout-compact .public-home-v114-tool .public-domain-search{grid-template-columns:1fr}.public-home-v114-stats{margin-left:12px;margin-right:12px}.public-nav-hub-v114-head{padding:34px 14px 16px;align-items:start}.public-nav-hub-v114-head h1{font-size:30px}.public-nav-hub-v114-head p{font-size:10px}.public-nav-hub-v114{padding:0 12px;grid-template-columns:1fr;gap:10px}.public-nav-hub-v114 article{border-radius:17px}.public-nav-hub-v114-title{padding:16px}.public-nav-hub-v114 article>div:last-child{padding:5px 8px 10px}.public-nav-hub-v114 a{padding:10px 8px}.public-nav-hub-v114 a b{font-size:12px}.public-nav-hub-v114 a small{font-size:9px}}
+
+
+
+/* v116 — standalone homepage settings */
+.admin-home-settings-v116{padding:0;overflow:hidden}.home-settings-toolbar{padding:24px 26px;border-bottom:1px solid var(--line);margin:0}.admin-home-settings-v116 #homepage-settings-form{padding:24px 26px 30px}.home-order-editor{display:grid;gap:8px}.home-order-row{display:grid;grid-template-columns:42px minmax(0,1fr) auto;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--line);border-radius:14px;background:#f8faff}.home-order-row>span{display:grid;place-items:center;width:30px;height:30px;border-radius:9px;background:#eef3ff;color:var(--accent);font-size:10px;font-weight:900}.home-order-row>b{font-size:13px}.home-order-row>div{display:flex;gap:6px}.home-order-row .btn{min-width:36px;padding:7px 9px}.home-settings-actions{display:flex;gap:10px;align-items:center;padding-top:6px}.home-settings-actions .btn{min-width:150px}
+@media(max-width:700px){.home-settings-toolbar{padding:18px;align-items:flex-start}.admin-home-settings-v116 #homepage-settings-form{padding:18px 14px 24px}.home-order-row{grid-template-columns:34px minmax(0,1fr) auto;padding:10px}.home-order-row>span{width:27px;height:27px}.home-settings-actions{display:grid;grid-template-columns:1fr}.home-settings-actions .btn{width:100%;min-width:0}}
+
+
+/* v117: public portal light-theme unification + compact inline lookup + full public-site settings */
+.image-captcha-answer{
+  text-transform:none!important;
+  font-variant:normal!important;
+  font-feature-settings:normal!important;
+}
+
+/* Public website stays light across every page and every homepage layout. */
+.public-site,
+.public-site .public-main{
+  background:#fff!important;
+  color:#111827!important;
+}
+.public-home-v114-tool,
+.public-home-v114.layout-data .public-home-v114-copy{
+  background:linear-gradient(145deg,#ffffff 5%,#f7f9ff 100%)!important;
+  color:#111827!important;
+  border:1px solid #e3e8f2!important;
+  box-shadow:0 18px 48px rgba(15,23,42,.07)!important;
+}
+.public-home-v114.layout-data .public-home-v114-copy h1,
+.public-home-v114-tool-head b{
+  color:#111827!important;
+}
+.public-home-v114.layout-data .public-home-v114-copy>p,
+.public-home-v114-tool>p{
+  color:#687386!important;
+}
+.public-home-v114-tool-head span{
+  color:var(--accent,#4f63f6)!important;
+}
+.public-cta,
+.public-home-v114-cta{
+  background:linear-gradient(145deg,#f6f8ff,#ffffff)!important;
+  color:#111827!important;
+  border:1px solid #e2e7f0!important;
+  box-shadow:0 18px 48px rgba(15,23,42,.07)!important;
+}
+.public-cta span{color:var(--accent,#4f63f6)!important}
+.public-cta h2{color:#111827!important}
+.public-cta p{color:#687386!important}
+.public-cta .btn.secondary{
+  background:#fff!important;
+  border-color:#dbe2ed!important;
+  color:#334155!important;
+}
+
+/* Footer is part of the public light theme too. */
+.public-footer{
+  background:#f7f9fc!important;
+  color:#172033!important;
+  border-top:1px solid #e5eaf2!important;
+}
+.public-footer-grid>div>b,
+.public-footer .public-brand b{
+  color:#172033!important;
+}
+.public-footer-grid a{
+  color:#64748b!important;
+}
+.public-footer-grid a:hover{
+  color:var(--accent,#4f63f6)!important;
+}
+.public-footer-grid p,
+.public-footer-bottom{
+  color:#7b8798!important;
+}
+.public-footer-bottom{
+  border-top:1px solid #e3e8ef!important;
+}
+
+/* Search feedback is embedded as a status line; never render as a floating/full-width bar. */
+.public-domain-search-result,
+.public-home-v114-tool .public-domain-search-result{
+  grid-column:1/-1!important;
+  min-height:20px!important;
+  margin:0!important;
+  padding:4px 3px 0!important;
+  background:transparent!important;
+  border:0!important;
+  border-radius:0!important;
+  box-shadow:none!important;
+  display:flex!important;
+  align-items:center!important;
+  gap:7px!important;
+  flex-wrap:wrap!important;
+  line-height:1.45!important;
+  font-size:12px!important;
+}
+.public-domain-search-result:empty{display:none!important}
+.public-domain-search-result>i{
+  width:8px!important;
+  height:8px!important;
+  border-radius:50%!important;
+  flex:0 0 8px!important;
+  background:#94a3b8!important;
+  box-shadow:0 0 0 3px rgba(148,163,184,.12)!important;
+}
+.public-domain-search-result.checking{color:#7b8798!important}
+.public-domain-search-result.checking>i{background:#94a3b8!important}
+.public-domain-search-result.success{color:#047857!important}
+.public-domain-search-result.success>i{background:#22c55e!important;box-shadow:0 0 0 3px rgba(34,197,94,.12)!important}
+.public-domain-search-result.error{color:#c2413b!important}
+.public-domain-search-result.error>i{background:#ef4444!important;box-shadow:0 0 0 3px rgba(239,68,68,.1)!important}
+.public-domain-search-result b{
+  color:#172033!important;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace!important;
+}
+.public-domain-search-result a{
+  color:var(--accent,#4f63f6)!important;
+  font-weight:900!important;
+  margin-left:auto!important;
+}
+
+/* Root-domain cards keep the full suffix on one line instead of breaking after dots/characters. */
+.public-suffix-card>div{
+  min-width:0!important;
+}
+.public-suffix-card h3{
+  min-width:0!important;
+  max-width:100%!important;
+  font-size:clamp(14px,1.15vw,19px)!important;
+  letter-spacing:-.25px!important;
+  white-space:nowrap!important;
+  word-break:normal!important;
+  overflow-wrap:normal!important;
+  overflow:visible!important;
+  text-overflow:clip!important;
+}
+
+/* Force the site-directory page into its intended card layout even when old cached rules are present. */
+.public-navigation-v114 .public-nav-hub-v114-head{
+  max-width:1180px!important;
+  margin:0 auto!important;
+  padding:56px 24px 24px!important;
+  display:flex!important;
+  align-items:flex-end!important;
+  justify-content:space-between!important;
+  gap:28px!important;
+}
+.public-navigation-v114 .public-nav-hub-v114{
+  max-width:1180px!important;
+  margin:0 auto 70px!important;
+  padding:0 24px!important;
+  display:grid!important;
+  grid-template-columns:repeat(4,minmax(0,1fr))!important;
+  gap:14px!important;
+}
+.public-navigation-v114 .public-nav-hub-v114>article{
+  display:block!important;
+  min-width:0!important;
+  background:#fff!important;
+  border:1px solid #e1e6ef!important;
+  border-radius:22px!important;
+  overflow:hidden!important;
+}
+.public-navigation-v114 .public-nav-hub-v114-title{
+  display:block!important;
+  padding:20px 18px 15px!important;
+  background:linear-gradient(145deg,#f8f9ff,#fff)!important;
+  border-bottom:1px solid #edf0f5!important;
+}
+.public-navigation-v114 .public-nav-hub-v114 article>div:last-child{
+  display:block!important;
+  padding:8px 10px 12px!important;
+}
+.public-navigation-v114 .public-nav-hub-v114 a{
+  display:grid!important;
+  grid-template-columns:28px minmax(0,1fr) 18px!important;
+  gap:9px!important;
+  align-items:start!important;
+  padding:12px 9px!important;
+  border-radius:12px!important;
+}
+
+/* v117 standalone homepage settings shell. */
+.admin-home-settings-v117{padding:0;overflow:hidden}
+.admin-home-settings-v117 .home-settings-toolbar{padding:24px 26px;border-bottom:1px solid var(--line);margin:0}
+.admin-home-settings-v117 #homepage-settings-form{padding:24px 26px 30px}
+
+/* Comprehensive public-site settings navigation. */
+.admin-home-settings-v117 .settings-section-heading{
+  scroll-margin-top:90px;
+}
+.home-settings-jumpbar{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  padding:12px 0 18px;
+  border-bottom:1px solid #edf1f6;
+  margin-bottom:8px;
+}
+.home-settings-jumpbar button{
+  appearance:none;
+  border:1px solid #dce3ef;
+  background:#f8faff;
+  color:#43516a;
+  border-radius:999px;
+  padding:8px 13px;
+  font-size:12px;
+  font-weight:800;
+  cursor:pointer;
+}
+.home-settings-jumpbar button:hover{
+  color:var(--accent);
+  border-color:#cbd4ff;
+  background:#f1f4ff;
+}
+.settings-subheading{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:baseline;
+  gap:8px 14px;
+  padding:12px 14px;
+  border:1px solid #e5eaf2;
+  border-radius:14px;
+  background:#fafbfe;
+}
+.settings-subheading>b{font-size:13px}
+.settings-subheading>span{font-size:11px;color:#7b8798}
+
+/* No visible startup loading card: the viewport remains plain white until the app mounts. */
+.boot-loading{display:none!important}
+
+@media(max-width:980px){
+  .public-navigation-v114 .public-nav-hub-v114{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  }
+}
+@media(max-width:640px){
+  .public-navigation-v114 .public-nav-hub-v114-head{
+    padding:34px 14px 16px!important;
+    align-items:flex-start!important;
+  }
+  .public-navigation-v114 .public-nav-hub-v114{
+    padding:0 12px!important;
+    grid-template-columns:1fr!important;
+    gap:10px!important;
+  }
+  .public-domain-search-result,
+  .public-home-v114-tool .public-domain-search-result{
+    font-size:10.5px!important;
+    gap:5px!important;
+  }
+  .public-domain-search-result a{
+    margin-left:0!important;
+    width:auto!important;
+  }
+  .public-suffix-card h3{
+    font-size:16px!important;
+  }
+  .home-settings-jumpbar{
+    flex-wrap:nowrap;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+    padding-bottom:12px;
+  }
+  .home-settings-jumpbar button{
+    flex:0 0 auto;
+    white-space:nowrap;
+  }
+}
+
+/* v118 detailed public homepage/settings control panel. */
+.admin-home-settings-v118{padding:0;overflow:hidden}
+.admin-home-settings-v118 .home-settings-toolbar{padding:24px 26px 18px;border-bottom:1px solid var(--line);margin:0}
+.admin-home-settings-v118 #homepage-settings-form{padding:18px 26px 30px}
+.admin-home-settings-v118 .settings-section-heading{scroll-margin-top:92px;margin-top:14px}
+.home-settings-previewbar{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:12px 26px;border-bottom:1px solid var(--line);background:#fbfcff}
+.home-settings-previewbar>b{font-size:12px;color:#506079;margin-right:4px}
+.home-settings-detailed-form>.check{min-height:48px;align-items:flex-start;padding-top:13px}
+.home-settings-subsection{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px;padding:13px 15px;margin-top:8px;border:1px solid #e4e9f2;border-left:3px solid var(--accent);border-radius:13px;background:#fbfcff}
+.home-settings-subsection>b{font-size:13px;color:#182235}
+.home-settings-subsection>span{font-size:11px;line-height:1.6;color:#7a8799}
+.home-feature-editor{border:1px solid #e4e9f2;border-radius:16px;padding:14px;background:#fff}
+.home-feature-editor-head{display:flex;justify-content:space-between;gap:12px;align-items:center;padding-bottom:10px;border-bottom:1px dashed #e7ebf2}
+.home-feature-editor-head>b{font-size:13px}
+.home-feature-editor-head .check.compact{padding:0;min-height:0;border:0;background:transparent}
+.home-feature-editor-grid{display:grid;grid-template-columns:minmax(120px,.35fr) minmax(180px,.65fr);gap:12px;margin-top:12px}
+.home-feature-editor-grid>.wide{grid-column:1/-1}
+.home-settings-detailed-form .field textarea{resize:vertical;min-height:78px}
+.home-settings-detailed-form .field>em{line-height:1.5}
+
+@media(max-width:760px){
+  .admin-home-settings-v118 .home-settings-toolbar{padding:18px 14px 14px}
+  .admin-home-settings-v118 #homepage-settings-form{padding:14px 12px 22px}
+  .home-settings-previewbar{flex-wrap:nowrap;overflow-x:auto;padding:10px 12px;-webkit-overflow-scrolling:touch}
+  .home-settings-previewbar>*{flex:0 0 auto}
+  .home-feature-editor-grid{grid-template-columns:1fr}
+  .home-feature-editor-grid>.wide{grid-column:auto}
+  .home-settings-subsection{padding:11px 12px}
 }
