@@ -158,7 +158,7 @@ function loadTurnstileScript(forceReload = false) {
     };
     const done = () => window.turnstile ? finish(resolve, window.turnstile) : finish(reject, new Error('Turnstile 接口加载超时'));
     const failed = () => finish(reject, new Error('Turnstile 脚本加载失败'));
-    timeoutId = setTimeout(done, 4200);
+    timeoutId = setTimeout(done, 3500);
     if (existing) {
       existing.addEventListener('load', done, { once:true });
       existing.addEventListener('error', failed, { once:true });
@@ -920,40 +920,61 @@ function openModal(title, subtitle, content, size = '') {
 }
 async function api(path, options = {}) {
   const method = String(options.method || 'GET').toUpperCase();
+  const timeoutMs = Math.max(0, Number(options.timeoutMs || 0));
   const opts = { method, headers: { ...(options.headers || {}) }, credentials: 'same-origin' };
   if (options.body !== undefined) {
     opts.headers['content-type'] = 'application/json';
     opts.body = JSON.stringify(options.body);
   }
   const requestOnce = async () => {
-    const res = await fetch(path, opts);
-    const contentType = String(res.headers.get('content-type') || '');
-    let data = null;
-    if (contentType.includes('application/json')) {
-      try { data = await res.json(); } catch {}
-    } else {
-      const text = await res.text().catch(() => '');
-      data = { ok:false, message:text && text.length < 500 ? text : '' };
+    let timeoutId = null;
+    let controller = null;
+    const requestOptions = { ...opts };
+    if (timeoutMs > 0 && typeof AbortController !== 'undefined') {
+      controller = new AbortController();
+      requestOptions.signal = controller.signal;
+      timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     }
-    data ||= { ok:false };
-    if (!res.ok || data.ok === false) {
-      const ray = res.headers.get('cf-ray');
-      let message = data.message || `HTTP ${res.status}`;
-      if (res.status === 403 && !data.code) {
-        message = `请求被 Cloudflare 安全策略暂时拦截（HTTP 403）${ray ? `，Ray ID：${ray}` : ''}。请稍后重试、关闭代理或刷新页面后再操作。`;
+    try {
+      const res = await fetch(path, requestOptions);
+      const contentType = String(res.headers.get('content-type') || '');
+      let data = null;
+      if (contentType.includes('application/json')) {
+        try { data = await res.json(); } catch {}
+      } else {
+        const text = await res.text().catch(() => '');
+        data = { ok:false, message:text && text.length < 500 ? text : '' };
       }
-      const error = new Error(message || '请求失败');
-      error.code = data.code;
-      error.details = data.details;
-      error.status = res.status;
-      error.ray = ray || '';
+      data ||= { ok:false };
+      if (!res.ok || data.ok === false) {
+        const ray = res.headers.get('cf-ray');
+        let message = data.message || `HTTP ${res.status}`;
+        if (res.status === 403 && !data.code) {
+          message = `请求被 Cloudflare 安全策略暂时拦截（HTTP 403）${ray ? `，Ray ID：${ray}` : ''}。请稍后重试、关闭代理或刷新页面后再操作。`;
+        }
+        const error = new Error(message || '请求失败');
+        error.code = data.code;
+        error.details = data.details;
+        error.status = res.status;
+        error.ray = ray || '';
+        throw error;
+      }
+      return data;
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        const timeoutError = new Error('请求超时，请稍后重试');
+        timeoutError.code = 'CLIENT_TIMEOUT';
+        timeoutError.status = 408;
+        throw timeoutError;
+      }
       throw error;
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
     }
-    return data;
   };
   try { return await requestOnce(); }
   catch (error) {
-    if (['GET','HEAD'].includes(method) && [403,502,503,504].includes(Number(error.status)) && !options.__retried) {
+    if (['GET','HEAD'].includes(method) && [403,408,502,503,504].includes(Number(error.status)) && !options.__retried) {
       await new Promise(resolve => setTimeout(resolve, 350));
       return api(path, { ...options, __retried:true });
     }
@@ -1000,13 +1021,22 @@ async function loadImageCaptcha(root, scene) {
   root.classList.remove('is-turnstile');
   if (picture) { picture.disabled = true; picture.innerHTML = '<span>正在生成…</span>'; }
   if (input) input.value = '';
+  const endpoint = state.config?.turnstile?.captchaEndpoint || '/api/auth/captcha/challenge';
   try {
-    const result = await api(state.config?.turnstile?.captchaEndpoint || '/api/auth/captcha/challenge', { method:'POST', body:{ scene } });
+    let result;
+    try {
+      result = await api(endpoint, { method:'POST', body:{ scene }, timeoutMs:5000 });
+    } catch (firstError) {
+      await new Promise(resolve => setTimeout(resolve, 320));
+      result = await api(endpoint, { method:'POST', body:{ scene }, timeoutMs:5000 });
+    }
     record.challengeId = String(result.challengeId || '');
-    if (picture) picture.innerHTML = result.imageSvg || '<span>验证码生成失败</span>';
+    if (!record.challengeId || !result.imageSvg) throw new Error('验证码生成结果不完整');
+    if (picture) picture.innerHTML = result.imageSvg;
   } catch (error) {
+    record.challengeId = '';
     if (picture) picture.innerHTML = '<span>生成失败，点击重试</span>';
-    toast(error.message || '图形验证码生成失败', 'error');
+    toast(error.message || '图形验证码生成失败，请点击验证码区域重试', 'error');
   } finally {
     if (picture) picture.disabled = false;
   }
@@ -1213,12 +1243,25 @@ function normalizeBootConfig(config) {
 
 async function loadPublicConfigSafely() {
   try {
-    const data = await withBootTimeout(api('/api/public/config'), 9000, '配置接口加载超时');
+    const data = await api('/api/public/config', { timeoutMs:6500 });
     return normalizeBootConfig(data.config || data);
   } catch (error) {
     console.error('public config failed:', error);
-    setTimeout(() => toast('配置接口暂时无响应，已使用基础配置进入页面', 'warn'), 300);
-    return normalizeBootConfig(DEFAULT_BOOT_CONFIG);
+    const fallback = normalizeBootConfig(DEFAULT_BOOT_CONFIG);
+    setTimeout(async () => {
+      try {
+        const retry = await api('/api/public/config', { timeoutMs:7000 });
+        const fresh = normalizeBootConfig(retry.config || retry);
+        state.config = fresh;
+        applyTheme();
+        const scene = currentRoutePath() === '/login' ? 'login' : (currentRoutePath() === '/register' ? 'register' : '');
+        if (scene) {
+          const root = document.querySelector(`[data-human-verification="${scene}"]`);
+          if (root) await mountHumanVerification(`[data-human-verification="${scene}"]`, scene, scene);
+        }
+      } catch (_) {}
+    }, 900);
+    return fallback;
   }
 }
 
@@ -2827,7 +2870,15 @@ function deriveHelpTags(text) {
 }
 
 
-function renderHelpCenter() {
+async function renderHelpCenter() {
+  if (!state.config?.help?.categories?.length) {
+    try {
+      const result = await api('/api/public/help', { timeoutMs:6500 });
+      if (result?.help?.categories) state.config.help = result.help;
+    } catch (_) {
+      // Help is non-critical. Use the built-in knowledge base when the custom help endpoint is slow.
+    }
+  }
   const categories = helpCategories();
   const allArticles = categories.flatMap((cat, ci) => (cat.items || []).map((item, ii) => {
     const body = plainHelpAnswer(item.a || '');
@@ -6823,8 +6874,8 @@ Object.assign(I18N_EN, {
   '未匹配':'Unmatched',
 });
 
-function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v123</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
-async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v123')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v123')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
+function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v124</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
+async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v124')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v124')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
 function bindSettingsTools() {
   const exportFn = async () => {
     try {
@@ -7158,7 +7209,11 @@ async function mountTurnstile(selector, action, options = {}) {
       action: action || 'login',
       language: lang() === 'en' ? 'en' : 'zh-cn',
       retry: 'auto',
+      'retry-interval': 3000,
       'refresh-expired': 'auto',
+      'refresh-timeout': 'auto',
+      appearance: 'always',
+      size: 'flexible',
       callback: token => { state.turnstileTokenValue = token || ''; },
       'expired-callback': () => { state.turnstileTokenValue = ''; },
       'timeout-callback': () => {
@@ -7166,12 +7221,22 @@ async function mountTurnstile(selector, action, options = {}) {
         if (options.allowFallback && root && options.scene) switchHumanToImage(root, options.scene).catch(error => toast(error.message, 'error'));
         else toast('Turnstile 接口加载超时，请重新验证', 'error');
       },
-      'error-callback': () => {
+      'error-callback': errorCode => {
         state.turnstileTokenValue = '';
         if (options.allowFallback && root && options.scene) switchHumanToImage(root, options.scene).catch(error => toast(error.message, 'error'));
-        else toast('Turnstile 验证组件不可用', 'error');
+        else toast(`Turnstile 验证组件不可用${errorCode ? `（${errorCode}）` : ''}`, 'error');
+        return true;
       }
     });
+    if (options.allowFallback && root && options.scene) {
+      const watchdogScene = options.scene;
+      setTimeout(() => {
+        const active = humanSceneState(watchdogScene);
+        if (active.root !== root || active.method !== 'turnstile' || turnstileToken()) return;
+        const frame = el.querySelector('iframe');
+        if (!frame) switchHumanToImage(root, watchdogScene).catch(error => toast(error.message, 'error'));
+      }, 4500);
+    }
     return true;
   };
   try { return await render(false); }
