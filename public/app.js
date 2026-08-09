@@ -1502,6 +1502,11 @@ function safePublicHomepageHref(value, fallback) {
   return fallback;
 }
 
+function formatPublicRootSuffixLabel(suffix) {
+  const safe = esc(String(suffix || ''));
+  return ('*.' + safe).replace(/([.-])/g, '$1<wbr>');
+}
+
 function homepageSectionOrder(value) {
   // v118: keep the public homepage focused. The old workflow/system-architecture
   // blocks were intentionally removed from the public homepage.
@@ -1533,7 +1538,7 @@ function renderPublicHome() {
   const suffixLimit = Math.max(1, Math.min(24, Number(site.publicHomepageDomainsLimit || 6)));
   const suffixStatus = String(site.publicHomepageDomainsStatusText || pub('当前开放申请','Currently open for applications')).trim();
   const suffixLinkText = String(site.publicHomepageDomainsLinkText || pub('立即查询','Check now')).trim();
-  const suffixCards = suffixes.slice(0,suffixLimit).map((item,index) => `<article class="public-suffix-card"><div><span>${String(index+1).padStart(2,'0')}</span><h3 title="*.${attr(item.suffix)}">*.${esc(item.suffix)}</h3></div><p>${item.label?esc(item.label):esc(suffixStatus)}</p><small>${pub('可直接查询是否可注册','Check availability instantly')}</small><a href="#/available">${esc(suffixLinkText)} →</a></article>`).join('');
+  const suffixCards = suffixes.slice(0,suffixLimit).map((item,index) => `<article class="public-suffix-card"><div><span>${String(index+1).padStart(2,'0')}</span><h3 title="*.${attr(item.suffix)}">${formatPublicRootSuffixLabel(item.suffix)}</h3></div><p>${item.label?esc(item.label):esc(suffixStatus)}</p><small>${pub('可直接查询是否可注册','Check availability instantly')}</small><a href="#/available">${esc(suffixLinkText)} →</a></article>`).join('');
 
   const heroSearch = site.publicHomepageShowSearch === false ? '' : `<div class="public-home-v114-tool"><div class="public-home-v114-tool-head"><span>${esc(searchEyebrow)}</span><b>${esc(searchTitle)}</b></div>${publicDomainSearchHtml('home-domain-search', true, { placeholder:searchPlaceholder, buttonText:searchButtonText })}<p>${esc(searchNote)}</p></div>`;
 
@@ -6780,8 +6785,8 @@ Object.assign(I18N_EN, {
   '未匹配':'Unmatched',
 });
 
-function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v118</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
-async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v118')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v118')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
+function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v119</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
+async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v119')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v119')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
 function bindSettingsTools() {
   const exportFn = async () => {
     try {
