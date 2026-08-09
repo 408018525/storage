@@ -1330,7 +1330,7 @@ function publicSuffixes() {
 
 function publicBrandHtml() {
   const site = state.config?.site || {};
-  const title = site.title || pub('免费二级域名注册中心', 'Free Subdomain Center');
+  const title = String(site.publicBrandTitle || site.title || pub('免费二级域名注册中心', 'Free Subdomain Center')).trim();
   const logo = site.logoImageUrl
     ? `<img src="${attr(site.logoImageUrl)}" alt="${attr(title)}">`
     : `<span>${esc(site.logoText || 'F')}</span>`;
@@ -1347,17 +1347,22 @@ function publicHeader(active = 'home') {
     ['navigation', String(site.publicNavNavigationLabel || pub('导航','Navigation')), '#/navigation', site.publicNavShowNavigation !== false],
   ].filter(item => item[3]);
   const links = items.map(([key,label,href]) => `<a class="${key===active?'active':''}" href="${href}">${esc(label)}</a>`).join('');
-  const accountAction = state.me
-    ? `<a class="btn primary public-account-btn" href="#/apply">${pub('进入控制台','Dashboard')}</a>`
-    : `<a class="btn secondary public-login-btn" href="#/login">${pub('登录','Login')}</a><a class="btn primary public-register-btn" href="#/register">${pub('注册','Register')}</a>`;
+  const dashboardText = String(site.publicHeaderDashboardText || pub('进入控制台','Dashboard')).trim();
+  const loginText = String(site.publicHeaderLoginText || pub('登录','Login')).trim();
+  const registerText = String(site.publicHeaderRegisterText || pub('注册','Register')).trim();
+  const accountAction = site.publicHeaderShowAccountActions === false ? '' : (state.me
+    ? `<a class="btn primary public-account-btn" href="#/apply">${esc(dashboardText)}</a>`
+    : `<a class="btn secondary public-login-btn" href="#/login">${esc(loginText)}</a><a class="btn primary public-register-btn" href="#/register">${esc(registerText)}</a>`);
+  const languageAction = site.publicHeaderShowLanguage === false ? '' : langButton();
+  const mobileAccount = site.publicHeaderShowAccountActions === false ? '' : (state.me ? `<a href="#/apply">${esc(dashboardText)}</a>` : `<a href="#/login">${esc(loginText)}</a><a href="#/register">${esc(registerText)}</a>`);
   return `<header class="public-header">
     <div class="public-header-inner">
-      ${publicBrandHtml()}
+      ${site.publicHeaderShowBrand === false ? '<div></div>' : publicBrandHtml()}
       <nav class="public-nav-desktop">${links}</nav>
-      <div class="public-header-actions">${langButton()}${accountAction}</div>
+      <div class="public-header-actions">${languageAction}${accountAction}</div>
       <details class="public-nav-mobile">
         <summary aria-label="${pub('打开导航','Open navigation')}">☰</summary>
-        <div class="public-mobile-menu">${links}<hr>${state.me?`<a href="#/apply">${pub('进入控制台','Dashboard')}</a>`:`<a href="#/login">${pub('登录','Login')}</a><a href="#/register">${pub('注册','Register')}</a>`}</div>
+        <div class="public-mobile-menu">${links}${mobileAccount ? `<hr>${mobileAccount}` : ''}</div>
       </details>
     </div>
   </header>`;
@@ -1365,21 +1370,25 @@ function publicHeader(active = 'home') {
 
 function publicFooter() {
   const site = state.config?.site || {};
-  const copyright = site.copyright || `© ${new Date().getFullYear()} ${site.title || pub('免费二级域名注册中心','Free Subdomain Center')}`;
+  const copyright = String(site.publicFooterCopyrightText || site.copyright || `© ${new Date().getFullYear()} ${site.publicBrandTitle || site.title || pub('免费二级域名注册中心','Free Subdomain Center')}`).trim();
   const footerSubtitle = String(site.publicFooterSubtitle || site.subtitle || pub('快速注册并管理您的专属免费域名','Register and manage your free subdomain')).trim();
+  const servicesTitle = String(site.publicFooterServicesTitle || pub('服务','Services')).trim();
+  const infoTitle = String(site.publicFooterInfoTitle || pub('信息','Information')).trim();
+  const startTitle = String(site.publicFooterStartTitle || pub('开始使用','Get Started')).trim();
   return `<footer class="public-footer">
     <div class="public-footer-grid">
-      <div><div class="public-footer-brand">${publicBrandHtml()}</div><p>${esc(footerSubtitle)}</p></div>
-      <div><b>${pub('服务','Services')}</b><a href="#/available">${esc(site.publicNavAvailableLabel || pub('可用域名','Available Domains'))}</a><a href="#/knowledge">${esc(site.publicNavKnowledgeLabel || pub('知识库','Knowledge Base'))}</a><a href="#/featured">${esc(site.publicNavFeaturedLabel || pub('优质站点','Featured'))}</a></div>
-      <div><b>${pub('信息','Information')}</b><a href="#/about">${pub('关于本站','About')}</a><a href="#/contact">${pub('联系我们','Contact')}</a><a href="#/abuse">${pub('举报滥用','Report Abuse')}</a><a href="#/faq">${pub('常见问题','FAQ')}</a><a href="#/terms">${pub('服务协议','Terms')}</a><a href="#/privacy">${pub('隐私政策','Privacy')}</a></div>
-      <div><b>${pub('开始使用','Get Started')}</b>${state.me?`<a href="#/apply">${pub('进入控制台','Dashboard')}</a><a href="#/domains">${pub('我的域名','My Domains')}</a>`:`<a href="#/login">${pub('登录','Login')}</a><a href="#/register">${pub('注册账户','Create Account')}</a>`}</div>
+      ${site.publicFooterShowBrand === false ? '' : `<div><div class="public-footer-brand">${publicBrandHtml()}</div><p>${esc(footerSubtitle)}</p></div>`}
+      <div><b>${esc(servicesTitle)}</b><a href="#/available">${esc(site.publicNavAvailableLabel || pub('可用域名','Available Domains'))}</a><a href="#/knowledge">${esc(site.publicNavKnowledgeLabel || pub('知识库','Knowledge Base'))}</a><a href="#/featured">${esc(site.publicNavFeaturedLabel || pub('优质站点','Featured'))}</a></div>
+      <div><b>${esc(infoTitle)}</b><a href="#/about">${pub('关于本站','About')}</a><a href="#/contact">${pub('联系我们','Contact')}</a><a href="#/abuse">${pub('举报滥用','Report Abuse')}</a><a href="#/faq">${pub('常见问题','FAQ')}</a><a href="#/terms">${pub('服务协议','Terms')}</a><a href="#/privacy">${pub('隐私政策','Privacy')}</a></div>
+      <div><b>${esc(startTitle)}</b>${state.me?`<a href="#/apply">${pub('进入控制台','Dashboard')}</a><a href="#/domains">${pub('我的域名','My Domains')}</a>`:`<a href="#/login">${pub('登录','Login')}</a><a href="#/register">${pub('注册账户','Create Account')}</a>`}</div>
     </div>
-    <div class="public-footer-bottom"><span>${esc(copyright)}</span>${site.icp?`<span>${esc(site.icp)}</span>`:''}${site.publicFooterShowPowered === false ? '' : '<span>Powered by Cloudflare</span>'}</div>
+    <div class="public-footer-bottom"><span>${esc(copyright)}</span>${site.publicFooterShowIcp === false || !site.icp ? '' : `<span>${esc(site.icp)}</span>`}${site.publicFooterShowPowered === false ? '' : '<span>Powered by Cloudflare</span>'}</div>
   </footer>`;
 }
 
 function publicShell(active, body, extraClass = '') {
-  return `<div class="public-site ${attr(extraClass)}">${publicHeader(active)}<main class="public-main">${body}</main>${publicFooter()}</div>`;
+  const site = state.config?.site || {};
+  return `<div class="public-site ${attr(extraClass)}">${publicHeader(active)}<main class="public-main">${body}</main>${site.publicFooterEnabled === false ? '' : publicFooter()}</div>`;
 }
 
 function publicDomainSearchHtml(id = 'public-domain-search', compact = false, options = {}) {
@@ -1396,6 +1405,7 @@ function publicDomainSearchHtml(id = 'public-domain-search', compact = false, op
 
 async function runPublicDomainCheck(form) {
   if (!form) return;
+  const site = state.config?.site || {};
   const prefix = String(form.elements.prefix?.value || '').trim();
   const suffix = String(form.elements.suffix?.value || '').trim();
   const result = form.querySelector('.public-domain-search-result');
@@ -1405,20 +1415,24 @@ async function runPublicDomainCheck(form) {
     result.innerHTML = html;
   };
   if (!prefix) {
-    setResult('error', `<i aria-hidden="true"></i><span>${pub('请输入域名前缀','Please enter a domain prefix')}</span>`);
+    setResult('error', `<i aria-hidden="true"></i><span>${esc(site.publicDomainCheckEmptyText || pub('请输入域名前缀','Please enter a domain prefix'))}</span>`);
     return;
   }
-  setResult('checking', `<i aria-hidden="true"></i><span>${pub('正在检查域名是否可注册...','Checking availability...')}</span>`);
+  setResult('checking', `<i aria-hidden="true"></i><span>${esc(site.publicDomainCheckCheckingText || pub('正在检查域名是否可注册...','Checking availability...'))}</span>`);
   const button = form.querySelector('button[type="submit"]');
   if (button) button.disabled = true;
   try {
     const data = await api('/api/public/domain-check', { method:'POST', body:{ prefix, suffix } });
-    const defaultMessage = data.available ? pub('此域名可注册。','This domain is available.') : pub('此域名暂不可注册。','This domain is not available.');
+    const defaultMessage = data.available
+      ? String(site.publicDomainCheckAvailableText || pub('此域名可注册。','This domain is available.'))
+      : String(site.publicDomainCheckUnavailableText || pub('此域名暂不可注册。','This domain is not available.'));
     const fqdn = esc(data.fqdnUnicode || `${prefix}.${suffix}`);
-    const action = data.available ? `<a href="${state.me?'#/apply':'#/register'}">${state.me?pub('立即申请','Apply now'):pub('注册后申请','Register to apply')} →</a>` : '';
+    const applyText = String(site.publicDomainCheckApplyText || pub('立即申请','Apply now'));
+    const registerApplyText = String(site.publicDomainCheckRegisterApplyText || pub('注册后申请','Register to apply'));
+    const action = data.available ? `<a href="${state.me?'#/apply':'#/register'}">${esc(state.me?applyText:registerApplyText)} →</a>` : '';
     setResult(data.available?'success':'error', `<i aria-hidden="true"></i><b>${fqdn}</b><span>${esc(data.message || defaultMessage)}</span>${action}`);
   } catch (error) {
-    setResult('error', `<i aria-hidden="true"></i><span>${esc(error.message || pub('查询失败，请稍后重试','Check failed. Please try again later.'))}</span>`);
+    setResult('error', `<i aria-hidden="true"></i><span>${esc(error.message || site.publicDomainCheckFailureText || pub('查询失败，请稍后重试','Check failed. Please try again later.'))}</span>`);
   } finally {
     if (button) button.disabled = false;
   }
@@ -1447,14 +1461,24 @@ async function loadPublicStats() {
 }
 
 function publicFeatureCards() {
-  return `<div class="public-feature-grid">
-    <article><i>∞</i><h3>${pub('免费使用','Free to Use')}</h3><p>${pub('提供可申请的免费二级域名，注册、审核与 DNS 管理集中在一个系统完成。','Apply for free subdomains and manage review and DNS in one system.')}</p></article>
-    <article><i>⚡</i><h3>${pub('快速上线','Fast Setup')}</h3><p>${pub('域名审核通过后即可配置解析，不需要在多个后台之间反复切换。','Configure DNS after approval without switching between multiple dashboards.')}</p></article>
-    <article><i>◎</i><h3>${pub('完整 DNS 控制','DNS Control')}</h3><p>${pub('按管理员开放策略支持常见 DNS 记录类型。','Supports common DNS record types according to admin policy.')}</p></article>
-    <article><i>☁</i><h3>${pub('Cloudflare 驱动','Cloudflare Powered')}</h3><p>${pub('DNS 写入由 Cloudflare API 完成，可代理记录可按系统策略开启代理。','DNS changes are written through the Cloudflare API.')}</p></article>
-    <article><i>⌁</i><h3>${pub('多根域名','Multiple Root Domains')}</h3><p>${pub('可以从多个当前开放的根域名中选择合适的后缀。','Choose from multiple currently open root domains.')}</p></article>
-    <article><i>✓</i><h3>${pub('可追踪管理','Traceable Management')}</h3><p>${pub('域名状态、DNS、续期、消息与操作记录都可在控制台查看。','Track domain status, DNS, renewals, messages, and operations in the dashboard.')}</p></article>
-  </div>`;
+  const site = state.config?.site || {};
+  const defaults = [
+    ['∞',pub('免费使用','Free to Use'),pub('提供可申请的免费二级域名，注册、审核与 DNS 管理集中在一个系统完成。','Apply for free subdomains and manage review and DNS in one system.')],
+    ['⚡',pub('快速上线','Fast Setup'),pub('域名审核通过后即可配置解析，不需要在多个后台之间反复切换。','Configure DNS after approval without switching between multiple dashboards.')],
+    ['◎',pub('完整 DNS 控制','DNS Control'),pub('按管理员开放策略支持常见 DNS 记录类型。','Supports common DNS record types according to admin policy.')],
+    ['☁',pub('Cloudflare 驱动','Cloudflare Powered'),pub('DNS 写入由 Cloudflare API 完成，可代理记录可按系统策略开启代理。','DNS changes are written through the Cloudflare API.')],
+    ['⌁',pub('多根域名','Multiple Root Domains'),pub('可以从多个当前开放的根域名中选择合适的后缀。','Choose from multiple currently open root domains.')],
+    ['✓',pub('可追踪管理','Traceable Management'),pub('域名状态、DNS、续期、消息与操作记录都可在控制台查看。','Track domain status, DNS, renewals, messages, and operations in the dashboard.')],
+  ];
+  const cards = defaults.map((d,index) => {
+    const n=index+1;
+    if (site[`publicHomepageFeature${n}Show`] === false) return '';
+    const icon=String(site[`publicHomepageFeature${n}Icon`] || d[0]);
+    const title=String(site[`publicHomepageFeature${n}Title`] || d[1]);
+    const description=String(site[`publicHomepageFeature${n}Description`] || d[2]);
+    return `<article><i>${esc(icon)}</i><h3>${esc(title)}</h3><p>${esc(description)}</p></article>`;
+  }).join('');
+  return `<div class="public-feature-grid">${cards || `<div class="public-empty">${pub('当前没有启用功能卡片。','No feature cards are enabled.')}</div>`}</div>`;
 }
 
 const PUBLIC_FAQ = [
@@ -1479,7 +1503,7 @@ function safePublicHomepageHref(value, fallback) {
 }
 
 function homepageSectionOrder(value) {
-  // v117: keep the public homepage focused. The old workflow/system-architecture
+  // v118: keep the public homepage focused. The old workflow/system-architecture
   // blocks were intentionally removed from the public homepage.
   const valid = ['features','domains','faq'];
   const requested = String(value || '').split(',').map(x => x.trim()).filter(x => valid.includes(x));
@@ -1506,17 +1530,27 @@ function renderPublicHome() {
   const searchPlaceholder = String(site.publicHomepageSearchPlaceholder || pub('输入您想要的域名前缀，例如 myblog','Enter a prefix, e.g. myblog')).trim();
   const searchButtonText = String(site.publicHomepageSearchButtonText || pub('查询','Check')).trim();
 
-  const suffixCards = suffixes.slice(0,6).map((item,index) => `<article class="public-suffix-card"><div><span>${String(index+1).padStart(2,'0')}</span><h3 title="*.${attr(item.suffix)}">*.${esc(item.suffix)}</h3></div><p>${item.label?esc(item.label):pub('当前开放申请','Currently open for applications')}</p><small>${pub('可直接查询是否可注册','Check availability instantly')}</small><a href="#/available">${pub('立即查询','Check now')} →</a></article>`).join('');
+  const suffixLimit = Math.max(1, Math.min(24, Number(site.publicHomepageDomainsLimit || 6)));
+  const suffixStatus = String(site.publicHomepageDomainsStatusText || pub('当前开放申请','Currently open for applications')).trim();
+  const suffixLinkText = String(site.publicHomepageDomainsLinkText || pub('立即查询','Check now')).trim();
+  const suffixCards = suffixes.slice(0,suffixLimit).map((item,index) => `<article class="public-suffix-card"><div><span>${String(index+1).padStart(2,'0')}</span><h3 title="*.${attr(item.suffix)}">*.${esc(item.suffix)}</h3></div><p>${item.label?esc(item.label):esc(suffixStatus)}</p><small>${pub('可直接查询是否可注册','Check availability instantly')}</small><a href="#/available">${esc(suffixLinkText)} →</a></article>`).join('');
 
   const heroSearch = site.publicHomepageShowSearch === false ? '' : `<div class="public-home-v114-tool"><div class="public-home-v114-tool-head"><span>${esc(searchEyebrow)}</span><b>${esc(searchTitle)}</b></div>${publicDomainSearchHtml('home-domain-search', true, { placeholder:searchPlaceholder, buttonText:searchButtonText })}<p>${esc(searchNote)}</p></div>`;
 
-  const stats = site.publicHomepageShowStats === false ? '' : `<section class="public-stats public-home-v114-stats" data-public-stats><div><strong data-stat="users">—</strong><span>${esc(site.publicHomepageStatsUsersLabel || pub('活跃用户','Active Users'))}</span></div><div><strong data-stat="domains">—</strong><span>${esc(site.publicHomepageStatsDomainsLabel || pub('正常域名','Active Domains'))}</span></div><div><strong data-stat="dns">—</strong><span>${esc(site.publicHomepageStatsDnsLabel || pub('DNS 记录','DNS Records'))}</span></div><div><strong data-stat="suffixes">—</strong><span>${esc(site.publicHomepageStatsSuffixesLabel || pub('开放根域名','Open Roots'))}</span></div></section>`;
+  const statItems = [
+    ['users','publicHomepageStatsShowUsers','publicHomepageStatsUsersLabel',pub('活跃用户','Active Users')],
+    ['domains','publicHomepageStatsShowDomains','publicHomepageStatsDomainsLabel',pub('正常域名','Active Domains')],
+    ['dns','publicHomepageStatsShowDns','publicHomepageStatsDnsLabel',pub('DNS 记录','DNS Records')],
+    ['suffixes','publicHomepageStatsShowSuffixes','publicHomepageStatsSuffixesLabel',pub('开放根域名','Open Roots')],
+  ].filter(([,showKey]) => site[showKey] !== false);
+  const stats = site.publicHomepageShowStats === false || !statItems.length ? '' : `<section class="public-stats public-home-v114-stats" data-public-stats>${statItems.map(([key,,labelKey,fallback]) => `<div><strong data-stat="${key}">—</strong><span>${esc(site[labelKey] || fallback)}</span></div>`).join('')}</section>`;
 
   const features = site.publicHomepageShowFeatures === false ? '' : `<section class="public-section public-home-v114-section"><header><span>01</span><div><h2>${esc(site.publicHomepageFeaturesTitle || pub('一个入口，完成域名日常管理','One place for daily domain management'))}</h2><p>${esc(site.publicHomepageFeaturesDescription || pub('首页负责查询与了解服务，登录后进入控制台处理申请、审核状态与 DNS。','Use the public site for discovery and the dashboard for applications, review status, and DNS.'))}</p></div></header>${publicFeatureCards()}</section>`;
 
-  const domains = site.publicHomepageShowDomains === false ? '' : `<section class="public-section public-soft-section public-home-v114-section"><header><span>02</span><div><h2>${esc(site.publicHomepageDomainsTitle || pub('现在可以申请的后缀','Root domains open now'))}</h2><p>${esc(site.publicHomepageDomainsDescription || pub('这里只展示开放入口，不公开用户域名或账户数据。','Only open root domains are shown here; user domains and account data stay private.'))}</p></div><a href="#/featured">${pub('查看全部','View all')} →</a></header><div class="public-suffix-grid">${suffixCards || `<div class="public-empty">${pub('当前暂无开放根域名。','No root domains are currently open.')}</div>`}</div></section>`;
+  const domains = site.publicHomepageShowDomains === false ? '' : `<section class="public-section public-soft-section public-home-v114-section"><header><span>02</span><div><h2>${esc(site.publicHomepageDomainsTitle || pub('现在可以申请的后缀','Root domains open now'))}</h2><p>${esc(site.publicHomepageDomainsDescription || pub('这里只展示开放入口，不公开用户域名或账户数据。','Only open root domains are shown here; user domains and account data stay private.'))}</p></div><a href="#/featured">${esc(site.publicHomepageDomainsViewAllText || pub('查看全部','View all'))} →</a></header><div class="public-suffix-grid">${suffixCards || `<div class="public-empty">${pub('当前暂无开放根域名。','No root domains are currently open.')}</div>`}</div></section>`;
 
-  const faq = site.publicHomepageShowFaq === false ? '' : `<section class="public-section public-home-v114-section"><header><span>03</span><div><h2>${esc(site.publicHomepageFaqTitle || pub('第一次使用？先看这些','New here? Start with these answers'))}</h2><p>${esc(site.publicHomepageFaqDescription || pub('把最容易遇到的问题留在首页，详细内容放到独立知识库。','Keep common questions on the homepage and detailed guidance in the standalone Knowledge Base.'))}</p></div><a href="#/faq">${pub('查看全部','View all')} →</a></header>${publicFaqHtml(4)}</section>`;
+  const faqLimit = Math.max(1, Math.min(PUBLIC_FAQ.length, Number(site.publicHomepageFaqLimit || 4)));
+  const faq = site.publicHomepageShowFaq === false ? '' : `<section class="public-section public-home-v114-section"><header><span>03</span><div><h2>${esc(site.publicHomepageFaqTitle || pub('第一次使用？先看这些','New here? Start with these answers'))}</h2><p>${esc(site.publicHomepageFaqDescription || pub('把最容易遇到的问题留在首页，详细内容放到独立知识库。','Keep common questions on the homepage and detailed guidance in the standalone Knowledge Base.'))}</p></div><a href="#/faq">${esc(site.publicHomepageFaqViewAllText || pub('查看全部','View all'))} →</a></header>${publicFaqHtml(faqLimit)}</section>`;
 
   const sectionMap = { features, domains, faq };
   const orderedSections = homepageSectionOrder(site.publicHomepageSectionOrder).map(key => sectionMap[key] || '').join('');
@@ -1528,16 +1562,17 @@ function renderPublicHome() {
   const ctaSecondaryText = String(site.publicHomepageCtaSecondaryText || pub('阅读知识库','Read Knowledge Base')).trim();
   const ctaPrimaryHref = safePublicHomepageHref(site.publicHomepageCtaPrimaryHref, '#/available');
   const ctaSecondaryHref = safePublicHomepageHref(site.publicHomepageCtaSecondaryHref, '#/knowledge');
-  const cta = site.publicHomepageShowCta === false ? '' : `<section class="public-cta public-home-v114-cta"><div><span>${esc(ctaEyebrow)}</span><h2>${esc(ctaTitle)}</h2><p>${esc(ctaDescription)}</p></div><div><a class="btn primary" href="${attr(ctaPrimaryHref)}">${esc(ctaPrimaryText)}</a><a class="btn secondary" href="${attr(ctaSecondaryHref)}">${esc(ctaSecondaryText)}</a></div></section>`;
+  const ctaButtons = `${site.publicHomepageCtaShowPrimaryButton === false ? '' : `<a class="btn primary" href="${attr(ctaPrimaryHref)}">${esc(ctaPrimaryText)}</a>`}${site.publicHomepageCtaShowSecondaryButton === false ? '' : `<a class="btn secondary" href="${attr(ctaSecondaryHref)}">${esc(ctaSecondaryText)}</a>`}`;
+  const cta = site.publicHomepageShowCta === false ? '' : `<section class="public-cta public-home-v114-cta"><div><span>${esc(ctaEyebrow)}</span><h2>${esc(ctaTitle)}</h2><p>${esc(ctaDescription)}</p></div><div>${ctaButtons}</div></section>`;
 
   app.innerHTML = publicShell('home', `
     ${notice}
     <section class="public-home-v114-hero">
       <div class="public-home-v114-copy">
-        <div class="public-home-v114-badge">${esc(badge)}</div>
-        <h1>${esc(title)} <em>${esc(highlight)}</em></h1>
-        <p>${esc(description)}</p>
-        <div class="public-home-v114-actions"><a class="btn primary" href="${attr(primaryHref)}">${esc(primaryText)}</a><a class="btn secondary" href="${attr(secondaryHref)}">${esc(secondaryText)}</a></div>
+        ${site.publicHomepageShowBadge === false ? '' : `<div class="public-home-v114-badge">${esc(badge)}</div>`}
+        <h1>${esc(title)} ${site.publicHomepageShowHighlight === false ? '' : `<em>${esc(highlight)}</em>`}</h1>
+        ${site.publicHomepageShowDescription === false ? '' : `<p>${esc(description)}</p>`}
+        <div class="public-home-v114-actions">${site.publicHomepageShowPrimaryButton === false ? '' : `<a class="btn primary" href="${attr(primaryHref)}">${esc(primaryText)}</a>`}${site.publicHomepageShowSecondaryButton === false ? '' : `<a class="btn secondary" href="${attr(secondaryHref)}">${esc(secondaryText)}</a>`}</div>
       </div>
       ${heroSearch}
     </section>
@@ -1564,10 +1599,10 @@ function renderPublicAvailableDomains() {
   const guideUnavailableText = String(site.publicAvailableGuideUnavailableText || pub('通常表示域名已经被系统、Cloudflare DNS 或当前规则占用/限制。可以更换前缀或选择其他根域名。','The name is already used or restricted by the system, Cloudflare DNS, or current rules. Try another prefix or root domain.')).trim();
 
   app.innerHTML = publicShell('available', `
-    <section class="public-page-hero"><span>${esc(badge)}</span><h1>${esc(title)}</h1><p>${esc(description)}</p></section>
+    ${site.publicAvailableShowHero === false ? '' : `<section class="public-page-hero"><span>${esc(badge)}</span><h1>${esc(title)}</h1><p>${esc(description)}</p></section>`}
     <section class="public-availability-focus">
-      <div class="public-availability-copy"><span>${esc(searchEyebrow)}</span><h2>${esc(searchTitle)}</h2><p>${esc(searchDescription)}</p></div>
-      ${hasSuffixes ? publicDomainSearchHtml('available-domain-search', false, { placeholder:searchPlaceholder, buttonText:searchButtonText }) : `<div class="public-empty">${pub('当前暂无开放申请的根域名。','No root domains are currently open for applications.')}</div>`}
+      <div class="public-availability-copy"><span>${esc(searchEyebrow)}</span><h2>${esc(searchTitle)}</h2>${site.publicAvailableShowSearchDescription === false ? '' : `<p>${esc(searchDescription)}</p>`}</div>
+      ${hasSuffixes ? publicDomainSearchHtml('available-domain-search', false, { placeholder:searchPlaceholder, buttonText:searchButtonText }) : `<div class="public-empty">${esc(site.publicAvailableEmptySuffixesText || pub('当前暂无开放申请的根域名。','No root domains are currently open for applications.'))}</div>`}
     </section>
     ${showGuide ? `<section class="public-section public-mini-guide public-availability-guide"><div><b>${esc(guideAvailableTitle)}</b><p>${esc(guideAvailableText)}</p></div><div><b>${esc(guideUnavailableTitle)}</b><p>${esc(guideUnavailableText)}</p></div></section>` : ''}
   `, 'public-available');
@@ -1661,16 +1696,22 @@ function renderPublicKnowledge() {
   const searchPlaceholder = String(site.publicKnowledgeSearchPlaceholder || pub('搜索标题或内容关键字...','Search titles or keywords...')).trim();
   const countText = site.publicKnowledgeShowArticleCount === false ? '' : `<span>${total} ${pub('篇内容','articles')}</span>`;
 
+  const showSearch = site.publicKnowledgeShowSearch !== false;
+  const showSubtitle = site.publicKnowledgeShowCategorySubtitle !== false;
   app.innerHTML = publicShell('knowledge', `
-    <section class="public-page-hero"><span>${esc(badge)}</span><h1>${esc(title)}</h1><p>${esc(description)}</p></section>
-    <section class="public-knowledge-tools"><input id="public-knowledge-search" placeholder="${attr(searchPlaceholder)}">${countText}</section>
-    <section class="public-knowledge-list" id="public-knowledge-list">${categories.map(cat => `<div class="public-knowledge-category"><header><h2>${esc(cat.title)}</h2><p>${esc(cat.subtitle||'')}</p></header>${(cat.items||[]).map(item => `<details data-public-knowledge="${attr(`${item.q} ${item.a}`.toLowerCase())}"><summary>${esc(item.q)}</summary><div>${esc(item.a)}</div></details>`).join('')}</div>`).join('')}</section>
+    ${site.publicKnowledgeShowHero === false ? '' : `<section class="public-page-hero"><span>${esc(badge)}</span><h1>${esc(title)}</h1><p>${esc(description)}</p></section>`}
+    ${showSearch ? `<section class="public-knowledge-tools"><input id="public-knowledge-search" placeholder="${attr(searchPlaceholder)}">${countText}</section>` : ''}
+    <section class="public-knowledge-list" id="public-knowledge-list">${categories.map(cat => `<div class="public-knowledge-category"><header><h2>${esc(cat.title)}</h2>${showSubtitle ? `<p>${esc(cat.subtitle||'')}</p>` : ''}</header>${(cat.items||[]).map(item => `<details data-public-knowledge="${attr(`${item.q} ${item.a}`.toLowerCase())}"><summary>${esc(item.q)}</summary><div>${esc(item.a)}</div></details>`).join('')}</div>`).join('')}</section>
+    <div id="public-knowledge-empty" class="public-empty" hidden>${esc(site.publicKnowledgeNoResultsText || pub('没有找到匹配内容。','No matching content found.'))}</div>
   `, 'public-knowledge');
   const input = document.getElementById('public-knowledge-search');
   input?.addEventListener('input', () => {
     const q = String(input.value || '').trim().toLowerCase();
     document.querySelectorAll('[data-public-knowledge]').forEach(node => { node.hidden = !!q && !String(node.dataset.publicKnowledge || '').includes(q); });
     document.querySelectorAll('.public-knowledge-category').forEach(cat => { cat.hidden = !Array.from(cat.querySelectorAll('[data-public-knowledge]')).some(item => !item.hidden); });
+    const visible = Array.from(document.querySelectorAll('[data-public-knowledge]')).some(item => !item.hidden);
+    const empty = document.getElementById('public-knowledge-empty');
+    if (empty) empty.hidden = visible || !q;
   });
 }
 
@@ -1686,8 +1727,8 @@ function publicFeaturedDomainCards() {
   return `<div class="public-featured-domain-grid">${suffixes.map(item => {
     const description = item.label || fallbackDescription;
     return `<article class="public-featured-domain-card">
-      <div class="public-featured-domain-main"><h2>*.${esc(item.suffix)}</h2><p>${esc(description)}</p><span class="public-domain-open-status"><i></i>${esc(statusText)}</span></div>
-      <div class="public-featured-domain-actions"><b>${esc(badgeText)}</b><a href="${applyHref}" class="btn public-featured-apply">${esc(actionText)}</a></div>
+      <div class="public-featured-domain-main"><h2>*.${esc(item.suffix)}</h2><p>${esc(description)}</p>${site.publicFeaturedShowCardStatus === false ? '' : `<span class="public-domain-open-status"><i></i>${esc(statusText)}</span>`}</div>
+      <div class="public-featured-domain-actions">${site.publicFeaturedShowCardBadge === false ? '' : `<b>${esc(badgeText)}</b>`}${site.publicFeaturedShowCardButton === false ? '' : `<a href="${applyHref}" class="btn public-featured-apply">${esc(actionText)}</a>`}</div>
     </article>`;
   }).join('')}</div>`;
 }
@@ -1701,9 +1742,10 @@ function renderPublicFeatured() {
   const helperDescription = String(site.publicFeaturedQueryDescription || pub('如果已经想好前缀，可以先到“可用域名”确认完整二级域名是否可注册。','If you already have a prefix in mind, check the full subdomain before applying.')).trim();
   const helperButton = String(site.publicFeaturedQueryButtonText || pub('去查询','Check now')).trim();
 
+  const cards = publicSuffixes().length ? publicFeaturedDomainCards() : `<div class="public-empty">${esc(site.publicFeaturedEmptyText || pub('当前暂无开放申请的根域名。','No root domains are currently open for applications.'))}</div>`;
   app.innerHTML = publicShell('featured', `
-    <section class="public-page-hero"><span>${esc(badge)}</span><h1>${esc(title)}</h1><p>${esc(description)}</p></section>
-    <section class="public-section public-featured-domain-section">${publicFeaturedDomainCards()}</section>
+    ${site.publicFeaturedShowHero === false ? '' : `<section class="public-page-hero"><span>${esc(badge)}</span><h1>${esc(title)}</h1><p>${esc(description)}</p></section>`}
+    <section class="public-section public-featured-domain-section">${cards}</section>
     ${site.publicFeaturedShowQueryHelper === false ? '' : `<section class="public-section public-query-panel"><header><span>⌕</span><div><h2>${esc(helperTitle)}</h2><p>${esc(helperDescription)}</p></div><a href="#/available">${esc(helperButton)} →</a></header></section>`}
   `, 'public-featured');
 }
@@ -1751,8 +1793,8 @@ function renderPublicNavigation() {
   const description = String(site.publicNavigationDescription || pub('按使用场景找到入口，快速进入查询、知识库、账户与规则页面。','Find the right entry by task and quickly reach lookup, knowledge, account, and policy pages.')).trim();
   const backText = String(site.publicNavigationBackText || pub('返回首页','Back Home')).trim();
   app.innerHTML = publicShell('navigation', `
-    <section class="public-nav-hub-v114-head"><div><span>${esc(badge)}</span><h1>${esc(title)}</h1><p>${esc(description)}</p></div><a class="btn secondary" href="#/home">${esc(backText)}</a></section>
-    <section class="public-nav-hub-v114">${groups.map(([groupTitle,links],groupIndex) => `<article><div class="public-nav-hub-v114-title"><span>${String(groupIndex+1).padStart(2,'0')}</span><h2>${esc(groupTitle)}</h2></div><div>${links.map(([name,href,desc],linkIndex) => `<a href="${href}"><i>${String(linkIndex+1).padStart(2,'0')}</i><span><b>${esc(name)}</b><small>${esc(desc)}</small></span><em>↗</em></a>`).join('')}</div></article>`).join('')}</section>
+    ${site.publicNavigationShowHero === false ? '' : `<section class="public-nav-hub-v114-head"><div><span>${esc(badge)}</span><h1>${esc(title)}</h1><p>${esc(description)}</p></div>${site.publicNavigationShowBackButton === false ? '' : `<a class="btn secondary" href="#/home">${esc(backText)}</a>`}</section>`}
+    <section class="public-nav-hub-v114">${groups.map(([groupTitle,links],groupIndex) => `<article><div class="public-nav-hub-v114-title">${site.publicNavigationShowNumbers === false ? '' : `<span>${String(groupIndex+1).padStart(2,'0')}</span>`}<h2>${esc(groupTitle)}</h2></div><div>${links.map(([name,href,desc],linkIndex) => `<a href="${href}">${site.publicNavigationShowNumbers === false ? '' : `<i>${String(linkIndex+1).padStart(2,'0')}</i>`}<span><b>${esc(name)}</b>${site.publicNavigationShowDescriptions === false ? '' : `<small>${esc(desc)}</small>`}</span>${site.publicNavigationShowArrows === false ? '' : '<em>↗</em>'}</a>`).join('')}</div></article>`).join('')}</section>
   `, 'public-navigation public-navigation-v114');
 }
 function renderPublicAbout() {
@@ -5776,8 +5818,22 @@ async function loadManagedWorkerVariables(showToast = false) {
 function homepageSettingField(name, label, value, opts = {}) {
   const wide = opts.wide ? ' wide' : '';
   const hint = opts.hint ? `<em>${esc(opts.hint)}</em>` : '';
-  if (opts.type === 'textarea') return `<label class="field${wide}"><span>${esc(label)}</span><textarea name="${attr(name)}" rows="${Number(opts.rows || 3)}">${esc(value || '')}</textarea>${hint}</label>`;
-  return `<label class="field${wide}"><span>${esc(label)}</span><input name="${attr(name)}" maxlength="${Number(opts.max || 200)}" value="${fieldValue(value)}"${opts.placeholder ? ` placeholder="${attr(opts.placeholder)}"` : ''}>${hint}</label>`;
+  const placeholder = opts.placeholder ? ` placeholder="${attr(opts.placeholder)}"` : '';
+  if (opts.type === 'textarea') return `<label class="field${wide}"><span>${esc(label)}</span><textarea name="${attr(name)}" rows="${Number(opts.rows || 3)}" maxlength="${Number(opts.max || 2000)}"${placeholder}>${esc(value || '')}</textarea>${hint}</label>`;
+  if (opts.type === 'number') return `<label class="field${wide}"><span>${esc(label)}</span><input type="number" name="${attr(name)}" min="${Number(opts.min ?? 0)}" max="${Number(opts.max ?? 9999)}" step="${Number(opts.step || 1)}" value="${attr(String(value ?? ''))}">${hint}</label>`;
+  if (opts.type === 'select') {
+    const options = (opts.options || []).map(item => {
+      const val = Array.isArray(item) ? item[0] : item.value;
+      const text = Array.isArray(item) ? item[1] : item.label;
+      return `<option value="${attr(String(val))}" ${String(value)===String(val)?'selected':''}>${esc(text)}</option>`;
+    }).join('');
+    return `<label class="field${wide}"><span>${esc(label)}</span><select name="${attr(name)}">${options}</select>${hint}</label>`;
+  }
+  return `<label class="field${wide}"><span>${esc(label)}</span><input name="${attr(name)}" maxlength="${Number(opts.max || 200)}" value="${fieldValue(value)}"${placeholder}>${hint}</label>`;
+}
+
+function homepageSettingsSubsection(title, description='') {
+  return `<div class="home-settings-subsection wide"><b>${esc(title)}</b>${description?`<span>${esc(description)}</span>`:''}</div>`;
 }
 
 async function renderAdminHomepageSettings() {
@@ -5788,18 +5844,43 @@ async function renderAdminHomepageSettings() {
     const order = homepageSectionOrder(site.publicHomepageSectionOrder);
     const orderLabels = { features:'功能介绍', domains:'开放根域名', faq:'常见问题' };
     const orderHtml = order.map((key,index) => `<div class="home-order-row" data-home-order="${attr(key)}"><span>${String(index+1).padStart(2,'0')}</span><b>${esc(orderLabels[key] || key)}</b><div><button class="btn soft small" type="button" data-home-order-up>↑</button><button class="btn soft small" type="button" data-home-order-down>↓</button></div></div>`).join('');
+    const featureDefaults = [
+      ['∞','免费使用','提供可申请的免费二级域名，注册、审核与 DNS 管理集中在一个系统完成。'],
+      ['⚡','快速上线','域名审核通过后即可配置解析，不需要在多个后台之间反复切换。'],
+      ['◎','完整 DNS 控制','按管理员开放策略支持常见 DNS 记录类型。'],
+      ['☁','Cloudflare 驱动','DNS 写入由 Cloudflare API 完成，可代理记录可按系统策略开启代理。'],
+      ['⌁','多根域名','可以从多个当前开放的根域名中选择合适的后缀。'],
+      ['✓','可追踪管理','域名状态、DNS、续期、消息与操作记录都可在控制台查看。'],
+    ];
+    const featureEditor = featureDefaults.map((item,index) => {
+      const n=index+1;
+      return `<div class="home-feature-editor wide"><div class="home-feature-editor-head"><b>功能卡片 ${n}</b><label class="check compact"><input name="publicHomepageFeature${n}Show" type="checkbox" ${yn(site[`publicHomepageFeature${n}Show`] !== false)}> 显示</label></div><div class="home-feature-editor-grid">
+        ${homepageSettingField(`publicHomepageFeature${n}Icon`,'图标',site[`publicHomepageFeature${n}Icon`] || item[0],{max:12,hint:'支持 1–2 个字符或 Emoji。'})}
+        ${homepageSettingField(`publicHomepageFeature${n}Title`,'标题',site[`publicHomepageFeature${n}Title`] || item[1],{max:80})}
+        ${homepageSettingField(`publicHomepageFeature${n}Description`,'说明',site[`publicHomepageFeature${n}Description`] || item[2],{type:'textarea',wide:true,rows:2,max:300})}
+      </div></div>`;
+    }).join('');
 
-    shell('首页设置', `<section class="card admin-home-settings-v117">
+    shell('首页设置', `<section class="card admin-home-settings-v118">
       <div class="settings-toolbar home-settings-toolbar">
         <div>
-          <h2>公开官网设置</h2>
-          <p>这里统一管理“首页 / 可用域名 / 知识库 / 优质站点 / 导航”五个公开页面，以及顶部导航和公开页脚。所有公开页面统一使用浅色视觉。</p>
+          <h2>公开官网完整设置</h2>
+          <p>这里不是只改“首页标题”。现在按页面和组件逐项控制公开官网：公共导航、首页、可用域名、知识库、优质站点、导航页和公开页脚。每个模块的显示、文案、按钮、数量、空状态和查询提示都可独立设置。</p>
         </div>
         <div class="toolbar-actions"><span class="settings-save-status">公开官网设置读取完成</span><button class="btn soft" id="home-preview" type="button">预览首页</button></div>
       </div>
 
+      <div class="home-settings-previewbar">
+        <b>快速预览</b>
+        <a class="btn soft small" target="_blank" rel="noopener" href="#/home" data-public-preview="home">首页</a>
+        <a class="btn soft small" target="_blank" rel="noopener" href="#/available" data-public-preview="available">可用域名</a>
+        <a class="btn soft small" target="_blank" rel="noopener" href="#/knowledge" data-public-preview="knowledge">知识库</a>
+        <a class="btn soft small" target="_blank" rel="noopener" href="#/featured" data-public-preview="featured">优质站点</a>
+        <a class="btn soft small" target="_blank" rel="noopener" href="#/navigation" data-public-preview="navigation">导航</a>
+      </div>
+
       <div class="home-settings-jumpbar">
-        <button type="button" data-home-settings-target="home-settings-shared">公共导航</button>
+        <button type="button" data-home-settings-target="home-settings-shared">公共设置</button>
         <button type="button" data-home-settings-target="home-settings-home">首页</button>
         <button type="button" data-home-settings-target="home-settings-available">可用域名</button>
         <button type="button" data-home-settings-target="home-settings-knowledge">知识库</button>
@@ -5808,10 +5889,19 @@ async function renderAdminHomepageSettings() {
         <button type="button" data-home-settings-target="home-settings-footer">公开页脚</button>
       </div>
 
-      <form id="homepage-settings-form" class="form-grid settings-grid">
+      <form id="homepage-settings-form" class="form-grid settings-grid home-settings-detailed-form">
+        <div class="settings-section-heading wide" id="home-settings-shared"><span>01</span><div><h3>公共设置</h3><p>这部分会同时影响 5 个公开页面。先控制整个公开官网是否启用，再控制顶部导航、品牌、账户入口和全站域名查询提示。</p></div></div>
+        ${homepageSettingsSubsection('公开官网总开关','关闭后，未登录用户访问公开首页会直接进入登录页。')}
+        <label class="check"><input name="publicHomepageEnabled" type="checkbox" ${yn(site.publicHomepageEnabled !== false)}> 启用公开官网</label>
 
-        <div class="settings-section-heading wide" id="home-settings-shared"><span>01</span><div><h3>公共导航与页面入口</h3><p>控制公开官网顶部五个主入口是否显示，以及每个入口的名称。</p></div></div>
-        <label class="check"><input name="publicHomepageEnabled" type="checkbox" ${yn(site.publicHomepageEnabled !== false)}> 启用公开官网 <em>关闭后未登录访问首页会直接进入登录页。</em></label>
+        ${homepageSettingsSubsection('顶部导航与品牌','控制顶部左侧品牌、语言按钮、登录/注册/控制台按钮，以及 5 个公开入口。')}
+        <label class="check"><input name="publicHeaderShowBrand" type="checkbox" ${yn(site.publicHeaderShowBrand !== false)}> 显示顶部品牌</label>
+        <label class="check"><input name="publicHeaderShowLanguage" type="checkbox" ${yn(site.publicHeaderShowLanguage !== false)}> 显示中英文切换</label>
+        <label class="check"><input name="publicHeaderShowAccountActions" type="checkbox" ${yn(site.publicHeaderShowAccountActions !== false)}> 显示登录 / 注册 / 进入控制台按钮</label>
+        ${homepageSettingField('publicBrandTitle','公开官网品牌名称',site.publicBrandTitle || '',{max:100,hint:'留空使用“界面设置 → 网站标题”。只影响公开官网顶部和页脚品牌。'})}
+        ${homepageSettingField('publicHeaderDashboardText','已登录按钮文字',site.publicHeaderDashboardText || '进入控制台',{max:40})}
+        ${homepageSettingField('publicHeaderLoginText','未登录“登录”按钮文字',site.publicHeaderLoginText || '登录',{max:40})}
+        ${homepageSettingField('publicHeaderRegisterText','未登录“注册”按钮文字',site.publicHeaderRegisterText || '注册',{max:40})}
         <label class="check"><input name="publicNavShowHome" type="checkbox" ${yn(site.publicNavShowHome !== false)}> 顶部显示“首页”</label>
         <label class="check"><input name="publicNavShowAvailable" type="checkbox" ${yn(site.publicNavShowAvailable !== false)}> 顶部显示“可用域名”</label>
         <label class="check"><input name="publicNavShowKnowledge" type="checkbox" ${yn(site.publicNavShowKnowledge !== false)}> 顶部显示“知识库”</label>
@@ -5823,42 +5913,81 @@ async function renderAdminHomepageSettings() {
         ${homepageSettingField('publicNavFeaturedLabel','“优质站点”显示名称',site.publicNavFeaturedLabel || '优质站点',{max:40})}
         ${homepageSettingField('publicNavNavigationLabel','“导航”显示名称',site.publicNavNavigationLabel || '导航',{max:40})}
 
-        <div class="settings-section-heading wide" id="home-settings-home"><span>02</span><div><h3>首页</h3><p>控制首页首屏、查询、实时统计、功能介绍、开放后缀、常见问题和底部行动区。已移除“操作路径”和“系统怎么工作”两个冗余模块。</p></div></div>
-        <label class="field"><span>首页布局</span><select name="publicHomepageLayout"><option value="brand" ${!site.publicHomepageLayout || site.publicHomepageLayout === 'brand' ? 'selected' : ''}>品牌展示型</option><option value="compact" ${site.publicHomepageLayout === 'compact' ? 'selected' : ''}>简洁工具型</option><option value="data" ${site.publicHomepageLayout === 'data' ? 'selected' : ''}>数据门户型（浅色）</option></select><em>三个布局都统一使用浅色风格。</em></label>
+        ${homepageSettingsSubsection('全站域名查询状态文案','首页和“可用域名”页共用这些实时查询提示；可以分别修改空输入、检查中、可注册、不可注册和失败状态。')}
+        ${homepageSettingField('publicDomainCheckEmptyText','未输入前缀提示',site.publicDomainCheckEmptyText || '请输入域名前缀',{max:120})}
+        ${homepageSettingField('publicDomainCheckCheckingText','检查中提示',site.publicDomainCheckCheckingText || '正在检查域名是否可注册...',{max:120})}
+        ${homepageSettingField('publicDomainCheckAvailableText','可注册提示',site.publicDomainCheckAvailableText || '此域名可注册。',{max:120})}
+        ${homepageSettingField('publicDomainCheckUnavailableText','不可注册提示',site.publicDomainCheckUnavailableText || '此域名暂不可注册。',{max:120})}
+        ${homepageSettingField('publicDomainCheckFailureText','查询失败提示',site.publicDomainCheckFailureText || '查询失败，请稍后重试',{max:160})}
+        ${homepageSettingField('publicDomainCheckApplyText','已登录可注册操作文字',site.publicDomainCheckApplyText || '立即申请',{max:40})}
+        ${homepageSettingField('publicDomainCheckRegisterApplyText','未登录可注册操作文字',site.publicDomainCheckRegisterApplyText || '注册后申请',{max:40})}
+
+        <div class="settings-section-heading wide" id="home-settings-home"><span>02</span><div><h3>首页</h3><p>首页拆成“首屏 / 查询 / 实时统计 / 功能卡片 / 开放根域名 / 常见问题 / 行动区”7 个可独立管理的组件。</p></div></div>
+        ${homepageSettingsSubsection('A. 首页整体与首屏','决定首页布局以及首屏中哪些元素出现。')}
+        ${homepageSettingField('publicHomepageLayout','首页布局',site.publicHomepageLayout || 'brand',{type:'select',options:[['brand','品牌展示型'],['compact','简洁工具型'],['data','数据门户型（浅色）']],hint:'三个布局均保持浅色，不再出现独立深色模块。'})}
+        <label class="check"><input name="publicHomepageShowBadge" type="checkbox" ${yn(site.publicHomepageShowBadge !== false)}> 显示顶部短标签</label>
+        <label class="check"><input name="publicHomepageShowHighlight" type="checkbox" ${yn(site.publicHomepageShowHighlight !== false)}> 显示主标题强调文字</label>
+        <label class="check"><input name="publicHomepageShowDescription" type="checkbox" ${yn(site.publicHomepageShowDescription !== false)}> 显示首屏说明</label>
+        <label class="check"><input name="publicHomepageShowPrimaryButton" type="checkbox" ${yn(site.publicHomepageShowPrimaryButton !== false)}> 显示首屏主按钮</label>
+        <label class="check"><input name="publicHomepageShowSecondaryButton" type="checkbox" ${yn(site.publicHomepageShowSecondaryButton !== false)}> 显示首屏次按钮</label>
         ${homepageSettingField('publicHomepageBadge','首页顶部短标签',site.publicHomepageBadge || 'FLORE · FREE SUBDOMAIN SERVICE',{max:120})}
         ${homepageSettingField('publicHomepageTitle','首页主标题',site.publicHomepageTitle || '给你的项目一个清晰地址',{max:120})}
         ${homepageSettingField('publicHomepageHighlight','首页强调文字',site.publicHomepageHighlight || '从这里开始',{max:80})}
         ${homepageSettingField('publicHomepageDescription','首页说明文字',site.publicHomepageDescription || '查询可用二级域名、提交申请并管理 DNS。公开官网负责信息与查询，控制台负责账户和域名管理。',{type:'textarea',wide:true,rows:3,max:500})}
-        ${homepageSettingField('publicHomepagePrimaryText','主按钮文字',site.publicHomepagePrimaryText || '开始申请',{max:40})}
-        ${homepageSettingField('publicHomepagePrimaryHref','主按钮链接',site.publicHomepagePrimaryHref || '',{max:300,hint:'支持 #/register、#/apply 等站内地址，或 https:// 开头的外部地址；留空时未登录自动去注册、已登录自动去申请。'})}
-        ${homepageSettingField('publicHomepageSecondaryText','次按钮文字',site.publicHomepageSecondaryText || '先查域名',{max:40})}
-        ${homepageSettingField('publicHomepageSecondaryHref','次按钮链接',site.publicHomepageSecondaryHref || '#/available',{max:300})}
+        ${homepageSettingField('publicHomepagePrimaryText','首屏主按钮文字',site.publicHomepagePrimaryText || '开始申请',{max:40})}
+        ${homepageSettingField('publicHomepagePrimaryHref','首屏主按钮链接',site.publicHomepagePrimaryHref || '',{max:300,hint:'支持 #/register、#/apply 等站内地址，或 https:// 外部地址；留空时根据登录状态自动跳转。'})}
+        ${homepageSettingField('publicHomepageSecondaryText','首屏次按钮文字',site.publicHomepageSecondaryText || '先查域名',{max:40})}
+        ${homepageSettingField('publicHomepageSecondaryHref','首屏次按钮链接',site.publicHomepageSecondaryHref || '#/available',{max:300})}
+
+        ${homepageSettingsSubsection('B. 首页域名查询','首页可以直接提供快速查询；查询结果文字由上面的“全站域名查询状态文案”统一控制。')}
         <label class="check"><input name="publicHomepageShowSearch" type="checkbox" ${yn(site.publicHomepageShowSearch !== false)}> 显示首页域名查询</label>
-        <label class="check"><input name="publicHomepageShowStats" type="checkbox" ${yn(site.publicHomepageShowStats !== false)}> 显示首页实时统计</label>
         ${homepageSettingField('publicHomepageSearchEyebrow','查询区短标签',site.publicHomepageSearchEyebrow || '实时查询',{max:50})}
         ${homepageSettingField('publicHomepageSearchTitle','查询区标题',site.publicHomepageSearchTitle || '先确认，再申请',{max:80})}
         ${homepageSettingField('publicHomepageSearchNote','查询区说明',site.publicHomepageSearchNote || '查询只返回当前可用状态，不公开域名归属或账户信息。',{type:'textarea',wide:true,rows:2,max:300})}
         ${homepageSettingField('publicHomepageSearchPlaceholder','查询输入框提示',site.publicHomepageSearchPlaceholder || '输入您想要的域名前缀，例如 myblog',{max:120})}
         ${homepageSettingField('publicHomepageSearchButtonText','查询按钮文字',site.publicHomepageSearchButtonText || '查询',{max:30})}
+
+        ${homepageSettingsSubsection('C. 首页实时统计','不仅可以整体关闭，还可以单独隐藏其中某一项统计。')}
+        <label class="check"><input name="publicHomepageShowStats" type="checkbox" ${yn(site.publicHomepageShowStats !== false)}> 显示首页实时统计</label>
+        <label class="check"><input name="publicHomepageStatsShowUsers" type="checkbox" ${yn(site.publicHomepageStatsShowUsers !== false)}> 显示“活跃用户”</label>
+        <label class="check"><input name="publicHomepageStatsShowDomains" type="checkbox" ${yn(site.publicHomepageStatsShowDomains !== false)}> 显示“正常域名”</label>
+        <label class="check"><input name="publicHomepageStatsShowDns" type="checkbox" ${yn(site.publicHomepageStatsShowDns !== false)}> 显示“DNS 记录”</label>
+        <label class="check"><input name="publicHomepageStatsShowSuffixes" type="checkbox" ${yn(site.publicHomepageStatsShowSuffixes !== false)}> 显示“开放根域名”</label>
         ${homepageSettingField('publicHomepageStatsUsersLabel','统计 1 名称',site.publicHomepageStatsUsersLabel || '活跃用户',{max:40})}
         ${homepageSettingField('publicHomepageStatsDomainsLabel','统计 2 名称',site.publicHomepageStatsDomainsLabel || '正常域名',{max:40})}
         ${homepageSettingField('publicHomepageStatsDnsLabel','统计 3 名称',site.publicHomepageStatsDnsLabel || 'DNS 记录',{max:40})}
         ${homepageSettingField('publicHomepageStatsSuffixesLabel','统计 4 名称',site.publicHomepageStatsSuffixesLabel || '开放根域名',{max:40})}
-        <label class="check"><input name="publicHomepageShowFeatures" type="checkbox" ${yn(site.publicHomepageShowFeatures !== false)}> 显示功能介绍</label>
-        <label class="check"><input name="publicHomepageShowDomains" type="checkbox" ${yn(site.publicHomepageShowDomains !== false)}> 显示开放根域名</label>
-        <label class="check"><input name="publicHomepageShowFaq" type="checkbox" ${yn(site.publicHomepageShowFaq !== false)}> 显示常见问题</label>
+
+        ${homepageSettingsSubsection('D. 功能介绍','6 张功能卡片可以逐张显示/隐藏，并修改图标、标题和说明。')}
+        <label class="check"><input name="publicHomepageShowFeatures" type="checkbox" ${yn(site.publicHomepageShowFeatures !== false)}> 显示整个“功能介绍”模块</label>
         ${homepageSettingField('publicHomepageFeaturesTitle','功能介绍标题',site.publicHomepageFeaturesTitle || '一个入口，完成域名日常管理',{max:120})}
         ${homepageSettingField('publicHomepageFeaturesDescription','功能介绍说明',site.publicHomepageFeaturesDescription || '首页负责查询与了解服务，登录后进入控制台处理申请、审核状态与 DNS。',{type:'textarea',wide:true,rows:2,max:400})}
+        ${featureEditor}
+
+        ${homepageSettingsSubsection('E. 开放根域名','控制首页显示多少个根域名、卡片默认状态文字和操作文字。根域名本身仍自动读取管理员开放申请的数据。')}
+        <label class="check"><input name="publicHomepageShowDomains" type="checkbox" ${yn(site.publicHomepageShowDomains !== false)}> 显示开放根域名模块</label>
         ${homepageSettingField('publicHomepageDomainsTitle','开放根域名标题',site.publicHomepageDomainsTitle || '现在可以申请的后缀',{max:120})}
         ${homepageSettingField('publicHomepageDomainsDescription','开放根域名说明',site.publicHomepageDomainsDescription || '这里只展示开放入口，不公开用户域名或账户数据。',{type:'textarea',wide:true,rows:2,max:400})}
+        ${homepageSettingField('publicHomepageDomainsLimit','首页最多显示根域名数量',site.publicHomepageDomainsLimit || 6,{type:'number',min:1,max:24,hint:'超出数量的根域名仍可在“优质站点”页面查看。'})}
+        ${homepageSettingField('publicHomepageDomainsStatusText','无单独说明时的状态文字',site.publicHomepageDomainsStatusText || '当前开放申请',{max:80})}
+        ${homepageSettingField('publicHomepageDomainsLinkText','根域名卡片操作文字',site.publicHomepageDomainsLinkText || '立即查询',{max:40})}
+        ${homepageSettingField('publicHomepageDomainsViewAllText','模块右上角“查看全部”文字',site.publicHomepageDomainsViewAllText || '查看全部',{max:40})}
+
+        ${homepageSettingsSubsection('F. 首页常见问题','首页只显示知识问答摘要；详细内容仍可进入独立 FAQ / 知识库。')}
+        <label class="check"><input name="publicHomepageShowFaq" type="checkbox" ${yn(site.publicHomepageShowFaq !== false)}> 显示首页常见问题</label>
         ${homepageSettingField('publicHomepageFaqTitle','常见问题标题',site.publicHomepageFaqTitle || '第一次使用？先看这些',{max:120})}
         ${homepageSettingField('publicHomepageFaqDescription','常见问题说明',site.publicHomepageFaqDescription || '把最容易遇到的问题留在首页，详细内容放到独立知识库。',{type:'textarea',wide:true,rows:2,max:400})}
+        ${homepageSettingField('publicHomepageFaqLimit','首页显示问题数量',site.publicHomepageFaqLimit || 4,{type:'number',min:1,max:7})}
+        ${homepageSettingField('publicHomepageFaqViewAllText','“查看全部”文字',site.publicHomepageFaqViewAllText || '查看全部',{max:40})}
 
-        <div class="settings-subheading wide"><b>首页模块显示顺序</b><span>只包含仍保留的“功能介绍 / 开放根域名 / 常见问题”三个模块。</span></div>
+        ${homepageSettingsSubsection('G. 首页模块顺序','拖动功能改为明确的上移/下移，避免触屏误操作。')}
         <div class="home-order-editor wide" id="home-order-editor">${orderHtml}</div>
         <input type="hidden" name="publicHomepageSectionOrder" id="home-section-order-value" value="${attr(order.join(','))}">
 
+        ${homepageSettingsSubsection('H. 首页底部行动区','可分别关闭主按钮或次按钮，而不必关闭整个行动区。')}
         <label class="check"><input name="publicHomepageShowCta" type="checkbox" ${yn(site.publicHomepageShowCta !== false)}> 显示首页底部行动区</label>
+        <label class="check"><input name="publicHomepageCtaShowPrimaryButton" type="checkbox" ${yn(site.publicHomepageCtaShowPrimaryButton !== false)}> 显示行动区主按钮</label>
+        <label class="check"><input name="publicHomepageCtaShowSecondaryButton" type="checkbox" ${yn(site.publicHomepageCtaShowSecondaryButton !== false)}> 显示行动区次按钮</label>
         ${homepageSettingField('publicHomepageCtaEyebrow','行动区短标签',site.publicHomepageCtaEyebrow || '下一步',{max:50})}
         ${homepageSettingField('publicHomepageCtaTitle','行动区标题',site.publicHomepageCtaTitle || '从查询一个名称开始',{max:120})}
         ${homepageSettingField('publicHomepageCtaDescription','行动区说明',site.publicHomepageCtaDescription || '不需要登录即可先确认可用性；需要申请时再进入账户流程。',{type:'textarea',wide:true,rows:3,max:500})}
@@ -5867,29 +5996,43 @@ async function renderAdminHomepageSettings() {
         ${homepageSettingField('publicHomepageCtaSecondaryText','行动区次按钮文字',site.publicHomepageCtaSecondaryText || '阅读知识库',{max:40})}
         ${homepageSettingField('publicHomepageCtaSecondaryHref','行动区次按钮链接',site.publicHomepageCtaSecondaryHref || '#/knowledge',{max:300})}
 
-        <div class="settings-section-heading wide" id="home-settings-available"><span>03</span><div><h3>可用域名</h3><p>控制公开域名查询页的标题、说明、查询框和结果说明。</p></div></div>
+        <div class="settings-section-heading wide" id="home-settings-available"><span>03</span><div><h3>可用域名</h3><p>可单独控制页面首屏、查询说明、输入框、空状态和结果解释，不再只有标题与说明两个输入框。</p></div></div>
+        ${homepageSettingsSubsection('A. 页面首屏','决定是否保留“可用域名”页顶部介绍。')}
+        <label class="check"><input name="publicAvailableShowHero" type="checkbox" ${yn(site.publicAvailableShowHero !== false)}> 显示页面首屏介绍</label>
         ${homepageSettingField('publicAvailableBadge','页面短标签',site.publicAvailableBadge || 'DOMAIN AVAILABILITY',{max:80})}
         ${homepageSettingField('publicAvailableTitle','页面标题',site.publicAvailableTitle || '可用域名',{max:120})}
         ${homepageSettingField('publicAvailableDescription','页面说明',site.publicAvailableDescription || '可查询本站二级域名是否可注册。输入前缀并选择根域名，即可实时检查。',{type:'textarea',wide:true,rows:3,max:500})}
+        ${homepageSettingsSubsection('B. 查询组件','控制查询区标题、说明、输入框和空根域名提示。')}
+        <label class="check"><input name="publicAvailableShowSearchDescription" type="checkbox" ${yn(site.publicAvailableShowSearchDescription !== false)}> 显示查询区说明文字</label>
         ${homepageSettingField('publicAvailableSearchEyebrow','查询区短标签',site.publicAvailableSearchEyebrow || '即时查询',{max:50})}
         ${homepageSettingField('publicAvailableSearchTitle','查询区标题',site.publicAvailableSearchTitle || '查找你想要的二级域名',{max:120})}
         ${homepageSettingField('publicAvailableSearchDescription','查询区说明',site.publicAvailableSearchDescription || '查询会同时检查系统内的域名占用状态和对应 Cloudflare DNS 精确记录。提交申请时系统会再次检查。',{type:'textarea',wide:true,rows:3,max:600})}
         ${homepageSettingField('publicAvailableSearchPlaceholder','查询输入框提示',site.publicAvailableSearchPlaceholder || '输入您想要的域名前缀，例如 myblog',{max:120})}
         ${homepageSettingField('publicAvailableSearchButtonText','查询按钮文字',site.publicAvailableSearchButtonText || '查询',{max:30})}
+        ${homepageSettingField('publicAvailableEmptySuffixesText','没有开放根域名时的提示',site.publicAvailableEmptySuffixesText || '当前暂无开放申请的根域名。',{max:160})}
+        ${homepageSettingsSubsection('C. 结果说明','用于解释“可注册/不可注册”代表什么。')}
         <label class="check"><input name="publicAvailableShowGuide" type="checkbox" ${yn(site.publicAvailableShowGuide !== false)}> 显示查询结果说明</label>
         ${homepageSettingField('publicAvailableGuideAvailableTitle','可注册说明标题',site.publicAvailableGuideAvailableTitle || '结果为“可注册”',{max:80})}
         ${homepageSettingField('publicAvailableGuideAvailableText','可注册说明内容',site.publicAvailableGuideAvailableText || '表示当前未发现同名占用，可以登录或注册后提交申请；最终状态以提交时实时检查和管理员规则为准。',{type:'textarea',wide:true,rows:2,max:500})}
         ${homepageSettingField('publicAvailableGuideUnavailableTitle','不可注册说明标题',site.publicAvailableGuideUnavailableTitle || '结果为“不可注册”',{max:80})}
         ${homepageSettingField('publicAvailableGuideUnavailableText','不可注册说明内容',site.publicAvailableGuideUnavailableText || '通常表示域名已经被系统、Cloudflare DNS 或当前规则占用/限制。可以更换前缀或选择其他根域名。',{type:'textarea',wide:true,rows:2,max:500})}
 
-        <div class="settings-section-heading wide" id="home-settings-knowledge"><span>04</span><div><h3>知识库</h3><p>知识库内容继续保持独立维护；这里负责公开知识库页面的标题、说明和搜索体验。</p></div></div>
+        <div class="settings-section-heading wide" id="home-settings-knowledge"><span>04</span><div><h3>知识库</h3><p>控制独立知识库页面的首屏、搜索工具、文章数量、分类说明和搜索无结果状态；知识库文章正文仍在“帮助中心设置”维护。</p></div></div>
+        <label class="check"><input name="publicKnowledgeShowHero" type="checkbox" ${yn(site.publicKnowledgeShowHero !== false)}> 显示知识库首屏介绍</label>
+        <label class="check"><input name="publicKnowledgeShowSearch" type="checkbox" ${yn(site.publicKnowledgeShowSearch !== false)}> 显示知识库搜索框</label>
+        <label class="check"><input name="publicKnowledgeShowArticleCount" type="checkbox" ${yn(site.publicKnowledgeShowArticleCount !== false)}> 显示文章数量</label>
+        <label class="check"><input name="publicKnowledgeShowCategorySubtitle" type="checkbox" ${yn(site.publicKnowledgeShowCategorySubtitle !== false)}> 显示每个分类的说明</label>
         ${homepageSettingField('publicKnowledgeBadge','页面短标签',site.publicKnowledgeBadge || 'KNOWLEDGE BASE',{max:80})}
         ${homepageSettingField('publicKnowledgeTitle','页面标题',site.publicKnowledgeTitle || '知识库',{max:120})}
         ${homepageSettingField('publicKnowledgeDescription','页面说明',site.publicKnowledgeDescription || '独立整理的二级域名申请、DNS、续期、安全与故障排查说明。',{type:'textarea',wide:true,rows:3,max:500})}
         ${homepageSettingField('publicKnowledgeSearchPlaceholder','搜索框提示',site.publicKnowledgeSearchPlaceholder || '搜索标题或内容关键字...',{max:120})}
-        <label class="check"><input name="publicKnowledgeShowArticleCount" type="checkbox" ${yn(site.publicKnowledgeShowArticleCount !== false)}> 显示知识库文章数量</label>
+        ${homepageSettingField('publicKnowledgeNoResultsText','搜索无结果提示',site.publicKnowledgeNoResultsText || '没有找到匹配内容。',{max:120})}
 
-        <div class="settings-section-heading wide" id="home-settings-featured"><span>05</span><div><h3>优质站点</h3><p>该页展示当前开放申请的根域名；可设置页面文案、卡片状态、按钮和底部查询提示。</p></div></div>
+        <div class="settings-section-heading wide" id="home-settings-featured"><span>05</span><div><h3>优质站点</h3><p>这里自动读取当前开放申请的根域名，可控制页面首屏和每张根域名卡片的角标、状态、按钮、默认说明与空状态。</p></div></div>
+        <label class="check"><input name="publicFeaturedShowHero" type="checkbox" ${yn(site.publicFeaturedShowHero !== false)}> 显示优质站点首屏介绍</label>
+        <label class="check"><input name="publicFeaturedShowCardBadge" type="checkbox" ${yn(site.publicFeaturedShowCardBadge !== false)}> 卡片显示角标</label>
+        <label class="check"><input name="publicFeaturedShowCardStatus" type="checkbox" ${yn(site.publicFeaturedShowCardStatus !== false)}> 卡片显示开放状态</label>
+        <label class="check"><input name="publicFeaturedShowCardButton" type="checkbox" ${yn(site.publicFeaturedShowCardButton !== false)}> 卡片显示申请按钮</label>
         ${homepageSettingField('publicFeaturedBadge','页面短标签',site.publicFeaturedBadge || 'FEATURED DOMAINS',{max:80})}
         ${homepageSettingField('publicFeaturedTitle','页面标题',site.publicFeaturedTitle || '优质站点',{max:120})}
         ${homepageSettingField('publicFeaturedDescription','页面说明',site.publicFeaturedDescription || '展示目前可用、并由管理员开放申请的根域名。',{type:'textarea',wide:true,rows:3,max:500})}
@@ -5897,12 +6040,19 @@ async function renderAdminHomepageSettings() {
         ${homepageSettingField('publicFeaturedCardStatusText','卡片状态文字',site.publicFeaturedCardStatusText || '开放申请',{max:40})}
         ${homepageSettingField('publicFeaturedCardButtonText','卡片按钮文字',site.publicFeaturedCardButtonText || '立即申请',{max:40})}
         ${homepageSettingField('publicFeaturedCardFallbackDescription','没有根域名说明时的默认介绍',site.publicFeaturedCardFallbackDescription || '免费二级域名，可用于合规的个人项目、学习、展示与测试。',{type:'textarea',wide:true,rows:2,max:400})}
-        <label class="check"><input name="publicFeaturedShowQueryHelper" type="checkbox" ${yn(site.publicFeaturedShowQueryHelper !== false)}> 显示底部“先查再申请”提示</label>
+        ${homepageSettingField('publicFeaturedEmptyText','没有开放根域名时的提示',site.publicFeaturedEmptyText || '当前暂无开放申请的根域名。',{max:160})}
+        ${homepageSettingsSubsection('底部“先查再申请”提示','这块可以整体关闭，也可以单独修改标题、说明和按钮。')}
+        <label class="check"><input name="publicFeaturedShowQueryHelper" type="checkbox" ${yn(site.publicFeaturedShowQueryHelper !== false)}> 显示底部查询提示</label>
         ${homepageSettingField('publicFeaturedQueryTitle','查询提示标题',site.publicFeaturedQueryTitle || '先查再申请',{max:100})}
         ${homepageSettingField('publicFeaturedQueryDescription','查询提示说明',site.publicFeaturedQueryDescription || '如果已经想好前缀，可以先到“可用域名”确认完整二级域名是否可注册。',{type:'textarea',wide:true,rows:2,max:400})}
         ${homepageSettingField('publicFeaturedQueryButtonText','查询提示按钮文字',site.publicFeaturedQueryButtonText || '去查询',{max:40})}
 
-        <div class="settings-section-heading wide" id="home-settings-navigation"><span>06</span><div><h3>导航</h3><p>控制“站点导航”页面的标题、说明、返回按钮和四个入口分组名称。</p></div></div>
+        <div class="settings-section-heading wide" id="home-settings-navigation"><span>06</span><div><h3>导航</h3><p>导航页可以单独决定是否显示首屏、返回首页按钮、条目说明、编号和右侧箭头，并修改 4 个分组名称。</p></div></div>
+        <label class="check"><input name="publicNavigationShowHero" type="checkbox" ${yn(site.publicNavigationShowHero !== false)}> 显示导航页首屏</label>
+        <label class="check"><input name="publicNavigationShowBackButton" type="checkbox" ${yn(site.publicNavigationShowBackButton !== false)}> 显示“返回首页”按钮</label>
+        <label class="check"><input name="publicNavigationShowDescriptions" type="checkbox" ${yn(site.publicNavigationShowDescriptions !== false)}> 显示每个导航条目的说明</label>
+        <label class="check"><input name="publicNavigationShowNumbers" type="checkbox" ${yn(site.publicNavigationShowNumbers !== false)}> 显示分组与条目编号</label>
+        <label class="check"><input name="publicNavigationShowArrows" type="checkbox" ${yn(site.publicNavigationShowArrows !== false)}> 显示右侧跳转箭头</label>
         ${homepageSettingField('publicNavigationBadge','页面短标签',site.publicNavigationBadge || 'FLORE DIRECTORY',{max:80})}
         ${homepageSettingField('publicNavigationTitle','页面标题',site.publicNavigationTitle || '站点导航',{max:120})}
         ${homepageSettingField('publicNavigationDescription','页面说明',site.publicNavigationDescription || '按使用场景找到入口，快速进入查询、知识库、账户与规则页面。',{type:'textarea',wide:true,rows:3,max:500})}
@@ -5912,11 +6062,18 @@ async function renderAdminHomepageSettings() {
         ${homepageSettingField('publicNavigationGroupUser','分组 3 名称',site.publicNavigationGroupUser || '用户中心（需登录）',{max:80})}
         ${homepageSettingField('publicNavigationGroupRequirements','分组 4 名称',site.publicNavigationGroupRequirements || '要求',{max:50})}
 
-        <div class="settings-section-heading wide" id="home-settings-footer"><span>07</span><div><h3>公开页脚</h3><p>公开官网五个页面共用同一个浅色页脚。</p></div></div>
-        ${homepageSettingField('publicFooterSubtitle','页脚品牌说明',site.publicFooterSubtitle || site.subtitle || '快速注册并管理您的专属免费域名',{type:'textarea',wide:true,rows:2,max:300})}
+        <div class="settings-section-heading wide" id="home-settings-footer"><span>07</span><div><h3>公开页脚</h3><p>5 个公开页面共用同一个页脚。现在可以控制是否显示页脚、品牌列、ICP备案、Cloudflare 标识、分组标题和版权文字。</p></div></div>
+        <label class="check"><input name="publicFooterEnabled" type="checkbox" ${yn(site.publicFooterEnabled !== false)}> 显示公开页脚</label>
+        <label class="check"><input name="publicFooterShowBrand" type="checkbox" ${yn(site.publicFooterShowBrand !== false)}> 显示页脚品牌与说明</label>
+        <label class="check"><input name="publicFooterShowIcp" type="checkbox" ${yn(site.publicFooterShowIcp !== false)}> 显示 ICP / 备案信息（如已填写）</label>
         <label class="check"><input name="publicFooterShowPowered" type="checkbox" ${yn(site.publicFooterShowPowered !== false)}> 显示 “Powered by Cloudflare”</label>
+        ${homepageSettingField('publicFooterSubtitle','页脚品牌说明',site.publicFooterSubtitle || site.subtitle || '快速注册并管理您的专属免费域名',{type:'textarea',wide:true,rows:2,max:300})}
+        ${homepageSettingField('publicFooterServicesTitle','“服务”分组标题',site.publicFooterServicesTitle || '服务',{max:50})}
+        ${homepageSettingField('publicFooterInfoTitle','“信息”分组标题',site.publicFooterInfoTitle || '信息',{max:50})}
+        ${homepageSettingField('publicFooterStartTitle','“开始使用”分组标题',site.publicFooterStartTitle || '开始使用',{max:50})}
+        ${homepageSettingField('publicFooterCopyrightText','公开页脚版权文字',site.publicFooterCopyrightText || '',{max:500,hint:'留空则自动使用“© 当前年份 + 网站名称”。'})}
 
-        <div class="home-settings-actions wide"><button class="btn primary" type="submit">保存公开官网设置</button><button class="btn soft" id="home-reset-defaults" type="button">恢复公开官网默认文案</button></div>
+        <div class="home-settings-actions wide"><button class="btn primary" type="submit">保存公开官网设置</button><button class="btn soft" id="home-reset-defaults" type="button">恢复默认文案</button></div>
       </form>
     </section>`);
 
@@ -5934,22 +6091,26 @@ async function renderAdminHomepageSettings() {
     document.querySelectorAll('[data-home-order-up]').forEach(btn => btn.addEventListener('click', () => { const row=btn.closest('[data-home-order]'); const prev=row?.previousElementSibling; if (row && prev) row.parentElement.insertBefore(row, prev); syncOrder(); }));
     document.querySelectorAll('[data-home-order-down]').forEach(btn => btn.addEventListener('click', () => { const row=btn.closest('[data-home-order]'); const next=row?.nextElementSibling; if (row && next) row.parentElement.insertBefore(next, row); syncOrder(); }));
     document.querySelector('#home-preview')?.addEventListener('click', () => window.open(`${location.origin}${location.pathname}#/home`, '_blank', 'noopener'));
+    document.querySelectorAll('[data-public-preview]').forEach(link => link.addEventListener('click', event => { event.preventDefault(); window.open(`${location.origin}${location.pathname}#/${link.dataset.publicPreview}`, '_blank', 'noopener'); }));
 
     document.querySelector('#home-reset-defaults')?.addEventListener('click', () => {
-      if (!confirm('确认把公开官网五个页面的可编辑文案恢复为默认值？显示开关不会被强制关闭。')) return;
+      if (!confirm('确认恢复公开官网默认文案？显示开关、页面开关和自定义数量不会被重置。')) return;
       const defaults = {
+        publicBrandTitle:'', publicHeaderDashboardText:'进入控制台', publicHeaderLoginText:'登录', publicHeaderRegisterText:'注册',
         publicNavHomeLabel:'首页', publicNavAvailableLabel:'可用域名', publicNavKnowledgeLabel:'知识库', publicNavFeaturedLabel:'优质站点', publicNavNavigationLabel:'导航',
+        publicDomainCheckEmptyText:'请输入域名前缀', publicDomainCheckCheckingText:'正在检查域名是否可注册...', publicDomainCheckAvailableText:'此域名可注册。', publicDomainCheckUnavailableText:'此域名暂不可注册。', publicDomainCheckFailureText:'查询失败，请稍后重试', publicDomainCheckApplyText:'立即申请', publicDomainCheckRegisterApplyText:'注册后申请',
         publicHomepageBadge:'FLORE · FREE SUBDOMAIN SERVICE', publicHomepageTitle:'给你的项目一个清晰地址', publicHomepageHighlight:'从这里开始', publicHomepageDescription:'查询可用二级域名、提交申请并管理 DNS。公开官网负责信息与查询，控制台负责账户和域名管理。', publicHomepagePrimaryText:'开始申请', publicHomepagePrimaryHref:'', publicHomepageSecondaryText:'先查域名', publicHomepageSecondaryHref:'#/available',
         publicHomepageSearchEyebrow:'实时查询', publicHomepageSearchTitle:'先确认，再申请', publicHomepageSearchNote:'查询只返回当前可用状态，不公开域名归属或账户信息。', publicHomepageSearchPlaceholder:'输入您想要的域名前缀，例如 myblog', publicHomepageSearchButtonText:'查询',
         publicHomepageStatsUsersLabel:'活跃用户', publicHomepageStatsDomainsLabel:'正常域名', publicHomepageStatsDnsLabel:'DNS 记录', publicHomepageStatsSuffixesLabel:'开放根域名',
-        publicHomepageFeaturesTitle:'一个入口，完成域名日常管理', publicHomepageFeaturesDescription:'首页负责查询与了解服务，登录后进入控制台处理申请、审核状态与 DNS。', publicHomepageDomainsTitle:'现在可以申请的后缀', publicHomepageDomainsDescription:'这里只展示开放入口，不公开用户域名或账户数据。', publicHomepageFaqTitle:'第一次使用？先看这些', publicHomepageFaqDescription:'把最容易遇到的问题留在首页，详细内容放到独立知识库。',
+        publicHomepageFeaturesTitle:'一个入口，完成域名日常管理', publicHomepageFeaturesDescription:'首页负责查询与了解服务，登录后进入控制台处理申请、审核状态与 DNS。', publicHomepageDomainsTitle:'现在可以申请的后缀', publicHomepageDomainsDescription:'这里只展示开放入口，不公开用户域名或账户数据。', publicHomepageDomainsStatusText:'当前开放申请', publicHomepageDomainsLinkText:'立即查询', publicHomepageDomainsViewAllText:'查看全部', publicHomepageFaqTitle:'第一次使用？先看这些', publicHomepageFaqDescription:'把最容易遇到的问题留在首页，详细内容放到独立知识库。', publicHomepageFaqViewAllText:'查看全部',
         publicHomepageCtaEyebrow:'下一步', publicHomepageCtaTitle:'从查询一个名称开始', publicHomepageCtaDescription:'不需要登录即可先确认可用性；需要申请时再进入账户流程。', publicHomepageCtaPrimaryText:'查询域名', publicHomepageCtaPrimaryHref:'#/available', publicHomepageCtaSecondaryText:'阅读知识库', publicHomepageCtaSecondaryHref:'#/knowledge',
-        publicAvailableBadge:'DOMAIN AVAILABILITY', publicAvailableTitle:'可用域名', publicAvailableDescription:'可查询本站二级域名是否可注册。输入前缀并选择根域名，即可实时检查。', publicAvailableSearchEyebrow:'即时查询', publicAvailableSearchTitle:'查找你想要的二级域名', publicAvailableSearchDescription:'查询会同时检查系统内的域名占用状态和对应 Cloudflare DNS 精确记录。提交申请时系统会再次检查。', publicAvailableSearchPlaceholder:'输入您想要的域名前缀，例如 myblog', publicAvailableSearchButtonText:'查询', publicAvailableGuideAvailableTitle:'结果为“可注册”', publicAvailableGuideAvailableText:'表示当前未发现同名占用，可以登录或注册后提交申请；最终状态以提交时实时检查和管理员规则为准。', publicAvailableGuideUnavailableTitle:'结果为“不可注册”', publicAvailableGuideUnavailableText:'通常表示域名已经被系统、Cloudflare DNS 或当前规则占用/限制。可以更换前缀或选择其他根域名。',
-        publicKnowledgeBadge:'KNOWLEDGE BASE', publicKnowledgeTitle:'知识库', publicKnowledgeDescription:'独立整理的二级域名申请、DNS、续期、安全与故障排查说明。', publicKnowledgeSearchPlaceholder:'搜索标题或内容关键字...',
-        publicFeaturedBadge:'FEATURED DOMAINS', publicFeaturedTitle:'优质站点', publicFeaturedDescription:'展示目前可用、并由管理员开放申请的根域名。', publicFeaturedCardBadgeText:'免费', publicFeaturedCardStatusText:'开放申请', publicFeaturedCardButtonText:'立即申请', publicFeaturedCardFallbackDescription:'免费二级域名，可用于合规的个人项目、学习、展示与测试。', publicFeaturedQueryTitle:'先查再申请', publicFeaturedQueryDescription:'如果已经想好前缀，可以先到“可用域名”确认完整二级域名是否可注册。', publicFeaturedQueryButtonText:'去查询',
+        publicAvailableBadge:'DOMAIN AVAILABILITY', publicAvailableTitle:'可用域名', publicAvailableDescription:'可查询本站二级域名是否可注册。输入前缀并选择根域名，即可实时检查。', publicAvailableSearchEyebrow:'即时查询', publicAvailableSearchTitle:'查找你想要的二级域名', publicAvailableSearchDescription:'查询会同时检查系统内的域名占用状态和对应 Cloudflare DNS 精确记录。提交申请时系统会再次检查。', publicAvailableSearchPlaceholder:'输入您想要的域名前缀，例如 myblog', publicAvailableSearchButtonText:'查询', publicAvailableEmptySuffixesText:'当前暂无开放申请的根域名。', publicAvailableGuideAvailableTitle:'结果为“可注册”', publicAvailableGuideAvailableText:'表示当前未发现同名占用，可以登录或注册后提交申请；最终状态以提交时实时检查和管理员规则为准。', publicAvailableGuideUnavailableTitle:'结果为“不可注册”', publicAvailableGuideUnavailableText:'通常表示域名已经被系统、Cloudflare DNS 或当前规则占用/限制。可以更换前缀或选择其他根域名。',
+        publicKnowledgeBadge:'KNOWLEDGE BASE', publicKnowledgeTitle:'知识库', publicKnowledgeDescription:'独立整理的二级域名申请、DNS、续期、安全与故障排查说明。', publicKnowledgeSearchPlaceholder:'搜索标题或内容关键字...', publicKnowledgeNoResultsText:'没有找到匹配内容。',
+        publicFeaturedBadge:'FEATURED DOMAINS', publicFeaturedTitle:'优质站点', publicFeaturedDescription:'展示目前可用、并由管理员开放申请的根域名。', publicFeaturedCardBadgeText:'免费', publicFeaturedCardStatusText:'开放申请', publicFeaturedCardButtonText:'立即申请', publicFeaturedCardFallbackDescription:'免费二级域名，可用于合规的个人项目、学习、展示与测试。', publicFeaturedEmptyText:'当前暂无开放申请的根域名。', publicFeaturedQueryTitle:'先查再申请', publicFeaturedQueryDescription:'如果已经想好前缀，可以先到“可用域名”确认完整二级域名是否可注册。', publicFeaturedQueryButtonText:'去查询',
         publicNavigationBadge:'FLORE DIRECTORY', publicNavigationTitle:'站点导航', publicNavigationDescription:'按使用场景找到入口，快速进入查询、知识库、账户与规则页面。', publicNavigationBackText:'返回首页', publicNavigationGroupStart:'开始', publicNavigationGroupTools:'工具', publicNavigationGroupUser:'用户中心（需登录）', publicNavigationGroupRequirements:'要求',
-        publicFooterSubtitle:'快速注册并管理您的专属免费域名'
+        publicFooterSubtitle:'快速注册并管理您的专属免费域名', publicFooterServicesTitle:'服务', publicFooterInfoTitle:'信息', publicFooterStartTitle:'开始使用', publicFooterCopyrightText:''
       };
+      featureDefaults.forEach((item,index) => { const n=index+1; defaults[`publicHomepageFeature${n}Icon`]=item[0]; defaults[`publicHomepageFeature${n}Title`]=item[1]; defaults[`publicHomepageFeature${n}Description`]=item[2]; });
       Object.entries(defaults).forEach(([name,value]) => { const el=form?.elements?.namedItem(name); if (el) el.value=value; });
       const editor=document.querySelector('#home-order-editor');
       ['features','domains','faq'].forEach(key => { const row=editor?.querySelector(`[data-home-order="${key}"]`); if (row) editor.appendChild(row); });
@@ -5961,28 +6122,21 @@ async function renderAdminHomepageSettings() {
       event.preventDefault();
       syncOrder();
       const data = new FormData(form);
-      const payload = {
-        ...site,
-        ...Object.fromEntries(data),
-        publicHomepageEnabled: formBoolean(data, 'publicHomepageEnabled'),
-        publicNavShowHome: formBoolean(data, 'publicNavShowHome'),
-        publicNavShowAvailable: formBoolean(data, 'publicNavShowAvailable'),
-        publicNavShowKnowledge: formBoolean(data, 'publicNavShowKnowledge'),
-        publicNavShowFeatured: formBoolean(data, 'publicNavShowFeatured'),
-        publicNavShowNavigation: formBoolean(data, 'publicNavShowNavigation'),
-        publicHomepageShowSearch: formBoolean(data, 'publicHomepageShowSearch'),
-        publicHomepageShowStats: formBoolean(data, 'publicHomepageShowStats'),
-        publicHomepageShowFeatures: formBoolean(data, 'publicHomepageShowFeatures'),
-        publicHomepageShowDomains: formBoolean(data, 'publicHomepageShowDomains'),
-        publicHomepageShowFaq: formBoolean(data, 'publicHomepageShowFaq'),
-        publicHomepageShowProcess: false,
-        publicHomepageShowInfrastructure: false,
-        publicHomepageShowCta: formBoolean(data, 'publicHomepageShowCta'),
-        publicAvailableShowGuide: formBoolean(data, 'publicAvailableShowGuide'),
-        publicKnowledgeShowArticleCount: formBoolean(data, 'publicKnowledgeShowArticleCount'),
-        publicFeaturedShowQueryHelper: formBoolean(data, 'publicFeaturedShowQueryHelper'),
-        publicFooterShowPowered: formBoolean(data, 'publicFooterShowPowered'),
-      };
+      const boolNames = [
+        'publicHomepageEnabled','publicHeaderShowBrand','publicHeaderShowLanguage','publicHeaderShowAccountActions',
+        'publicNavShowHome','publicNavShowAvailable','publicNavShowKnowledge','publicNavShowFeatured','publicNavShowNavigation',
+        'publicHomepageShowBadge','publicHomepageShowHighlight','publicHomepageShowDescription','publicHomepageShowPrimaryButton','publicHomepageShowSecondaryButton',
+        'publicHomepageShowSearch','publicHomepageShowStats','publicHomepageStatsShowUsers','publicHomepageStatsShowDomains','publicHomepageStatsShowDns','publicHomepageStatsShowSuffixes',
+        'publicHomepageShowFeatures','publicHomepageFeature1Show','publicHomepageFeature2Show','publicHomepageFeature3Show','publicHomepageFeature4Show','publicHomepageFeature5Show','publicHomepageFeature6Show',
+        'publicHomepageShowDomains','publicHomepageShowFaq','publicHomepageShowCta','publicHomepageCtaShowPrimaryButton','publicHomepageCtaShowSecondaryButton',
+        'publicAvailableShowHero','publicAvailableShowSearchDescription','publicAvailableShowGuide',
+        'publicKnowledgeShowHero','publicKnowledgeShowSearch','publicKnowledgeShowArticleCount','publicKnowledgeShowCategorySubtitle',
+        'publicFeaturedShowHero','publicFeaturedShowCardBadge','publicFeaturedShowCardStatus','publicFeaturedShowCardButton','publicFeaturedShowQueryHelper',
+        'publicNavigationShowHero','publicNavigationShowBackButton','publicNavigationShowDescriptions','publicNavigationShowNumbers','publicNavigationShowArrows',
+        'publicFooterEnabled','publicFooterShowBrand','publicFooterShowIcp','publicFooterShowPowered'
+      ];
+      const payload = { ...site, ...Object.fromEntries(data), publicHomepageShowProcess:false, publicHomepageShowInfrastructure:false };
+      boolNames.forEach(name => { payload[name] = formBoolean(data, name); });
 
       const links = ['publicHomepagePrimaryHref','publicHomepageSecondaryHref','publicHomepageCtaPrimaryHref','publicHomepageCtaSecondaryHref'];
       for (const name of links) {
@@ -6626,8 +6780,8 @@ Object.assign(I18N_EN, {
   '未匹配':'Unmatched',
 });
 
-function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v117</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
-async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v117')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v117')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
+function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v118</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
+async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v118')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v118')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
 function bindSettingsTools() {
   const exportFn = async () => {
     try {
@@ -7035,7 +7189,7 @@ function startLiveI18nObserver() {
 function bootStorageApp() {
   window.__storageBootStarted = true;
   ensureMountRoots();
-  // v117: keep startup visually blank; render only once configuration/session data is ready.
+  // v118: keep startup visually blank; render only once configuration/session data is ready.
   startLiveI18nObserver();
   Promise.resolve(init()).then(() => { try { afterRender(); } catch(e) {} });
 }
@@ -7260,7 +7414,7 @@ Object.assign(I18N_EN, {
 
 
 
-// v117: light public portal, embedded domain lookup feedback, comprehensive five-page public settings, and case-faithful captcha input.
+// v118: light public portal, embedded domain lookup feedback, comprehensive five-page public settings, and case-faithful captcha input.
 Object.assign(I18N_EN, {
   '首页设置':'Homepage Settings','正在读取首页设置…':'Loading homepage settings…','首页设置读取完成':'Homepage settings loaded','单独控制公开首页的首屏、查询、统计、模块内容、显示顺序和底部行动区。保存后刷新公开首页即可生效。':'Control the public homepage hero, lookup, statistics, content modules, module order, and bottom CTA. Refresh the public homepage after saving.',
   '预览首页':'Preview Homepage','首页基础':'Homepage Basics','控制公开首页是否启用，以及整体布局方式。':'Control whether the public homepage is enabled and choose its overall layout.','修改后只影响公开首页，不改变控制台。':'Only the public homepage is affected; the dashboard is unchanged.',
@@ -7272,7 +7426,7 @@ Object.assign(I18N_EN, {
 });
 
 
-// v117: unified light public portal + comprehensive settings for all five public pages.
+// v118: unified light public portal + comprehensive settings for all five public pages.
 Object.assign(I18N_EN, {
   '公开官网设置':'Public Website Settings',
   '这里统一管理“首页 / 可用域名 / 知识库 / 优质站点 / 导航”五个公开页面，以及顶部导航和公开页脚。所有公开页面统一使用浅色视觉。':'Manage the five public pages — Home, Available Domains, Knowledge Base, Featured, and Navigation — plus the public header and footer. All public pages use one light visual system.',
@@ -7351,4 +7505,30 @@ Object.assign(I18N_EN, {
   '开放申请':'Open for Applications',
   '先查再申请':'Check Before Applying',
   '去查询':'Check Now'
+});
+
+// v118: detailed public-site settings translations.
+Object.assign(I18N_EN, {
+  '公开官网完整设置':'Complete Public Website Settings',
+  '这里不是只改“首页标题”。现在按页面和组件逐项控制公开官网：公共导航、首页、可用域名、知识库、优质站点、导航页和公开页脚。每个模块的显示、文案、按钮、数量、空状态和查询提示都可独立设置。':'This is no longer just a homepage-title editor. Configure the public website page by page and component by component: shared navigation, Home, Available Domains, Knowledge Base, Featured, Navigation, and the public footer. Visibility, copy, buttons, counts, empty states, and lookup messages can all be managed independently.',
+  '快速预览':'Quick Preview','公共设置':'Shared Settings','公开官网总开关':'Public Website Master Switch','顶部导航与品牌':'Header Navigation & Brand','全站域名查询状态文案':'Global Domain Lookup Messages',
+  '显示顶部品牌':'Show Header Brand','显示中英文切换':'Show Language Switcher','显示登录 / 注册 / 进入控制台按钮':'Show Login / Register / Dashboard Actions','公开官网品牌名称':'Public Website Brand Name','已登录按钮文字':'Logged-in Action Text','未登录“登录”按钮文字':'Logged-out Login Text','未登录“注册”按钮文字':'Logged-out Register Text',
+  '未输入前缀提示':'Empty Prefix Message','检查中提示':'Checking Message','可注册提示':'Available Message','不可注册提示':'Unavailable Message','查询失败提示':'Lookup Failure Message','已登录可注册操作文字':'Available Action for Logged-in Users','未登录可注册操作文字':'Available Action for Logged-out Users',
+  '首页拆成“首屏 / 查询 / 实时统计 / 功能卡片 / 开放根域名 / 常见问题 / 行动区”7 个可独立管理的组件。':'The homepage is split into seven independently configurable components: hero, lookup, live statistics, feature cards, open root domains, FAQ, and CTA.',
+  'A. 首页整体与首屏':'A. Homepage Layout & Hero','B. 首页域名查询':'B. Homepage Domain Lookup','C. 首页实时统计':'C. Homepage Live Statistics','D. 功能介绍':'D. Feature Overview','E. 开放根域名':'E. Open Root Domains','F. 首页常见问题':'F. Homepage FAQ','G. 首页模块顺序':'G. Homepage Module Order','H. 首页底部行动区':'H. Homepage Bottom CTA',
+  '显示顶部短标签':'Show Hero Eyebrow','显示主标题强调文字':'Show Headline Highlight','显示首屏说明':'Show Hero Description','显示首屏主按钮':'Show Hero Primary Button','显示首屏次按钮':'Show Hero Secondary Button','首屏主按钮文字':'Hero Primary Button Text','首屏主按钮链接':'Hero Primary Button Link','首屏次按钮文字':'Hero Secondary Button Text','首屏次按钮链接':'Hero Secondary Button Link',
+  '显示“活跃用户”':'Show Active Users','显示“正常域名”':'Show Active Domains','显示“DNS 记录”':'Show DNS Records','显示“开放根域名”':'Show Open Root Domains','显示整个“功能介绍”模块':'Show Entire Feature Section',
+  '功能卡片 1':'Feature Card 1','功能卡片 2':'Feature Card 2','功能卡片 3':'Feature Card 3','功能卡片 4':'Feature Card 4','功能卡片 5':'Feature Card 5','功能卡片 6':'Feature Card 6','显示':'Show','图标':'Icon','说明':'Description',
+  '首页最多显示根域名数量':'Maximum Root Domains on Homepage','无单独说明时的状态文字':'Fallback Root-domain Status Text','根域名卡片操作文字':'Root-domain Card Action Text','模块右上角“查看全部”文字':'Section “View All” Text','首页显示问题数量':'Homepage FAQ Count','“查看全部”文字':'“View All” Text',
+  '显示行动区主按钮':'Show CTA Primary Button','显示行动区次按钮':'Show CTA Secondary Button',
+  '可单独控制页面首屏、查询说明、输入框、空状态和结果解释，不再只有标题与说明两个输入框。':'Control the page hero, lookup description, input, empty state, and result explanation independently — not just the title and description.',
+  'A. 页面首屏':'A. Page Hero','B. 查询组件':'B. Lookup Component','C. 结果说明':'C. Result Guidance','显示页面首屏介绍':'Show Page Hero','显示查询区说明文字':'Show Lookup Description','没有开放根域名时的提示':'No Open Root Domains Message',
+  '控制独立知识库页面的首屏、搜索工具、文章数量、分类说明和搜索无结果状态；知识库文章正文仍在“帮助中心设置”维护。':'Control the Knowledge Base hero, search tool, article count, category subtitles, and no-results state. Article content remains managed in Help Center Settings.',
+  '显示知识库首屏介绍':'Show Knowledge Base Hero','显示知识库搜索框':'Show Knowledge Search','显示文章数量':'Show Article Count','显示每个分类的说明':'Show Category Subtitles','搜索无结果提示':'No Search Results Message',
+  '这里自动读取当前开放申请的根域名，可控制页面首屏和每张根域名卡片的角标、状态、按钮、默认说明与空状态。':'This page automatically reads root domains currently open for applications. Configure the hero and each card’s badge, status, button, fallback description, and empty state.',
+  '显示优质站点首屏介绍':'Show Featured Hero','卡片显示角标':'Show Card Badge','卡片显示开放状态':'Show Card Status','卡片显示申请按钮':'Show Card Apply Button','底部“先查再申请”提示':'Bottom “Check Before Applying” Prompt','显示底部查询提示':'Show Bottom Lookup Prompt',
+  '导航页可以单独决定是否显示首屏、返回首页按钮、条目说明、编号和右侧箭头，并修改 4 个分组名称。':'The Navigation page can independently show or hide the hero, back button, item descriptions, numbering, and arrows, and rename all four groups.',
+  '显示导航页首屏':'Show Navigation Hero','显示“返回首页”按钮':'Show “Back Home” Button','显示每个导航条目的说明':'Show Navigation Item Descriptions','显示分组与条目编号':'Show Group and Item Numbers','显示右侧跳转箭头':'Show Right-side Arrows',
+  '5 个公开页面共用同一个页脚。现在可以控制是否显示页脚、品牌列、ICP备案、Cloudflare 标识、分组标题和版权文字。':'All five public pages share one footer. Control footer visibility, brand column, ICP information, Cloudflare label, group titles, and copyright copy.',
+  '显示公开页脚':'Show Public Footer','显示页脚品牌与说明':'Show Footer Brand & Description','显示 ICP / 备案信息（如已填写）':'Show ICP / Filing Information (if configured)','“服务”分组标题':'Services Group Title','“信息”分组标题':'Information Group Title','“开始使用”分组标题':'Get Started Group Title','公开页脚版权文字':'Public Footer Copyright Text','保存公开官网设置':'Save Public Website Settings','恢复默认文案':'Restore Default Copy'
 });
