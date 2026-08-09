@@ -564,7 +564,15 @@ export default {
         await ensureSchema(env);
         return await handleApi(request, env, url);
       }
-      return env.ASSETS.fetch(request);
+      const assetResponse = await env.ASSETS.fetch(request);
+      if (assetResponse.status !== 404 || !['GET','HEAD'].includes(request.method.toUpperCase())) return assetResponse;
+      const acceptsHtml = String(request.headers.get('accept') || '').includes('text/html');
+      const looksLikeFile = /\.[a-z0-9]{1,8}$/i.test(url.pathname);
+      if (!acceptsHtml || looksLikeFile) return assetResponse;
+      // History-mode SPA fallback: direct access / refresh on /home, /login,
+      // /admin/*, /domain/*, etc. must still load the application shell.
+      const indexUrl = new URL('/index.html', url.origin);
+      return env.ASSETS.fetch(new Request(indexUrl.toString(), request));
     } catch (error) {
       if (error instanceof HttpError) {
         return json({ ok: false, code: error.code, message: error.message, details: error.details }, error.status);
@@ -1909,7 +1917,7 @@ async function createApplication(request: Request, env: Env): Promise<Response> 
         `客户端 IP：${clientIp(request) || '未知'}`,
         isRiskDomain ? '风险提示：前缀命中了系统风险关键词，请重点检查。' : '风险提示：未命中内置高风险关键词。',
         '',
-        `审核入口：${new URL(request.url).origin}/#/admin/applications`,
+        `审核入口：${new URL(request.url).origin}//admin/applications`,
       ].join('\n'),
       fingerprint: `domain-review|${id}`,
       cooldownSeconds: 60,
@@ -2446,7 +2454,7 @@ async function requestDeleteOwnApplication(request: Request, env: Env, id: strin
       `客户端 IP：${clientIp(request) || '未知'}`,
       '',
       '请先确认该域名的 DNS 记录和业务使用情况，再批准或拒绝删除。',
-      `审核入口：${new URL(request.url).origin}/#/admin/applications`,
+      `审核入口：${new URL(request.url).origin}//admin/applications`,
     ].join('\n'),
     fingerprint: `domain-delete-review|${id}|${Date.now()}`,
     cooldownSeconds: 60,
@@ -2778,7 +2786,7 @@ async function contactAdminMessage(request: Request, env: Env): Promise<Response
       '',
       text,
       '',
-      `后台查看：${new URL(request.url).origin}/#/messages`,
+      `后台查看：${new URL(request.url).origin}//messages`,
     ].join('\n'),
     fingerprint: `help|${id}`,
     cooldownSeconds: 60,
@@ -2885,7 +2893,7 @@ async function createSupportTicket(request: Request, env: Env): Promise<Response
   await audit(env, request, user.id, 'support.ticket_create', 'support_ticket', id, {category,priority,title});
   await sendAdminCloudflareEmailSafe(env, 'help_submission', {
     subject:`【新工单 / ${supportTicketPriorityLabel(priority)}】${title}`,
-    text:[`工单编号：${id}`,`用户：${user.username} (${user.id})`,`板块：${supportTicketCategoryLabel(category)}`,`优先级：${supportTicketPriorityLabel(priority)}`,`提交时间：${new Date().toISOString()}`,'',description,'',`后台查看：${new URL(request.url).origin}/#/support/ticket/${id}`].join('\n'),
+    text:[`工单编号：${id}`,`用户：${user.username} (${user.id})`,`板块：${supportTicketCategoryLabel(category)}`,`优先级：${supportTicketPriorityLabel(priority)}`,`提交时间：${new Date().toISOString()}`,'',description,'',`后台查看：${new URL(request.url).origin}//support/ticket/${id}`].join('\n'),
     fingerprint:`ticket-create|${id}`, cooldownSeconds:30,
   });
   const row = await getSupportTicketRow(env,id);
@@ -2929,7 +2937,7 @@ async function replySupportTicket(request: Request, env: Env, id: string): Promi
   if (isAdmin) {
     await env.DB.prepare(`INSERT INTO system_messages (id,sender_user_id,target_type,target_user_id,title,body,level,status,sent_at) VALUES (?,?, 'user', ?, ?, ?, 'support_reply', 'sent', datetime('now'))`).bind(crypto.randomUUID(),user.id,ticket.user_id,`工单 ${id.replace(/-/g,'').slice(0,8).toUpperCase()} 有新回复`,text).run();
   } else {
-    await sendAdminCloudflareEmailSafe(env,'help_submission',{subject:`【工单回复】${ticket.title}`,text:[`工单：${id}`,`用户：${user.username}`,'',text,'',`后台查看：${new URL(request.url).origin}/#/support/ticket/${id}`].join('\n'),fingerprint:`ticket-reply|${replyId}`,cooldownSeconds:15});
+    await sendAdminCloudflareEmailSafe(env,'help_submission',{subject:`【工单回复】${ticket.title}`,text:[`工单：${id}`,`用户：${user.username}`,'',text,'',`后台查看：${new URL(request.url).origin}//support/ticket/${id}`].join('\n'),fingerprint:`ticket-reply|${replyId}`,cooldownSeconds:15});
   }
   const row = await env.DB.prepare(`SELECT r.*, u.username FROM support_ticket_replies r LEFT JOIN users u ON u.id=r.user_id WHERE r.id=?`).bind(replyId).first<SupportTicketReplyRow>();
   return ok({ reply:serializeSupportReply(row!), status:nextStatus });
@@ -4842,7 +4850,7 @@ async function adminUpdateSettings(request: Request, env: Env, group: AdminSetti
       publicHomepagePrimaryText: cleanText(body.publicHomepagePrimaryText, 40),
       publicHomepagePrimaryHref: Object.prototype.hasOwnProperty.call(body, 'publicHomepagePrimaryHref') ? cleanText(body.publicHomepagePrimaryHref, 300) : (settings.site.publicHomepagePrimaryHref || ''),
       publicHomepageSecondaryText: cleanText(body.publicHomepageSecondaryText, 40),
-      publicHomepageSecondaryHref: Object.prototype.hasOwnProperty.call(body, 'publicHomepageSecondaryHref') ? cleanText(body.publicHomepageSecondaryHref, 300) : (settings.site.publicHomepageSecondaryHref || '#/available'),
+      publicHomepageSecondaryHref: Object.prototype.hasOwnProperty.call(body, 'publicHomepageSecondaryHref') ? cleanText(body.publicHomepageSecondaryHref, 300) : (settings.site.publicHomepageSecondaryHref || '/available'),
       publicHomepageSearchEyebrow: Object.prototype.hasOwnProperty.call(body, 'publicHomepageSearchEyebrow') ? cleanText(body.publicHomepageSearchEyebrow, 50) : (settings.site.publicHomepageSearchEyebrow || '实时查询'),
       publicHomepageSearchTitle: Object.prototype.hasOwnProperty.call(body, 'publicHomepageSearchTitle') ? cleanText(body.publicHomepageSearchTitle, 80) : (settings.site.publicHomepageSearchTitle || '先确认，再申请'),
       publicHomepageSearchNote: Object.prototype.hasOwnProperty.call(body, 'publicHomepageSearchNote') ? cleanText(body.publicHomepageSearchNote, 300) : (settings.site.publicHomepageSearchNote || '查询只返回当前可用状态，不公开域名归属或账户信息。'),
@@ -4865,9 +4873,9 @@ async function adminUpdateSettings(request: Request, env: Env, group: AdminSetti
       publicHomepageCtaTitle: Object.prototype.hasOwnProperty.call(body, 'publicHomepageCtaTitle') ? cleanText(body.publicHomepageCtaTitle, 120) : (settings.site.publicHomepageCtaTitle || '从查询一个名称开始'),
       publicHomepageCtaDescription: Object.prototype.hasOwnProperty.call(body, 'publicHomepageCtaDescription') ? cleanText(body.publicHomepageCtaDescription, 500) : (settings.site.publicHomepageCtaDescription || '不需要登录即可先确认可用性；需要申请时再进入账户流程。'),
       publicHomepageCtaPrimaryText: Object.prototype.hasOwnProperty.call(body, 'publicHomepageCtaPrimaryText') ? cleanText(body.publicHomepageCtaPrimaryText, 40) : (settings.site.publicHomepageCtaPrimaryText || '查询域名'),
-      publicHomepageCtaPrimaryHref: Object.prototype.hasOwnProperty.call(body, 'publicHomepageCtaPrimaryHref') ? cleanText(body.publicHomepageCtaPrimaryHref, 300) : (settings.site.publicHomepageCtaPrimaryHref || '#/available'),
+      publicHomepageCtaPrimaryHref: Object.prototype.hasOwnProperty.call(body, 'publicHomepageCtaPrimaryHref') ? cleanText(body.publicHomepageCtaPrimaryHref, 300) : (settings.site.publicHomepageCtaPrimaryHref || '/available'),
       publicHomepageCtaSecondaryText: Object.prototype.hasOwnProperty.call(body, 'publicHomepageCtaSecondaryText') ? cleanText(body.publicHomepageCtaSecondaryText, 40) : (settings.site.publicHomepageCtaSecondaryText || '阅读知识库'),
-      publicHomepageCtaSecondaryHref: Object.prototype.hasOwnProperty.call(body, 'publicHomepageCtaSecondaryHref') ? cleanText(body.publicHomepageCtaSecondaryHref, 300) : (settings.site.publicHomepageCtaSecondaryHref || '#/knowledge'),
+      publicHomepageCtaSecondaryHref: Object.prototype.hasOwnProperty.call(body, 'publicHomepageCtaSecondaryHref') ? cleanText(body.publicHomepageCtaSecondaryHref, 300) : (settings.site.publicHomepageCtaSecondaryHref || '/knowledge'),
       publicHomepageShowSearch: asBoolean(body.publicHomepageShowSearch, true),
       publicHomepageShowStats: asBoolean(body.publicHomepageShowStats, true),
       publicHomepageShowFeatures: asBoolean(body.publicHomepageShowFeatures, true),
@@ -5316,7 +5324,7 @@ function defaultSettings(env: Env): AppSettings {
       publicHomepagePrimaryText: '开始申请',
       publicHomepagePrimaryHref: '',
       publicHomepageSecondaryText: '先查域名',
-      publicHomepageSecondaryHref: '#/available',
+      publicHomepageSecondaryHref: '/available',
       publicHomepageSearchEyebrow: '实时查询',
       publicHomepageSearchTitle: '先确认，再申请',
       publicHomepageSearchNote: '查询只返回当前可用状态，不公开域名归属或账户信息。',
@@ -5339,9 +5347,9 @@ function defaultSettings(env: Env): AppSettings {
       publicHomepageCtaTitle: '从查询一个名称开始',
       publicHomepageCtaDescription: '不需要登录即可先确认可用性；需要申请时再进入账户流程。',
       publicHomepageCtaPrimaryText: '查询域名',
-      publicHomepageCtaPrimaryHref: '#/available',
+      publicHomepageCtaPrimaryHref: '/available',
       publicHomepageCtaSecondaryText: '阅读知识库',
-      publicHomepageCtaSecondaryHref: '#/knowledge',
+      publicHomepageCtaSecondaryHref: '/knowledge',
       publicHomepageShowSearch: true,
       publicHomepageShowStats: true,
       publicHomepageShowFeatures: true,
@@ -7344,20 +7352,20 @@ async function adminSystemStatus(request: Request, env: Env): Promise<Response> 
       (SELECT COUNT(*) FROM audit_logs WHERE datetime(created_at) >= datetime('now','-' || ? || ' days')) AS logsRetained
   `).bind(auditRetentionDays).first<any>();
   return ok({
-    version: 'v122',
+    version: 'v123',
     settingsKey: SETTINGS_KEY,
     kv: { storage: 'Workers KV', estimatedKeys: '由 Cloudflare 控制台查看实际占用' },
     cfApi: { configured: Boolean(resolveDnsToken(env, settings)), status: resolveDnsToken(env, settings) ? '已配置' : '未配置' },
     cron: { enabled: Boolean(settings.automation?.enabled), expression: settings.automation?.cronExpression || '' },
     counts: { ...counts, logs4d: Number(counts?.logsRetained || 0) },
     auditRetentionDays,
-    update: { current: 'v122', latest: '请以当前部署包为准' },
+    update: { current: 'v123', latest: '请以当前部署包为准' },
   });
 }
 
 async function adminExportSettings(request: Request, env: Env): Promise<Response> {
   await requireAdmin(env, request);
-  return ok({ exportedAt: new Date().toISOString(), version: 'v122', settings: await loadSettings(env) });
+  return ok({ exportedAt: new Date().toISOString(), version: 'v123', settings: await loadSettings(env) });
 }
 
 async function adminImportSettings(request: Request, env: Env): Promise<Response> {
