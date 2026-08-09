@@ -5,11 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#5468ff">
   <title>二级域名注册</title>
-  <link rel="stylesheet" href="/styles.css?v=116">
+  <link rel="stylesheet" href="/styles.css?v=117">
+  <style id="boot-blank-style">html,body{background:#fff!important}#background-layer{display:none!important}</style>
 </head>
 <body>
   <div id="background-layer"></div>
-  <div id="app"><div class="loading-card boot-loading">正在加载系统…</div></div>
+  <div id="app"></div>
   <div id="modal-root"></div>
   <div id="toast-root"></div>
 
@@ -21,15 +22,11 @@
       if (bootEnglish) {
         document.documentElement.lang = 'en';
         document.title = 'Subdomain Registration';
-        var loading = document.querySelector('.boot-loading');
-        if (loading) loading.textContent = 'Loading system…';
       }
       function escapeHtml(v){ return String(v || '').replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
       function showBootHelp(title, message){
         var app = document.getElementById('app');
         if (!app) return;
-        var text = app.textContent || '';
-        if (!/正在加载系统|Loading/.test(text)) return;
         app.innerHTML = '<div class="center-screen boot-error"><h2>'+escapeHtml(title)+'</h2><p>'+escapeHtml(message)+'</p><div class="boot-actions"><button class="btn primary" onclick="location.reload()">'+bt('重新加载','Reload')+'</button><button class="btn" onclick="localStorage.clear(); sessionStorage.clear(); location.reload()">'+bt('清缓存重试','Clear Cache and Retry')+'</button><a class="btn" href="#/login" onclick="setTimeout(function(){location.reload()},30)">'+bt('进入登录页','Open Login')+'</a></div><p class="muted">'+bt('如果反复出现，请打开 F12 → Console，把红色错误截图发给管理员。','If this keeps happening, open F12 → Console and send the first red error to the administrator.')+'</p></div>';
       }
       window.addEventListener('error', function(e){
@@ -47,6 +44,6 @@
       }, 14000);
     })();
   </script>
-  <script defer src="/app.js?v=116"></script>
+  <script defer src="/app.js?v=117"></script>
 </body>
 </html>
