@@ -273,6 +273,85 @@ interface AppSettings {
     publicNavKnowledgeLabel?: string;
     publicNavFeaturedLabel?: string;
     publicNavNavigationLabel?: string;
+    publicBrandTitle?: string;
+    publicHeaderShowBrand?: boolean;
+    publicHeaderShowLanguage?: boolean;
+    publicHeaderShowAccountActions?: boolean;
+    publicHeaderDashboardText?: string;
+    publicHeaderLoginText?: string;
+    publicHeaderRegisterText?: string;
+    publicDomainCheckEmptyText?: string;
+    publicDomainCheckCheckingText?: string;
+    publicDomainCheckAvailableText?: string;
+    publicDomainCheckUnavailableText?: string;
+    publicDomainCheckFailureText?: string;
+    publicDomainCheckApplyText?: string;
+    publicDomainCheckRegisterApplyText?: string;
+    publicHomepageShowBadge?: boolean;
+    publicHomepageShowHighlight?: boolean;
+    publicHomepageShowDescription?: boolean;
+    publicHomepageShowPrimaryButton?: boolean;
+    publicHomepageShowSecondaryButton?: boolean;
+    publicHomepageStatsShowUsers?: boolean;
+    publicHomepageStatsShowDomains?: boolean;
+    publicHomepageStatsShowDns?: boolean;
+    publicHomepageStatsShowSuffixes?: boolean;
+    publicHomepageFeature1Show?: boolean;
+    publicHomepageFeature1Icon?: string;
+    publicHomepageFeature1Title?: string;
+    publicHomepageFeature1Description?: string;
+    publicHomepageFeature2Show?: boolean;
+    publicHomepageFeature2Icon?: string;
+    publicHomepageFeature2Title?: string;
+    publicHomepageFeature2Description?: string;
+    publicHomepageFeature3Show?: boolean;
+    publicHomepageFeature3Icon?: string;
+    publicHomepageFeature3Title?: string;
+    publicHomepageFeature3Description?: string;
+    publicHomepageFeature4Show?: boolean;
+    publicHomepageFeature4Icon?: string;
+    publicHomepageFeature4Title?: string;
+    publicHomepageFeature4Description?: string;
+    publicHomepageFeature5Show?: boolean;
+    publicHomepageFeature5Icon?: string;
+    publicHomepageFeature5Title?: string;
+    publicHomepageFeature5Description?: string;
+    publicHomepageFeature6Show?: boolean;
+    publicHomepageFeature6Icon?: string;
+    publicHomepageFeature6Title?: string;
+    publicHomepageFeature6Description?: string;
+    publicHomepageDomainsLimit?: number;
+    publicHomepageDomainsStatusText?: string;
+    publicHomepageDomainsLinkText?: string;
+    publicHomepageDomainsViewAllText?: string;
+    publicHomepageFaqLimit?: number;
+    publicHomepageFaqViewAllText?: string;
+    publicHomepageCtaShowPrimaryButton?: boolean;
+    publicHomepageCtaShowSecondaryButton?: boolean;
+    publicAvailableShowHero?: boolean;
+    publicAvailableShowSearchDescription?: boolean;
+    publicAvailableEmptySuffixesText?: string;
+    publicKnowledgeShowHero?: boolean;
+    publicKnowledgeShowSearch?: boolean;
+    publicKnowledgeShowCategorySubtitle?: boolean;
+    publicKnowledgeNoResultsText?: string;
+    publicFeaturedShowHero?: boolean;
+    publicFeaturedShowCardBadge?: boolean;
+    publicFeaturedShowCardStatus?: boolean;
+    publicFeaturedShowCardButton?: boolean;
+    publicFeaturedEmptyText?: string;
+    publicNavigationShowHero?: boolean;
+    publicNavigationShowBackButton?: boolean;
+    publicNavigationShowDescriptions?: boolean;
+    publicNavigationShowNumbers?: boolean;
+    publicNavigationShowArrows?: boolean;
+    publicFooterEnabled?: boolean;
+    publicFooterShowBrand?: boolean;
+    publicFooterServicesTitle?: string;
+    publicFooterInfoTitle?: string;
+    publicFooterStartTitle?: string;
+    publicFooterCopyrightText?: string;
+    publicFooterShowIcp?: boolean;
     publicAvailableBadge?: string;
     publicAvailableTitle?: string;
     publicAvailableDescription?: string;
@@ -4727,6 +4806,85 @@ async function adminUpdateSettings(request: Request, env: Env, group: AdminSetti
       publicNavKnowledgeLabel: Object.prototype.hasOwnProperty.call(body, 'publicNavKnowledgeLabel') ? cleanText(body.publicNavKnowledgeLabel, 40) : (settings.site.publicNavKnowledgeLabel || '知识库'),
       publicNavFeaturedLabel: Object.prototype.hasOwnProperty.call(body, 'publicNavFeaturedLabel') ? cleanText(body.publicNavFeaturedLabel, 40) : (settings.site.publicNavFeaturedLabel || '优质站点'),
       publicNavNavigationLabel: Object.prototype.hasOwnProperty.call(body, 'publicNavNavigationLabel') ? cleanText(body.publicNavNavigationLabel, 40) : (settings.site.publicNavNavigationLabel || '导航'),
+      publicBrandTitle: Object.prototype.hasOwnProperty.call(body, 'publicBrandTitle') ? cleanText(body.publicBrandTitle, 100) : (settings.site.publicBrandTitle || ''),
+      publicHeaderShowBrand: asBoolean(body.publicHeaderShowBrand, true),
+      publicHeaderShowLanguage: asBoolean(body.publicHeaderShowLanguage, true),
+      publicHeaderShowAccountActions: asBoolean(body.publicHeaderShowAccountActions, true),
+      publicHeaderDashboardText: Object.prototype.hasOwnProperty.call(body, 'publicHeaderDashboardText') ? cleanText(body.publicHeaderDashboardText, 40) : (settings.site.publicHeaderDashboardText || '进入控制台'),
+      publicHeaderLoginText: Object.prototype.hasOwnProperty.call(body, 'publicHeaderLoginText') ? cleanText(body.publicHeaderLoginText, 40) : (settings.site.publicHeaderLoginText || '登录'),
+      publicHeaderRegisterText: Object.prototype.hasOwnProperty.call(body, 'publicHeaderRegisterText') ? cleanText(body.publicHeaderRegisterText, 40) : (settings.site.publicHeaderRegisterText || '注册'),
+      publicDomainCheckEmptyText: Object.prototype.hasOwnProperty.call(body, 'publicDomainCheckEmptyText') ? cleanText(body.publicDomainCheckEmptyText, 120) : (settings.site.publicDomainCheckEmptyText || '请输入域名前缀'),
+      publicDomainCheckCheckingText: Object.prototype.hasOwnProperty.call(body, 'publicDomainCheckCheckingText') ? cleanText(body.publicDomainCheckCheckingText, 120) : (settings.site.publicDomainCheckCheckingText || '正在检查域名是否可注册...'),
+      publicDomainCheckAvailableText: Object.prototype.hasOwnProperty.call(body, 'publicDomainCheckAvailableText') ? cleanText(body.publicDomainCheckAvailableText, 120) : (settings.site.publicDomainCheckAvailableText || '此域名可注册。'),
+      publicDomainCheckUnavailableText: Object.prototype.hasOwnProperty.call(body, 'publicDomainCheckUnavailableText') ? cleanText(body.publicDomainCheckUnavailableText, 120) : (settings.site.publicDomainCheckUnavailableText || '此域名暂不可注册。'),
+      publicDomainCheckFailureText: Object.prototype.hasOwnProperty.call(body, 'publicDomainCheckFailureText') ? cleanText(body.publicDomainCheckFailureText, 160) : (settings.site.publicDomainCheckFailureText || '查询失败，请稍后重试'),
+      publicDomainCheckApplyText: Object.prototype.hasOwnProperty.call(body, 'publicDomainCheckApplyText') ? cleanText(body.publicDomainCheckApplyText, 40) : (settings.site.publicDomainCheckApplyText || '立即申请'),
+      publicDomainCheckRegisterApplyText: Object.prototype.hasOwnProperty.call(body, 'publicDomainCheckRegisterApplyText') ? cleanText(body.publicDomainCheckRegisterApplyText, 40) : (settings.site.publicDomainCheckRegisterApplyText || '注册后申请'),
+      publicHomepageShowBadge: asBoolean(body.publicHomepageShowBadge, true),
+      publicHomepageShowHighlight: asBoolean(body.publicHomepageShowHighlight, true),
+      publicHomepageShowDescription: asBoolean(body.publicHomepageShowDescription, true),
+      publicHomepageShowPrimaryButton: asBoolean(body.publicHomepageShowPrimaryButton, true),
+      publicHomepageShowSecondaryButton: asBoolean(body.publicHomepageShowSecondaryButton, true),
+      publicHomepageStatsShowUsers: asBoolean(body.publicHomepageStatsShowUsers, true),
+      publicHomepageStatsShowDomains: asBoolean(body.publicHomepageStatsShowDomains, true),
+      publicHomepageStatsShowDns: asBoolean(body.publicHomepageStatsShowDns, true),
+      publicHomepageStatsShowSuffixes: asBoolean(body.publicHomepageStatsShowSuffixes, true),
+      publicHomepageFeature1Show: asBoolean(body.publicHomepageFeature1Show, true),
+      publicHomepageFeature1Icon: cleanText(body.publicHomepageFeature1Icon, 12) || '∞',
+      publicHomepageFeature1Title: cleanText(body.publicHomepageFeature1Title, 80) || '免费使用',
+      publicHomepageFeature1Description: cleanText(body.publicHomepageFeature1Description, 300) || '提供可申请的免费二级域名，注册、审核与 DNS 管理集中在一个系统完成。',
+      publicHomepageFeature2Show: asBoolean(body.publicHomepageFeature2Show, true),
+      publicHomepageFeature2Icon: cleanText(body.publicHomepageFeature2Icon, 12) || '⚡',
+      publicHomepageFeature2Title: cleanText(body.publicHomepageFeature2Title, 80) || '快速上线',
+      publicHomepageFeature2Description: cleanText(body.publicHomepageFeature2Description, 300) || '域名审核通过后即可配置解析，不需要在多个后台之间反复切换。',
+      publicHomepageFeature3Show: asBoolean(body.publicHomepageFeature3Show, true),
+      publicHomepageFeature3Icon: cleanText(body.publicHomepageFeature3Icon, 12) || '◎',
+      publicHomepageFeature3Title: cleanText(body.publicHomepageFeature3Title, 80) || '完整 DNS 控制',
+      publicHomepageFeature3Description: cleanText(body.publicHomepageFeature3Description, 300) || '按管理员开放策略支持常见 DNS 记录类型。',
+      publicHomepageFeature4Show: asBoolean(body.publicHomepageFeature4Show, true),
+      publicHomepageFeature4Icon: cleanText(body.publicHomepageFeature4Icon, 12) || '☁',
+      publicHomepageFeature4Title: cleanText(body.publicHomepageFeature4Title, 80) || 'Cloudflare 驱动',
+      publicHomepageFeature4Description: cleanText(body.publicHomepageFeature4Description, 300) || 'DNS 写入由 Cloudflare API 完成，可代理记录可按系统策略开启代理。',
+      publicHomepageFeature5Show: asBoolean(body.publicHomepageFeature5Show, true),
+      publicHomepageFeature5Icon: cleanText(body.publicHomepageFeature5Icon, 12) || '⌁',
+      publicHomepageFeature5Title: cleanText(body.publicHomepageFeature5Title, 80) || '多根域名',
+      publicHomepageFeature5Description: cleanText(body.publicHomepageFeature5Description, 300) || '可以从多个当前开放的根域名中选择合适的后缀。',
+      publicHomepageFeature6Show: asBoolean(body.publicHomepageFeature6Show, true),
+      publicHomepageFeature6Icon: cleanText(body.publicHomepageFeature6Icon, 12) || '✓',
+      publicHomepageFeature6Title: cleanText(body.publicHomepageFeature6Title, 80) || '可追踪管理',
+      publicHomepageFeature6Description: cleanText(body.publicHomepageFeature6Description, 300) || '域名状态、DNS、续期、消息与操作记录都可在控制台查看。',
+      publicHomepageDomainsLimit: clamp(Number(body.publicHomepageDomainsLimit || 6), 1, 24),
+      publicHomepageDomainsStatusText: cleanText(body.publicHomepageDomainsStatusText, 80) || '当前开放申请',
+      publicHomepageDomainsLinkText: cleanText(body.publicHomepageDomainsLinkText, 40) || '立即查询',
+      publicHomepageDomainsViewAllText: cleanText(body.publicHomepageDomainsViewAllText, 40) || '查看全部',
+      publicHomepageFaqLimit: clamp(Number(body.publicHomepageFaqLimit || 4), 1, 7),
+      publicHomepageFaqViewAllText: cleanText(body.publicHomepageFaqViewAllText, 40) || '查看全部',
+      publicHomepageCtaShowPrimaryButton: asBoolean(body.publicHomepageCtaShowPrimaryButton, true),
+      publicHomepageCtaShowSecondaryButton: asBoolean(body.publicHomepageCtaShowSecondaryButton, true),
+      publicAvailableShowHero: asBoolean(body.publicAvailableShowHero, true),
+      publicAvailableShowSearchDescription: asBoolean(body.publicAvailableShowSearchDescription, true),
+      publicAvailableEmptySuffixesText: cleanText(body.publicAvailableEmptySuffixesText, 160) || '当前暂无开放申请的根域名。',
+      publicKnowledgeShowHero: asBoolean(body.publicKnowledgeShowHero, true),
+      publicKnowledgeShowSearch: asBoolean(body.publicKnowledgeShowSearch, true),
+      publicKnowledgeShowCategorySubtitle: asBoolean(body.publicKnowledgeShowCategorySubtitle, true),
+      publicKnowledgeNoResultsText: cleanText(body.publicKnowledgeNoResultsText, 120) || '没有找到匹配内容。',
+      publicFeaturedShowHero: asBoolean(body.publicFeaturedShowHero, true),
+      publicFeaturedShowCardBadge: asBoolean(body.publicFeaturedShowCardBadge, true),
+      publicFeaturedShowCardStatus: asBoolean(body.publicFeaturedShowCardStatus, true),
+      publicFeaturedShowCardButton: asBoolean(body.publicFeaturedShowCardButton, true),
+      publicFeaturedEmptyText: cleanText(body.publicFeaturedEmptyText, 160) || '当前暂无开放申请的根域名。',
+      publicNavigationShowHero: asBoolean(body.publicNavigationShowHero, true),
+      publicNavigationShowBackButton: asBoolean(body.publicNavigationShowBackButton, true),
+      publicNavigationShowDescriptions: asBoolean(body.publicNavigationShowDescriptions, true),
+      publicNavigationShowNumbers: asBoolean(body.publicNavigationShowNumbers, true),
+      publicNavigationShowArrows: asBoolean(body.publicNavigationShowArrows, true),
+      publicFooterEnabled: asBoolean(body.publicFooterEnabled, true),
+      publicFooterShowBrand: asBoolean(body.publicFooterShowBrand, true),
+      publicFooterServicesTitle: cleanText(body.publicFooterServicesTitle, 50) || '服务',
+      publicFooterInfoTitle: cleanText(body.publicFooterInfoTitle, 50) || '信息',
+      publicFooterStartTitle: cleanText(body.publicFooterStartTitle, 50) || '开始使用',
+      publicFooterCopyrightText: Object.prototype.hasOwnProperty.call(body, 'publicFooterCopyrightText') ? cleanText(body.publicFooterCopyrightText, 500) : (settings.site.publicFooterCopyrightText || ''),
+      publicFooterShowIcp: asBoolean(body.publicFooterShowIcp, true),
       publicAvailableBadge: Object.prototype.hasOwnProperty.call(body, 'publicAvailableBadge') ? cleanText(body.publicAvailableBadge, 80) : (settings.site.publicAvailableBadge || 'DOMAIN AVAILABILITY'),
       publicAvailableTitle: Object.prototype.hasOwnProperty.call(body, 'publicAvailableTitle') ? cleanText(body.publicAvailableTitle, 120) : (settings.site.publicAvailableTitle || '可用域名'),
       publicAvailableDescription: Object.prototype.hasOwnProperty.call(body, 'publicAvailableDescription') ? cleanText(body.publicAvailableDescription, 500) : (settings.site.publicAvailableDescription || '可查询本站二级域名是否可注册。输入前缀并选择根域名，即可实时检查。'),
@@ -5124,6 +5282,67 @@ function defaultSettings(env: Env): AppSettings {
       publicNavKnowledgeLabel: '知识库',
       publicNavFeaturedLabel: '优质站点',
       publicNavNavigationLabel: '导航',
+      publicBrandTitle: '',
+      publicHeaderShowBrand: true,
+      publicHeaderShowLanguage: true,
+      publicHeaderShowAccountActions: true,
+      publicHeaderDashboardText: '进入控制台',
+      publicHeaderLoginText: '登录',
+      publicHeaderRegisterText: '注册',
+      publicDomainCheckEmptyText: '请输入域名前缀',
+      publicDomainCheckCheckingText: '正在检查域名是否可注册...',
+      publicDomainCheckAvailableText: '此域名可注册。',
+      publicDomainCheckUnavailableText: '此域名暂不可注册。',
+      publicDomainCheckFailureText: '查询失败，请稍后重试',
+      publicDomainCheckApplyText: '立即申请',
+      publicDomainCheckRegisterApplyText: '注册后申请',
+      publicHomepageShowBadge: true,
+      publicHomepageShowHighlight: true,
+      publicHomepageShowDescription: true,
+      publicHomepageShowPrimaryButton: true,
+      publicHomepageShowSecondaryButton: true,
+      publicHomepageStatsShowUsers: true,
+      publicHomepageStatsShowDomains: true,
+      publicHomepageStatsShowDns: true,
+      publicHomepageStatsShowSuffixes: true,
+      publicHomepageFeature1Show: true, publicHomepageFeature1Icon: '∞', publicHomepageFeature1Title: '免费使用', publicHomepageFeature1Description: '提供可申请的免费二级域名，注册、审核与 DNS 管理集中在一个系统完成。',
+      publicHomepageFeature2Show: true, publicHomepageFeature2Icon: '⚡', publicHomepageFeature2Title: '快速上线', publicHomepageFeature2Description: '域名审核通过后即可配置解析，不需要在多个后台之间反复切换。',
+      publicHomepageFeature3Show: true, publicHomepageFeature3Icon: '◎', publicHomepageFeature3Title: '完整 DNS 控制', publicHomepageFeature3Description: '按管理员开放策略支持常见 DNS 记录类型。',
+      publicHomepageFeature4Show: true, publicHomepageFeature4Icon: '☁', publicHomepageFeature4Title: 'Cloudflare 驱动', publicHomepageFeature4Description: 'DNS 写入由 Cloudflare API 完成，可代理记录可按系统策略开启代理。',
+      publicHomepageFeature5Show: true, publicHomepageFeature5Icon: '⌁', publicHomepageFeature5Title: '多根域名', publicHomepageFeature5Description: '可以从多个当前开放的根域名中选择合适的后缀。',
+      publicHomepageFeature6Show: true, publicHomepageFeature6Icon: '✓', publicHomepageFeature6Title: '可追踪管理', publicHomepageFeature6Description: '域名状态、DNS、续期、消息与操作记录都可在控制台查看。',
+      publicHomepageDomainsLimit: 6,
+      publicHomepageDomainsStatusText: '当前开放申请',
+      publicHomepageDomainsLinkText: '立即查询',
+      publicHomepageDomainsViewAllText: '查看全部',
+      publicHomepageFaqLimit: 4,
+      publicHomepageFaqViewAllText: '查看全部',
+      publicHomepageCtaShowPrimaryButton: true,
+      publicHomepageCtaShowSecondaryButton: true,
+      publicAvailableShowHero: true,
+      publicAvailableShowSearchDescription: true,
+      publicAvailableEmptySuffixesText: '当前暂无开放申请的根域名。',
+      publicKnowledgeShowHero: true,
+      publicKnowledgeShowSearch: true,
+      publicKnowledgeShowCategorySubtitle: true,
+      publicKnowledgeNoResultsText: '没有找到匹配内容。',
+      publicFeaturedShowHero: true,
+      publicFeaturedShowCardBadge: true,
+      publicFeaturedShowCardStatus: true,
+      publicFeaturedShowCardButton: true,
+      publicFeaturedEmptyText: '当前暂无开放申请的根域名。',
+      publicNavigationShowHero: true,
+      publicNavigationShowBackButton: true,
+      publicNavigationShowDescriptions: true,
+      publicNavigationShowNumbers: true,
+      publicNavigationShowArrows: true,
+      publicFooterEnabled: true,
+      publicFooterShowBrand: true,
+      publicFooterServicesTitle: '服务',
+      publicFooterInfoTitle: '信息',
+      publicFooterStartTitle: '开始使用',
+      publicFooterCopyrightText: '',
+      publicFooterShowIcp: true,
       publicAvailableBadge: 'DOMAIN AVAILABILITY',
       publicAvailableTitle: '可用域名',
       publicAvailableDescription: '可查询本站二级域名是否可注册。输入前缀并选择根域名，即可实时检查。',
@@ -7047,20 +7266,20 @@ async function adminSystemStatus(request: Request, env: Env): Promise<Response> 
       (SELECT COUNT(*) FROM audit_logs WHERE datetime(created_at) >= datetime('now','-' || ? || ' days')) AS logsRetained
   `).bind(auditRetentionDays).first<any>();
   return ok({
-    version: 'v117',
+    version: 'v118',
     settingsKey: SETTINGS_KEY,
     kv: { storage: 'Workers KV', estimatedKeys: '由 Cloudflare 控制台查看实际占用' },
     cfApi: { configured: Boolean(resolveDnsToken(env, settings)), status: resolveDnsToken(env, settings) ? '已配置' : '未配置' },
     cron: { enabled: Boolean(settings.automation?.enabled), expression: settings.automation?.cronExpression || '' },
     counts: { ...counts, logs4d: Number(counts?.logsRetained || 0) },
     auditRetentionDays,
-    update: { current: 'v117', latest: '请以当前部署包为准' },
+    update: { current: 'v118', latest: '请以当前部署包为准' },
   });
 }
 
 async function adminExportSettings(request: Request, env: Env): Promise<Response> {
   await requireAdmin(env, request);
-  return ok({ exportedAt: new Date().toISOString(), version: 'v117', settings: await loadSettings(env) });
+  return ok({ exportedAt: new Date().toISOString(), version: 'v118', settings: await loadSettings(env) });
 }
 
 async function adminImportSettings(request: Request, env: Env): Promise<Response> {
