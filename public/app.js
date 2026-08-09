@@ -997,7 +997,7 @@ function humanVerificationHtml(scene, extraClass = '') {
 }
 
 function humanSceneState(scene) {
-  if (!state.humanChallenges[scene]) state.humanChallenges[scene] = { method:'', challengeId:'', root:null, action:'', turnstileMounted:false, turnstileErrors:0 };
+  if (!state.humanChallenges[scene]) state.humanChallenges[scene] = { method:'', challengeId:'', root:null, action:'', turnstileMounted:false, turnstileErrors:0, mountId:0, turnstileSiteKey:'' };
   return state.humanChallenges[scene];
 }
 
@@ -1053,14 +1053,23 @@ async function mountHumanVerification(selector, scene, action) {
   if (!root) return;
   const mode = humanVerificationMode();
   const record = humanSceneState(scene);
+  const mountId = Number(record.mountId || 0) + 1;
+  record.mountId = mountId;
   record.root = root;
   record.action = action || scene;
-  root.querySelector('.image-captcha-picture')?.addEventListener('click', () => loadImageCaptcha(root, scene));
+  record.turnstileSiteKey = String(state.config?.turnstile?.siteKey || '');
+  const picture = root.querySelector('.image-captcha-picture');
+  if (picture && picture.dataset.captchaRefreshBound !== '1') {
+    picture.dataset.captchaRefreshBound = '1';
+    picture.addEventListener('click', () => loadImageCaptcha(root, scene));
+  }
 
   // Only show the image captcha when the administrator selected it, or when
-  // Turnstile is unavailable in fallback mode. There is no manual switch in the form.
+  // Turnstile is genuinely unavailable. Every async continuation checks mountId,
+  // so an older mount can never replace a newer, already-visible Turnstile widget.
   if (mode === 'image') return loadImageCaptcha(root, scene);
   if (!hasTurnstileSiteKey()) {
+    if (record.mountId !== mountId) return;
     if (mode === 'turnstile_fallback') return switchHumanToImage(root, scene);
     const slot = root.querySelector('.human-turnstile-slot');
     if (slot) slot.innerHTML = '<div class="notice small danger turnstile-retry-box">Turnstile Site Key 未配置</div>';
@@ -1071,10 +1080,13 @@ async function mountHumanVerification(selector, scene, action) {
     if (imageSlot) imageSlot.hidden = true;
     root.classList.add('is-turnstile');
     root.classList.remove('is-image-captcha');
-    await mountTurnstile(`${selector} .human-turnstile-slot`, action, { scene, allowFallback:mode === 'turnstile_fallback', root });
+    await mountTurnstile(`${selector} .human-turnstile-slot`, action, { scene, allowFallback:mode === 'turnstile_fallback', root, mountId });
   } catch (error) {
-    if (mode === 'turnstile_fallback') await switchHumanToImage(root, scene);
-    else toast(error.message || 'Turnstile 加载失败', 'error');
+    if (record.mountId !== mountId) return;
+    const slot = root.querySelector('.human-turnstile-slot');
+    const hasLiveWidget = Boolean(slot?.querySelector('iframe')) || (record.method === 'turnstile' && record.turnstileMounted);
+    if (mode === 'turnstile_fallback' && !hasLiveWidget) await switchHumanToImage(root, scene);
+    else if (mode !== 'turnstile_fallback') toast(error.message || 'Turnstile 加载失败', 'error');
   }
 }
 
@@ -1262,12 +1274,19 @@ async function loadPublicConfigSafely() {
       try {
         const retry = await api('/api/public/config', { timeoutMs:7000 });
         const fresh = normalizeBootConfig(retry.config || retry);
+        const previousSiteKey = String(state.config?.turnstile?.siteKey || '');
+        const previousMode = humanVerificationMode();
         state.config = fresh;
         applyTheme();
         const scene = currentRoutePath() === '/login' ? 'login' : (currentRoutePath() === '/register' ? 'register' : '');
         if (scene) {
           const root = document.querySelector(`[data-human-verification="${scene}"]`);
-          if (root) await mountHumanVerification(`[data-human-verification="${scene}"]`, scene, scene);
+          const record = humanSceneState(scene);
+          const freshSiteKey = String(fresh?.turnstile?.siteKey || '');
+          const freshMode = humanVerificationMode();
+          const liveFrame = root?.querySelector('.human-turnstile-slot iframe');
+          const sameHealthyTurnstile = Boolean(root && liveFrame && record.method === 'turnstile' && record.turnstileMounted && previousSiteKey === freshSiteKey && previousMode === freshMode);
+          if (root && !sameHealthyTurnstile) await mountHumanVerification(`[data-human-verification="${scene}"]`, scene, scene);
         }
       } catch (_) {}
     }, 900);
@@ -6884,8 +6903,8 @@ Object.assign(I18N_EN, {
   '未匹配':'Unmatched',
 });
 
-function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v125</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
-async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v125')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v125')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
+function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v126</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
+async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v126')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v126')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
 function bindSettingsTools() {
   const exportFn = async () => {
     try {
@@ -7198,10 +7217,12 @@ async function mountTurnstile(selector, action, options = {}) {
   if (!el) throw new Error('人机验证容器不存在');
   if (!config.siteKey) throw new Error('Turnstile Site Key 未配置');
   const root = options.root || el.closest('[data-human-verification]');
+  const mountId = Number(options.mountId || 0);
   el.innerHTML = '<div class="turnstile-loading">正在加载人机验证…</div>';
   const render = async force => {
     if (force) state.widgetId = null;
     await (force ? loadTurnstileScript(true) : ensureTurnstileApi());
+    if (options.scene && humanSceneState(options.scene).mountId !== mountId) return false;
     if (!window.turnstile) throw new Error('Turnstile 对象未就绪');
     el.innerHTML = '';
     if (state.widgetId !== null) { try { window.turnstile.remove(state.widgetId); } catch {} }
@@ -7210,9 +7231,11 @@ async function mountTurnstile(selector, action, options = {}) {
     state.turnstileSelector = selector;
     if (options.scene) {
       const record = humanSceneState(options.scene);
+      if (record.mountId !== mountId) return false;
       record.method = 'turnstile';
       record.root = root;
       record.challengeId = '';
+      record.turnstileSiteKey = String(config.siteKey || '');
     }
     state.widgetId = window.turnstile.render(el, {
       sitekey: config.siteKey,
@@ -7225,6 +7248,7 @@ async function mountTurnstile(selector, action, options = {}) {
       appearance: 'always',
       size: 'flexible',
       callback: token => {
+        if (options.scene && humanSceneState(options.scene).mountId !== mountId) return;
         state.turnstileTokenValue = token || '';
         if (options.scene) {
           const active = humanSceneState(options.scene);
@@ -7233,34 +7257,49 @@ async function mountTurnstile(selector, action, options = {}) {
         }
       },
       'expired-callback': () => {
+        if (options.scene && humanSceneState(options.scene).mountId !== mountId) return;
         state.turnstileTokenValue = '';
         // refresh-expired:auto lets Turnstile renew itself; do not replace a healthy widget.
       },
       'timeout-callback': () => {
+        if (options.scene && humanSceneState(options.scene).mountId !== mountId) return;
         state.turnstileTokenValue = '';
         // refresh-timeout:auto refreshes an interactive challenge automatically.
         // A visible/mounted widget timing out is not evidence that Turnstile is unavailable.
       },
       'error-callback': errorCode => {
+        if (options.scene && humanSceneState(options.scene).mountId !== mountId) return true;
         state.turnstileTokenValue = '';
         const code = String(errorCode || '');
         const active = options.scene ? humanSceneState(options.scene) : null;
         if (active) active.turnstileErrors = Number(active.turnstileErrors || 0) + 1;
-        // Cloudflare marks these as non-retryable configuration/client errors.
-        // In fallback mode there is no value in keeping a broken widget on screen.
         const hardFailure = /^(110100|110110|110200|200100|400020|400070)$/.test(code);
         if (hardFailure && options.allowFallback && root && options.scene) {
-          switchHumanToImage(root, options.scene).catch(error => toast(error.message, 'error'));
+          // Do not replace a widget the instant it appears. A stale/duplicate render may
+          // emit an error while a newer widget is already healthy. Re-check after a grace
+          // period and fall back only if this exact mount is still current and has not
+          // produced a token or been replaced.
+          const scene = options.scene;
+          setTimeout(() => {
+            const current = humanSceneState(scene);
+            if (current.mountId !== mountId || current.root !== root || current.method !== 'turnstile') return;
+            const frame = el.querySelector('iframe');
+            const token = turnstileToken();
+            if (token) return;
+            if (!frame || current.turnstileErrors >= 2) {
+              switchHumanToImage(root, scene).catch(error => toast(error.message, 'error'));
+            }
+          }, 12000);
           return true;
         }
-        // Retryable families (110600/110620/200500/300*/600*) are intentionally
-        // left to retry:auto. Returning true prevents duplicate console noise only.
         if (!options.allowFallback && hardFailure) toast(`Turnstile 验证组件不可用${code ? `（${code}）` : ''}`, 'error');
-        return true;
+        // Retryable errors must remain falsy so Turnstile's retry:auto can recover.
+        return hardFailure ? true : false;
       }
     });
     if (options.scene) {
       const active = humanSceneState(options.scene);
+      if (active.mountId !== mountId) return false;
       active.turnstileMounted = state.widgetId !== null && state.widgetId !== undefined;
       active.turnstileErrors = 0;
     }
@@ -7270,15 +7309,16 @@ async function mountTurnstile(selector, action, options = {}) {
       // not use token state, because a healthy interactive widget may not have a token yet.
       setTimeout(() => {
         const active = humanSceneState(watchdogScene);
-        if (active.root !== root || active.method !== 'turnstile') return;
+        if (active.mountId !== mountId || active.root !== root || active.method !== 'turnstile') return;
         const frame = el.querySelector('iframe');
-        if (!frame && !active.turnstileMounted) switchHumanToImage(root, watchdogScene).catch(error => toast(error.message, 'error'));
-      }, 7000);
+        if (!frame) switchHumanToImage(root, watchdogScene).catch(error => toast(error.message, 'error'));
+      }, 9000);
     }
     return true;
   };
   try { return await render(false); }
   catch (firstError) {
+    if (options.scene && humanSceneState(options.scene).mountId !== mountId) return false;
     if (options.allowFallback) throw firstError;
     try { return await render(true); }
     catch (secondError) {
