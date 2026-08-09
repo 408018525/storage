@@ -260,6 +260,58 @@ interface AppSettings {
     publicHomepageShowProcess?: boolean;
     publicHomepageShowInfrastructure?: boolean;
     publicHomepageShowFaq?: boolean;
+    publicHomepageShowCta?: boolean;
+    publicHomepageSearchPlaceholder?: string;
+    publicHomepageSearchButtonText?: string;
+    publicNavShowHome?: boolean;
+    publicNavShowAvailable?: boolean;
+    publicNavShowKnowledge?: boolean;
+    publicNavShowFeatured?: boolean;
+    publicNavShowNavigation?: boolean;
+    publicNavHomeLabel?: string;
+    publicNavAvailableLabel?: string;
+    publicNavKnowledgeLabel?: string;
+    publicNavFeaturedLabel?: string;
+    publicNavNavigationLabel?: string;
+    publicAvailableBadge?: string;
+    publicAvailableTitle?: string;
+    publicAvailableDescription?: string;
+    publicAvailableSearchEyebrow?: string;
+    publicAvailableSearchTitle?: string;
+    publicAvailableSearchDescription?: string;
+    publicAvailableSearchPlaceholder?: string;
+    publicAvailableSearchButtonText?: string;
+    publicAvailableShowGuide?: boolean;
+    publicAvailableGuideAvailableTitle?: string;
+    publicAvailableGuideAvailableText?: string;
+    publicAvailableGuideUnavailableTitle?: string;
+    publicAvailableGuideUnavailableText?: string;
+    publicKnowledgeBadge?: string;
+    publicKnowledgeTitle?: string;
+    publicKnowledgeDescription?: string;
+    publicKnowledgeSearchPlaceholder?: string;
+    publicKnowledgeShowArticleCount?: boolean;
+    publicFeaturedBadge?: string;
+    publicFeaturedTitle?: string;
+    publicFeaturedDescription?: string;
+    publicFeaturedCardBadgeText?: string;
+    publicFeaturedCardStatusText?: string;
+    publicFeaturedCardButtonText?: string;
+    publicFeaturedCardFallbackDescription?: string;
+    publicFeaturedShowQueryHelper?: boolean;
+    publicFeaturedQueryTitle?: string;
+    publicFeaturedQueryDescription?: string;
+    publicFeaturedQueryButtonText?: string;
+    publicNavigationBadge?: string;
+    publicNavigationTitle?: string;
+    publicNavigationDescription?: string;
+    publicNavigationBackText?: string;
+    publicNavigationGroupStart?: string;
+    publicNavigationGroupTools?: string;
+    publicNavigationGroupUser?: string;
+    publicNavigationGroupRequirements?: string;
+    publicFooterSubtitle?: string;
+    publicFooterShowPowered?: boolean;
     notFoundText?: string;
     defaultLanguage?: string;
     showQuota?: boolean;
@@ -4647,7 +4699,7 @@ async function adminUpdateSettings(request: Request, env: Env, group: AdminSetti
       publicHomepageInfrastructureDescription: Object.prototype.hasOwnProperty.call(body, 'publicHomepageInfrastructureDescription') ? cleanText(body.publicHomepageInfrastructureDescription, 400) : (settings.site.publicHomepageInfrastructureDescription || '公开页面、业务控制台和 Cloudflare DNS 分工明确，避免把内部配置暴露到前台。'),
       publicHomepageFaqTitle: Object.prototype.hasOwnProperty.call(body, 'publicHomepageFaqTitle') ? cleanText(body.publicHomepageFaqTitle, 120) : (settings.site.publicHomepageFaqTitle || '第一次使用？先看这些'),
       publicHomepageFaqDescription: Object.prototype.hasOwnProperty.call(body, 'publicHomepageFaqDescription') ? cleanText(body.publicHomepageFaqDescription, 400) : (settings.site.publicHomepageFaqDescription || '把最容易遇到的问题留在首页，详细内容放到独立知识库。'),
-      publicHomepageSectionOrder: Object.prototype.hasOwnProperty.call(body, 'publicHomepageSectionOrder') ? cleanText(body.publicHomepageSectionOrder, 120) : (settings.site.publicHomepageSectionOrder || 'features,domains,process,infrastructure,faq'),
+      publicHomepageSectionOrder: Object.prototype.hasOwnProperty.call(body, 'publicHomepageSectionOrder') ? cleanText(body.publicHomepageSectionOrder, 120) : (settings.site.publicHomepageSectionOrder || 'features,domains,faq'),
       publicHomepageCtaEyebrow: Object.prototype.hasOwnProperty.call(body, 'publicHomepageCtaEyebrow') ? cleanText(body.publicHomepageCtaEyebrow, 50) : (settings.site.publicHomepageCtaEyebrow || '下一步'),
       publicHomepageCtaTitle: Object.prototype.hasOwnProperty.call(body, 'publicHomepageCtaTitle') ? cleanText(body.publicHomepageCtaTitle, 120) : (settings.site.publicHomepageCtaTitle || '从查询一个名称开始'),
       publicHomepageCtaDescription: Object.prototype.hasOwnProperty.call(body, 'publicHomepageCtaDescription') ? cleanText(body.publicHomepageCtaDescription, 500) : (settings.site.publicHomepageCtaDescription || '不需要登录即可先确认可用性；需要申请时再进入账户流程。'),
@@ -4659,9 +4711,61 @@ async function adminUpdateSettings(request: Request, env: Env, group: AdminSetti
       publicHomepageShowStats: asBoolean(body.publicHomepageShowStats, true),
       publicHomepageShowFeatures: asBoolean(body.publicHomepageShowFeatures, true),
       publicHomepageShowDomains: asBoolean(body.publicHomepageShowDomains, true),
-      publicHomepageShowProcess: asBoolean(body.publicHomepageShowProcess, true),
-      publicHomepageShowInfrastructure: asBoolean(body.publicHomepageShowInfrastructure, true),
+      publicHomepageShowProcess: false,
+      publicHomepageShowInfrastructure: false,
       publicHomepageShowFaq: asBoolean(body.publicHomepageShowFaq, true),
+      publicHomepageShowCta: asBoolean(body.publicHomepageShowCta, true),
+      publicHomepageSearchPlaceholder: Object.prototype.hasOwnProperty.call(body, 'publicHomepageSearchPlaceholder') ? cleanText(body.publicHomepageSearchPlaceholder, 120) : (settings.site.publicHomepageSearchPlaceholder || '输入您想要的域名前缀，例如 myblog'),
+      publicHomepageSearchButtonText: Object.prototype.hasOwnProperty.call(body, 'publicHomepageSearchButtonText') ? cleanText(body.publicHomepageSearchButtonText, 30) : (settings.site.publicHomepageSearchButtonText || '查询'),
+      publicNavShowHome: asBoolean(body.publicNavShowHome, true),
+      publicNavShowAvailable: asBoolean(body.publicNavShowAvailable, true),
+      publicNavShowKnowledge: asBoolean(body.publicNavShowKnowledge, true),
+      publicNavShowFeatured: asBoolean(body.publicNavShowFeatured, true),
+      publicNavShowNavigation: asBoolean(body.publicNavShowNavigation, true),
+      publicNavHomeLabel: Object.prototype.hasOwnProperty.call(body, 'publicNavHomeLabel') ? cleanText(body.publicNavHomeLabel, 40) : (settings.site.publicNavHomeLabel || '首页'),
+      publicNavAvailableLabel: Object.prototype.hasOwnProperty.call(body, 'publicNavAvailableLabel') ? cleanText(body.publicNavAvailableLabel, 40) : (settings.site.publicNavAvailableLabel || '可用域名'),
+      publicNavKnowledgeLabel: Object.prototype.hasOwnProperty.call(body, 'publicNavKnowledgeLabel') ? cleanText(body.publicNavKnowledgeLabel, 40) : (settings.site.publicNavKnowledgeLabel || '知识库'),
+      publicNavFeaturedLabel: Object.prototype.hasOwnProperty.call(body, 'publicNavFeaturedLabel') ? cleanText(body.publicNavFeaturedLabel, 40) : (settings.site.publicNavFeaturedLabel || '优质站点'),
+      publicNavNavigationLabel: Object.prototype.hasOwnProperty.call(body, 'publicNavNavigationLabel') ? cleanText(body.publicNavNavigationLabel, 40) : (settings.site.publicNavNavigationLabel || '导航'),
+      publicAvailableBadge: Object.prototype.hasOwnProperty.call(body, 'publicAvailableBadge') ? cleanText(body.publicAvailableBadge, 80) : (settings.site.publicAvailableBadge || 'DOMAIN AVAILABILITY'),
+      publicAvailableTitle: Object.prototype.hasOwnProperty.call(body, 'publicAvailableTitle') ? cleanText(body.publicAvailableTitle, 120) : (settings.site.publicAvailableTitle || '可用域名'),
+      publicAvailableDescription: Object.prototype.hasOwnProperty.call(body, 'publicAvailableDescription') ? cleanText(body.publicAvailableDescription, 500) : (settings.site.publicAvailableDescription || '可查询本站二级域名是否可注册。输入前缀并选择根域名，即可实时检查。'),
+      publicAvailableSearchEyebrow: Object.prototype.hasOwnProperty.call(body, 'publicAvailableSearchEyebrow') ? cleanText(body.publicAvailableSearchEyebrow, 50) : (settings.site.publicAvailableSearchEyebrow || '即时查询'),
+      publicAvailableSearchTitle: Object.prototype.hasOwnProperty.call(body, 'publicAvailableSearchTitle') ? cleanText(body.publicAvailableSearchTitle, 120) : (settings.site.publicAvailableSearchTitle || '查找你想要的二级域名'),
+      publicAvailableSearchDescription: Object.prototype.hasOwnProperty.call(body, 'publicAvailableSearchDescription') ? cleanText(body.publicAvailableSearchDescription, 600) : (settings.site.publicAvailableSearchDescription || '查询会同时检查系统内的域名占用状态和对应 Cloudflare DNS 精确记录。提交申请时系统会再次检查。'),
+      publicAvailableSearchPlaceholder: Object.prototype.hasOwnProperty.call(body, 'publicAvailableSearchPlaceholder') ? cleanText(body.publicAvailableSearchPlaceholder, 120) : (settings.site.publicAvailableSearchPlaceholder || '输入您想要的域名前缀，例如 myblog'),
+      publicAvailableSearchButtonText: Object.prototype.hasOwnProperty.call(body, 'publicAvailableSearchButtonText') ? cleanText(body.publicAvailableSearchButtonText, 30) : (settings.site.publicAvailableSearchButtonText || '查询'),
+      publicAvailableShowGuide: asBoolean(body.publicAvailableShowGuide, true),
+      publicAvailableGuideAvailableTitle: Object.prototype.hasOwnProperty.call(body, 'publicAvailableGuideAvailableTitle') ? cleanText(body.publicAvailableGuideAvailableTitle, 80) : (settings.site.publicAvailableGuideAvailableTitle || '结果为“可注册”'),
+      publicAvailableGuideAvailableText: Object.prototype.hasOwnProperty.call(body, 'publicAvailableGuideAvailableText') ? cleanText(body.publicAvailableGuideAvailableText, 500) : (settings.site.publicAvailableGuideAvailableText || '表示当前未发现同名占用，可以登录或注册后提交申请；最终状态以提交时实时检查和管理员规则为准。'),
+      publicAvailableGuideUnavailableTitle: Object.prototype.hasOwnProperty.call(body, 'publicAvailableGuideUnavailableTitle') ? cleanText(body.publicAvailableGuideUnavailableTitle, 80) : (settings.site.publicAvailableGuideUnavailableTitle || '结果为“不可注册”'),
+      publicAvailableGuideUnavailableText: Object.prototype.hasOwnProperty.call(body, 'publicAvailableGuideUnavailableText') ? cleanText(body.publicAvailableGuideUnavailableText, 500) : (settings.site.publicAvailableGuideUnavailableText || '通常表示域名已经被系统、Cloudflare DNS 或当前规则占用/限制。可以更换前缀或选择其他根域名。'),
+      publicKnowledgeBadge: Object.prototype.hasOwnProperty.call(body, 'publicKnowledgeBadge') ? cleanText(body.publicKnowledgeBadge, 80) : (settings.site.publicKnowledgeBadge || 'KNOWLEDGE BASE'),
+      publicKnowledgeTitle: Object.prototype.hasOwnProperty.call(body, 'publicKnowledgeTitle') ? cleanText(body.publicKnowledgeTitle, 120) : (settings.site.publicKnowledgeTitle || '知识库'),
+      publicKnowledgeDescription: Object.prototype.hasOwnProperty.call(body, 'publicKnowledgeDescription') ? cleanText(body.publicKnowledgeDescription, 500) : (settings.site.publicKnowledgeDescription || '独立整理的二级域名申请、DNS、续期、安全与故障排查说明。'),
+      publicKnowledgeSearchPlaceholder: Object.prototype.hasOwnProperty.call(body, 'publicKnowledgeSearchPlaceholder') ? cleanText(body.publicKnowledgeSearchPlaceholder, 120) : (settings.site.publicKnowledgeSearchPlaceholder || '搜索标题或内容关键字...'),
+      publicKnowledgeShowArticleCount: asBoolean(body.publicKnowledgeShowArticleCount, true),
+      publicFeaturedBadge: Object.prototype.hasOwnProperty.call(body, 'publicFeaturedBadge') ? cleanText(body.publicFeaturedBadge, 80) : (settings.site.publicFeaturedBadge || 'FEATURED DOMAINS'),
+      publicFeaturedTitle: Object.prototype.hasOwnProperty.call(body, 'publicFeaturedTitle') ? cleanText(body.publicFeaturedTitle, 120) : (settings.site.publicFeaturedTitle || '优质站点'),
+      publicFeaturedDescription: Object.prototype.hasOwnProperty.call(body, 'publicFeaturedDescription') ? cleanText(body.publicFeaturedDescription, 500) : (settings.site.publicFeaturedDescription || '展示目前可用、并由管理员开放申请的根域名。'),
+      publicFeaturedCardBadgeText: Object.prototype.hasOwnProperty.call(body, 'publicFeaturedCardBadgeText') ? cleanText(body.publicFeaturedCardBadgeText, 30) : (settings.site.publicFeaturedCardBadgeText || '免费'),
+      publicFeaturedCardStatusText: Object.prototype.hasOwnProperty.call(body, 'publicFeaturedCardStatusText') ? cleanText(body.publicFeaturedCardStatusText, 40) : (settings.site.publicFeaturedCardStatusText || '开放申请'),
+      publicFeaturedCardButtonText: Object.prototype.hasOwnProperty.call(body, 'publicFeaturedCardButtonText') ? cleanText(body.publicFeaturedCardButtonText, 40) : (settings.site.publicFeaturedCardButtonText || '立即申请'),
+      publicFeaturedCardFallbackDescription: Object.prototype.hasOwnProperty.call(body, 'publicFeaturedCardFallbackDescription') ? cleanText(body.publicFeaturedCardFallbackDescription, 400) : (settings.site.publicFeaturedCardFallbackDescription || '免费二级域名，可用于合规的个人项目、学习、展示与测试。'),
+      publicFeaturedShowQueryHelper: asBoolean(body.publicFeaturedShowQueryHelper, true),
+      publicFeaturedQueryTitle: Object.prototype.hasOwnProperty.call(body, 'publicFeaturedQueryTitle') ? cleanText(body.publicFeaturedQueryTitle, 100) : (settings.site.publicFeaturedQueryTitle || '先查再申请'),
+      publicFeaturedQueryDescription: Object.prototype.hasOwnProperty.call(body, 'publicFeaturedQueryDescription') ? cleanText(body.publicFeaturedQueryDescription, 400) : (settings.site.publicFeaturedQueryDescription || '如果已经想好前缀，可以先到“可用域名”确认完整二级域名是否可注册。'),
+      publicFeaturedQueryButtonText: Object.prototype.hasOwnProperty.call(body, 'publicFeaturedQueryButtonText') ? cleanText(body.publicFeaturedQueryButtonText, 40) : (settings.site.publicFeaturedQueryButtonText || '去查询'),
+      publicNavigationBadge: Object.prototype.hasOwnProperty.call(body, 'publicNavigationBadge') ? cleanText(body.publicNavigationBadge, 80) : (settings.site.publicNavigationBadge || 'FLORE DIRECTORY'),
+      publicNavigationTitle: Object.prototype.hasOwnProperty.call(body, 'publicNavigationTitle') ? cleanText(body.publicNavigationTitle, 120) : (settings.site.publicNavigationTitle || '站点导航'),
+      publicNavigationDescription: Object.prototype.hasOwnProperty.call(body, 'publicNavigationDescription') ? cleanText(body.publicNavigationDescription, 500) : (settings.site.publicNavigationDescription || '按使用场景找到入口，快速进入查询、知识库、账户与规则页面。'),
+      publicNavigationBackText: Object.prototype.hasOwnProperty.call(body, 'publicNavigationBackText') ? cleanText(body.publicNavigationBackText, 40) : (settings.site.publicNavigationBackText || '返回首页'),
+      publicNavigationGroupStart: Object.prototype.hasOwnProperty.call(body, 'publicNavigationGroupStart') ? cleanText(body.publicNavigationGroupStart, 50) : (settings.site.publicNavigationGroupStart || '开始'),
+      publicNavigationGroupTools: Object.prototype.hasOwnProperty.call(body, 'publicNavigationGroupTools') ? cleanText(body.publicNavigationGroupTools, 50) : (settings.site.publicNavigationGroupTools || '工具'),
+      publicNavigationGroupUser: Object.prototype.hasOwnProperty.call(body, 'publicNavigationGroupUser') ? cleanText(body.publicNavigationGroupUser, 80) : (settings.site.publicNavigationGroupUser || '用户中心（需登录）'),
+      publicNavigationGroupRequirements: Object.prototype.hasOwnProperty.call(body, 'publicNavigationGroupRequirements') ? cleanText(body.publicNavigationGroupRequirements, 50) : (settings.site.publicNavigationGroupRequirements || '要求'),
+      publicFooterSubtitle: Object.prototype.hasOwnProperty.call(body, 'publicFooterSubtitle') ? cleanText(body.publicFooterSubtitle, 300) : (settings.site.publicFooterSubtitle || settings.site.subtitle || ''),
+      publicFooterShowPowered: asBoolean(body.publicFooterShowPowered, true),
       notFoundText: cleanText(body.notFoundText, 500) || '页面不存在或已移动',
       defaultLanguage: String(body.defaultLanguage || 'zh') === 'en' ? 'en' : 'zh',
       showQuota: asBoolean(body.showQuota, true),
@@ -4992,7 +5096,7 @@ function defaultSettings(env: Env): AppSettings {
       publicHomepageInfrastructureDescription: '公开页面、业务控制台和 Cloudflare DNS 分工明确，避免把内部配置暴露到前台。',
       publicHomepageFaqTitle: '第一次使用？先看这些',
       publicHomepageFaqDescription: '把最容易遇到的问题留在首页，详细内容放到独立知识库。',
-      publicHomepageSectionOrder: 'features,domains,process,infrastructure,faq',
+      publicHomepageSectionOrder: 'features,domains,faq',
       publicHomepageCtaEyebrow: '下一步',
       publicHomepageCtaTitle: '从查询一个名称开始',
       publicHomepageCtaDescription: '不需要登录即可先确认可用性；需要申请时再进入账户流程。',
@@ -5004,9 +5108,61 @@ function defaultSettings(env: Env): AppSettings {
       publicHomepageShowStats: true,
       publicHomepageShowFeatures: true,
       publicHomepageShowDomains: true,
-      publicHomepageShowProcess: true,
-      publicHomepageShowInfrastructure: true,
+      publicHomepageShowProcess: false,
+      publicHomepageShowInfrastructure: false,
       publicHomepageShowFaq: true,
+      publicHomepageShowCta: true,
+      publicHomepageSearchPlaceholder: '输入您想要的域名前缀，例如 myblog',
+      publicHomepageSearchButtonText: '查询',
+      publicNavShowHome: true,
+      publicNavShowAvailable: true,
+      publicNavShowKnowledge: true,
+      publicNavShowFeatured: true,
+      publicNavShowNavigation: true,
+      publicNavHomeLabel: '首页',
+      publicNavAvailableLabel: '可用域名',
+      publicNavKnowledgeLabel: '知识库',
+      publicNavFeaturedLabel: '优质站点',
+      publicNavNavigationLabel: '导航',
+      publicAvailableBadge: 'DOMAIN AVAILABILITY',
+      publicAvailableTitle: '可用域名',
+      publicAvailableDescription: '可查询本站二级域名是否可注册。输入前缀并选择根域名，即可实时检查。',
+      publicAvailableSearchEyebrow: '即时查询',
+      publicAvailableSearchTitle: '查找你想要的二级域名',
+      publicAvailableSearchDescription: '查询会同时检查系统内的域名占用状态和对应 Cloudflare DNS 精确记录。提交申请时系统会再次检查。',
+      publicAvailableSearchPlaceholder: '输入您想要的域名前缀，例如 myblog',
+      publicAvailableSearchButtonText: '查询',
+      publicAvailableShowGuide: true,
+      publicAvailableGuideAvailableTitle: '结果为“可注册”',
+      publicAvailableGuideAvailableText: '表示当前未发现同名占用，可以登录或注册后提交申请；最终状态以提交时实时检查和管理员规则为准。',
+      publicAvailableGuideUnavailableTitle: '结果为“不可注册”',
+      publicAvailableGuideUnavailableText: '通常表示域名已经被系统、Cloudflare DNS 或当前规则占用/限制。可以更换前缀或选择其他根域名。',
+      publicKnowledgeBadge: 'KNOWLEDGE BASE',
+      publicKnowledgeTitle: '知识库',
+      publicKnowledgeDescription: '独立整理的二级域名申请、DNS、续期、安全与故障排查说明。',
+      publicKnowledgeSearchPlaceholder: '搜索标题或内容关键字...',
+      publicKnowledgeShowArticleCount: true,
+      publicFeaturedBadge: 'FEATURED DOMAINS',
+      publicFeaturedTitle: '优质站点',
+      publicFeaturedDescription: '展示目前可用、并由管理员开放申请的根域名。',
+      publicFeaturedCardBadgeText: '免费',
+      publicFeaturedCardStatusText: '开放申请',
+      publicFeaturedCardButtonText: '立即申请',
+      publicFeaturedCardFallbackDescription: '免费二级域名，可用于合规的个人项目、学习、展示与测试。',
+      publicFeaturedShowQueryHelper: true,
+      publicFeaturedQueryTitle: '先查再申请',
+      publicFeaturedQueryDescription: '如果已经想好前缀，可以先到“可用域名”确认完整二级域名是否可注册。',
+      publicFeaturedQueryButtonText: '去查询',
+      publicNavigationBadge: 'FLORE DIRECTORY',
+      publicNavigationTitle: '站点导航',
+      publicNavigationDescription: '按使用场景找到入口，快速进入查询、知识库、账户与规则页面。',
+      publicNavigationBackText: '返回首页',
+      publicNavigationGroupStart: '开始',
+      publicNavigationGroupTools: '工具',
+      publicNavigationGroupUser: '用户中心（需登录）',
+      publicNavigationGroupRequirements: '要求',
+      publicFooterSubtitle: '快速注册并管理您的专属免费域名',
+      publicFooterShowPowered: true,
       notFoundText: '页面不存在或已移动',
       defaultLanguage: 'zh',
       showQuota: true,
@@ -6891,20 +7047,20 @@ async function adminSystemStatus(request: Request, env: Env): Promise<Response> 
       (SELECT COUNT(*) FROM audit_logs WHERE datetime(created_at) >= datetime('now','-' || ? || ' days')) AS logsRetained
   `).bind(auditRetentionDays).first<any>();
   return ok({
-    version: 'v116',
+    version: 'v117',
     settingsKey: SETTINGS_KEY,
     kv: { storage: 'Workers KV', estimatedKeys: '由 Cloudflare 控制台查看实际占用' },
     cfApi: { configured: Boolean(resolveDnsToken(env, settings)), status: resolveDnsToken(env, settings) ? '已配置' : '未配置' },
     cron: { enabled: Boolean(settings.automation?.enabled), expression: settings.automation?.cronExpression || '' },
     counts: { ...counts, logs4d: Number(counts?.logsRetained || 0) },
     auditRetentionDays,
-    update: { current: 'v116', latest: '请以当前部署包为准' },
+    update: { current: 'v117', latest: '请以当前部署包为准' },
   });
 }
 
 async function adminExportSettings(request: Request, env: Env): Promise<Response> {
   await requireAdmin(env, request);
-  return ok({ exportedAt: new Date().toISOString(), version: 'v116', settings: await loadSettings(env) });
+  return ok({ exportedAt: new Date().toISOString(), version: 'v117', settings: await loadSettings(env) });
 }
 
 async function adminImportSettings(request: Request, env: Env): Promise<Response> {
