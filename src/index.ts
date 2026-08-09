@@ -6269,8 +6269,8 @@ const WORKER_VARIABLE_DEFINITIONS: Record<string, WorkerVariableDefinition> = {
   },
   TURNSTILE_EXPECTED_HOSTNAME: {
     label: 'Turnstile 允许域名',
-    purpose: '限制 Turnstile 校验必须来自指定站点域名。',
-    addMethod: '类型选“纯文本”；填写正式访问域名，例如 storage.flore.top。',
+    purpose: '额外允许的 Turnstile 主机名；系统始终自动允许当前实际访问域名。',
+    addMethod: '类型选“纯文本”；可留空。需要额外允许多个域名时可用逗号分隔，例如 flore.top,bloss.top。',
     suggestedType: 'plain_text',
   },
   TURNSTILE_ACTION_APPLY: {
@@ -7331,8 +7331,24 @@ async function verifyTurnstile(env: Env, request: Request, token: unknown, expec
   if (expectedAction && result.action && result.action !== expectedAction) {
     throw new HttpError(403, 'TURNSTILE_ACTION_MISMATCH', '人机验证 Action 不匹配');
   }
-  if (env.TURNSTILE_EXPECTED_HOSTNAME && result.hostname && result.hostname !== env.TURNSTILE_EXPECTED_HOSTNAME) {
-    throw new HttpError(403, 'TURNSTILE_HOSTNAME_MISMATCH', '人机验证主机名不匹配');
+  if (result.hostname) {
+    const requestUrl = new URL(request.url);
+    const forwardedHost = String(request.headers.get('x-forwarded-host') || '').split(',')[0].trim();
+    const normalizeTurnstileHost = (value: string) => String(value || '').trim().toLowerCase().replace(/^https?:\/\//, '').split('/')[0].split(':')[0];
+    const allowedHostnames = new Set<string>();
+    const requestHostname = normalizeTurnstileHost(requestUrl.hostname);
+    if (requestHostname) allowedHostnames.add(requestHostname);
+    const forwardedHostname = normalizeTurnstileHost(forwardedHost);
+    if (forwardedHostname) allowedHostnames.add(forwardedHostname);
+    String(env.TURNSTILE_EXPECTED_HOSTNAME || '')
+      .split(/[\s,;]+/)
+      .map(normalizeTurnstileHost)
+      .filter(Boolean)
+      .forEach(host => allowedHostnames.add(host));
+    const verifiedHostname = normalizeTurnstileHost(result.hostname);
+    if (verifiedHostname && !allowedHostnames.has(verifiedHostname)) {
+      throw new HttpError(403, 'TURNSTILE_HOSTNAME_MISMATCH', '人机验证主机名与当前访问域名不匹配');
+    }
   }
 }
 
@@ -7365,20 +7381,20 @@ async function adminSystemStatus(request: Request, env: Env): Promise<Response> 
       (SELECT COUNT(*) FROM audit_logs WHERE datetime(created_at) >= datetime('now','-' || ? || ' days')) AS logsRetained
   `).bind(auditRetentionDays).first<any>();
   return ok({
-    version: 'v128',
+    version: 'v129',
     settingsKey: SETTINGS_KEY,
     kv: { storage: 'Workers KV', estimatedKeys: '由 Cloudflare 控制台查看实际占用' },
     cfApi: { configured: Boolean(resolveDnsToken(env, settings)), status: resolveDnsToken(env, settings) ? '已配置' : '未配置' },
     cron: { enabled: Boolean(settings.automation?.enabled), expression: settings.automation?.cronExpression || '' },
     counts: { ...counts, logs4d: Number(counts?.logsRetained || 0) },
     auditRetentionDays,
-    update: { current: 'v128', latest: '请以当前部署包为准' },
+    update: { current: 'v129', latest: '请以当前部署包为准' },
   });
 }
 
 async function adminExportSettings(request: Request, env: Env): Promise<Response> {
   await requireAdmin(env, request);
-  return ok({ exportedAt: new Date().toISOString(), version: 'v128', settings: await loadSettings(env) });
+  return ok({ exportedAt: new Date().toISOString(), version: 'v129', settings: await loadSettings(env) });
 }
 
 async function adminImportSettings(request: Request, env: Env): Promise<Response> {
