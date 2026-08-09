@@ -588,6 +588,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   if (method === 'GET' && pathname === '/api/public/config') return publicConfigHandler(env);
   if (method === 'GET' && pathname === '/api/public/stats') return publicStatsHandler(env);
   if (method === 'POST' && pathname === '/api/public/domain-check') return publicDomainCheckHandler(request, env);
+  if (method === 'POST' && pathname === '/api/public/visit') return publicTrackVisitHandler(request, env);
 
   if (method === 'POST' && pathname === '/api/setup/bootstrap') return bootstrapAdmin(request, env);
 
@@ -1163,6 +1164,61 @@ async function publicStatsHandler(env: Env): Promise<Response> {
     dnsRecords: Number(dnsRecords?.count || 0),
     suffixes,
   }});
+}
+
+let pageVisitAnalyticsTableReady = false;
+async function ensurePageVisitAnalyticsTable(env: Env): Promise<void> {
+  if (pageVisitAnalyticsTableReady) return;
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS page_visit_analytics (
+      day TEXT NOT NULL,
+      area TEXT NOT NULL,
+      visitor_key TEXT NOT NULL,
+      user_id TEXT,
+      is_admin INTEGER NOT NULL DEFAULT 0,
+      hits INTEGER NOT NULL DEFAULT 1,
+      first_seen_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL,
+      PRIMARY KEY (day, area, visitor_key)
+    )
+  `).run();
+  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_page_visit_analytics_range ON page_visit_analytics(area,is_admin,last_seen_at)`).run();
+  pageVisitAnalyticsTableReady = true;
+}
+
+async function publicTrackVisitHandler(request: Request, env: Env): Promise<Response> {
+  await rateLimit(env, request, 'public-visit', 600, 3600);
+  const body = await readJson<Record<string, unknown>>(request, 8 * 1024);
+  const area = String(body.area || '').trim().toLowerCase();
+  if (!['home','console'].includes(area)) throw new HttpError(400, 'INVALID_VISIT_AREA', '访问区域无效');
+
+  const rawVisitorId = String(body.visitorId || '').trim();
+  const safeVisitorId = /^[A-Za-z0-9_-]{8,160}$/.test(rawVisitorId)
+    ? rawVisitorId
+    : `${clientIp(request)}|${String(request.headers.get('user-agent') || '').slice(0, 240)}`;
+  const visitorKey = await sha256(`visit-v1|${safeVisitorId}`);
+  const user = await getAuthUser(env, request);
+
+  await ensurePageVisitAnalyticsTable(env);
+
+  // 控制台只统计已登录用户。管理员不计入访问人数，并会把同一浏览器此前的首页访问一并标记为管理员流量。
+  if (user?.role === 'admin') {
+    await env.DB.prepare(`UPDATE page_visit_analytics SET is_admin=1,user_id=? WHERE visitor_key=?`).bind(user.id, visitorKey).run();
+    return ok({ tracked:false, excluded:'admin' });
+  }
+  if (area === 'console' && !user) return ok({ tracked:false, excluded:'anonymous_console' });
+
+  const now = new Date().toISOString();
+  const day = now.slice(0, 10);
+  await env.DB.prepare(`
+    INSERT INTO page_visit_analytics (day,area,visitor_key,user_id,is_admin,hits,first_seen_at,last_seen_at)
+    VALUES (?,?,?,?,0,1,?,?)
+    ON CONFLICT(day,area,visitor_key) DO UPDATE SET
+      hits=page_visit_analytics.hits+1,
+      user_id=COALESCE(excluded.user_id,page_visit_analytics.user_id),
+      last_seen_at=excluded.last_seen_at
+  `).bind(day, area, visitorKey, user?.id || null, now, now).run();
+  return ok({ tracked:true });
 }
 
 async function publicDomainCheckHandler(request: Request, env: Env): Promise<Response> {
@@ -4146,6 +4202,7 @@ async function adminRegistrationKeyUsages(request: Request, env: Env, keyId: str
 
 async function adminAnalytics(request: Request, env: Env, url: URL): Promise<Response> {
   await requireAdmin(env, request);
+  await ensurePageVisitAnalyticsTable(env);
   const range = normalizeAnalyticsRange(url);
   const bucketFormat = range.bucket === 'hour' ? "%Y-%m-%d %H:00" : "%Y-%m-%d";
   const startSql = sqlDate(range.start);
@@ -4361,6 +4418,27 @@ async function adminAnalytics(request: Request, env: Env, url: URL): Promise<Res
   const decided=approved+rejected;
   const readReceipts=await env.DB.prepare(`SELECT COUNT(*) AS count,COUNT(DISTINCT user_id) AS readers FROM message_reads WHERE datetime(read_at)>=datetime(?) AND datetime(read_at)<datetime(?)`).bind(startSql,endSql).first<any>();
 
+  const visitCount = async (area: 'home' | 'console', start: string, end: string, adminFlag = 0) => {
+    const row = await env.DB.prepare(`
+      SELECT COUNT(DISTINCT visitor_key) AS count
+      FROM page_visit_analytics
+      WHERE area=? AND is_admin=?
+        AND datetime(last_seen_at)>=datetime(?) AND datetime(first_seen_at)<datetime(?)
+    `).bind(area, adminFlag, start, end).first<any>();
+    return Number(row?.count || 0);
+  };
+  const [homeVisitorsCurrent,homeVisitorsPrevious,consoleVisitorsCurrent,consoleVisitorsPrevious,excludedAdminVisitors] = await Promise.all([
+    visitCount('home',startSql,endSql,0),
+    visitCount('home',prevStartSql,prevEndSql,0),
+    visitCount('console',startSql,endSql,0),
+    visitCount('console',prevStartSql,prevEndSql,0),
+    env.DB.prepare(`
+      SELECT COUNT(DISTINCT visitor_key) AS count
+      FROM page_visit_analytics
+      WHERE is_admin=1 AND datetime(last_seen_at)>=datetime(?) AND datetime(first_seen_at)<datetime(?)
+    `).bind(startSql,endSql).first<any>().then(row=>Number(row?.count||0)),
+  ]);
+
   const [
     loginRecencyRows, userStageRows, dnsTypeHealthRows, messageLevelReadRows,
     topActorRows, topIpRows, deviceTypeRows, reviewerRows, domainAgeRows, riskFlagRows
@@ -4461,6 +4539,12 @@ async function adminAnalytics(request: Request, env: Env, url: URL): Promise<Res
       audit:metric(Number(auditTotals?.total||0),0,Number(auditTotals?.current||0),Number(auditTotals?.previous||0)),
       security:{errors:Number(auditTotals?.errors||0),logins:Number(auditTotals?.logins||0),loginFailures:Number(auditTotals?.login_failures||0)},
       registrationKeys:{total:Number(keyTotals?.total||0),active:Number(keyTotals?.active||0),exhausted:Number(keyTotals?.exhausted||0),expired:Number(keyTotals?.expired||0),used:Number(keyTotals?.used||0)},
+    },
+    visitors:{
+      home:{current:homeVisitorsCurrent,previous:homeVisitorsPrevious},
+      console:{current:consoleVisitorsCurrent,previous:consoleVisitorsPrevious},
+      excludedAdmins:excludedAdminVisitors,
+      definition:'unique_browser'
     },
     approval:{submitted,approved,rejected,pending:Number(domainTotals?.pending||0),approvalRate:decided?Math.round(approved/decided*1000)/10:0,avgReviewHours:Math.round(Number(approvalRows?.avg_review_hours||0)*10)/10,avgPendingHours:Math.round(Number(approvalRows?.avg_pending_hours||0)*10)/10},
     messageEngagement:{sent:Number(messageTotals?.current||0),readReceipts:Number(readReceipts?.count||0),readers:Number(readReceipts?.readers||0)},
@@ -7266,20 +7350,20 @@ async function adminSystemStatus(request: Request, env: Env): Promise<Response> 
       (SELECT COUNT(*) FROM audit_logs WHERE datetime(created_at) >= datetime('now','-' || ? || ' days')) AS logsRetained
   `).bind(auditRetentionDays).first<any>();
   return ok({
-    version: 'v120',
+    version: 'v121',
     settingsKey: SETTINGS_KEY,
     kv: { storage: 'Workers KV', estimatedKeys: '由 Cloudflare 控制台查看实际占用' },
     cfApi: { configured: Boolean(resolveDnsToken(env, settings)), status: resolveDnsToken(env, settings) ? '已配置' : '未配置' },
     cron: { enabled: Boolean(settings.automation?.enabled), expression: settings.automation?.cronExpression || '' },
     counts: { ...counts, logs4d: Number(counts?.logsRetained || 0) },
     auditRetentionDays,
-    update: { current: 'v120', latest: '请以当前部署包为准' },
+    update: { current: 'v121', latest: '请以当前部署包为准' },
   });
 }
 
 async function adminExportSettings(request: Request, env: Env): Promise<Response> {
   await requireAdmin(env, request);
-  return ok({ exportedAt: new Date().toISOString(), version: 'v120', settings: await loadSettings(env) });
+  return ok({ exportedAt: new Date().toISOString(), version: 'v121', settings: await loadSettings(env) });
 }
 
 async function adminImportSettings(request: Request, env: Env): Promise<Response> {
