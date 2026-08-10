@@ -423,6 +423,7 @@ interface AppSettings {
     showQuota?: boolean;
     showExpiryReminder?: boolean;
     sidebarItems?: SidebarNavItemSetting[];
+    textOverrides?: Record<string, string>;
   };
   registration: {
     enabled: boolean;
@@ -761,6 +762,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   if (method === 'GET' && pathname === '/api/admin/settings') return adminSettings(request, env);
   if (method === 'GET' && pathname === '/api/admin/sidebar-settings') return adminSidebarSettings(request, env);
   if (method === 'PUT' && pathname === '/api/admin/sidebar-settings') return adminUpdateSidebarSettings(request, env);
+  if (method === 'POST' && pathname === '/api/admin/text-overrides') return adminUpdateTextOverride(request, env);
   if (method === 'GET' && pathname === '/api/admin/system-status') return adminSystemStatus(request, env);
   if (method === 'GET' && pathname === '/api/admin/settings/export') return adminExportSettings(request, env);
   if (method === 'POST' && pathname === '/api/admin/settings/import') return adminImportSettings(request, env);
@@ -5755,6 +5757,82 @@ async function adminUpdateSidebarSettings(request: Request, env: Env): Promise<R
   return ok({ items: settings.site.sidebarItems, settings: adminSettingsView(settings, env) });
 }
 
+
+function sanitizeTextOverrideKey(value: unknown): string {
+  const key = String(value ?? '').trim().slice(0, 80);
+  return /^txt_[a-z0-9]{4,40}$/i.test(key) ? key : '';
+}
+
+function sanitizeTextOverrideMap(value: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!value || typeof value !== 'object') return out;
+  Object.entries(value as Record<string, unknown>).slice(0, 2000).forEach(([rawKey, rawValue]) => {
+    const key = sanitizeTextOverrideKey(rawKey);
+    const text = cleanText(rawValue, 500).trim();
+    if (key && text) out[key] = text;
+  });
+  return out;
+}
+
+function normalizeInlineEditableText(value: unknown): string {
+  return String(value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function textLooksSensitive(value: string): boolean {
+  const text = normalizeInlineEditableText(value);
+  if (!text || text.length > 500) return true;
+  if (/^(https?:\/\/|[A-Za-z0-9_-]{20,}|[a-f0-9]{24,}|[0-9a-f]{8}-[0-9a-f-]{13,})/i.test(text)) return true;
+  if (/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(text)) return true;
+  if (/^(\*\.)?[A-Za-z0-9-]+(\.[A-Za-z0-9-]+){1,}$/.test(text)) return true;
+  if (/^[0-9\s:：,，.\-\/年月日天小时分钟秒%]+$/.test(text)) return true;
+  if (/^(A|AAAA|CNAME|TXT|MX|NS|CAA|SRV)$/i.test(text)) return true;
+  if (/token|secret|key|zone|client id|client secret|api|密钥|令牌|变量值|注册码|注册密钥|zone id/i.test(text)) return true;
+  return false;
+}
+
+function syncInlineTextToKnownSettings(settings: AppSettings, original: string, next: string): string[] {
+  const changed: string[] = [];
+  const fields = [
+    'title','subtitle','footer','copyright','maintenanceMessage','logoText','icp','homepageNotice',
+    'publicHomepageBadge','publicHomepageTitle','publicHomepageHighlight','publicHomepageDescription','publicHomepagePrimaryText','publicHomepageSecondaryText','publicHomepageSearchEyebrow','publicHomepageSearchTitle','publicHomepageSearchNote','publicHomepageStatsUsersLabel','publicHomepageStatsDomainsLabel','publicHomepageStatsDnsLabel','publicHomepageStatsSuffixesLabel','publicHomepageFeaturesTitle','publicHomepageFeaturesDescription','publicHomepageDomainsTitle','publicHomepageDomainsDescription','publicHomepageProcessTitle','publicHomepageProcessDescription','publicHomepageInfrastructureTitle','publicHomepageInfrastructureDescription','publicHomepageFaqTitle','publicHomepageFaqDescription','publicHomepageCtaEyebrow','publicHomepageCtaTitle','publicHomepageCtaDescription','publicHomepageCtaPrimaryText','publicHomepageCtaSecondaryText','publicHomepageSearchPlaceholder','publicHomepageSearchButtonText','publicNavHomeLabel','publicNavAvailableLabel','publicNavKnowledgeLabel','publicNavFeaturedLabel','publicNavNavigationLabel','publicBrandTitle','publicHeaderDashboardText','publicHeaderLoginText','publicHeaderRegisterText','publicDomainCheckEmptyText','publicDomainCheckCheckingText','publicDomainCheckAvailableText','publicDomainCheckUnavailableText','publicDomainCheckFailureText','publicDomainCheckApplyText','publicDomainCheckRegisterApplyText','publicHomepageFeature1Title','publicHomepageFeature1Description','publicHomepageFeature2Title','publicHomepageFeature2Description','publicHomepageFeature3Title','publicHomepageFeature3Description','publicHomepageFeature4Title','publicHomepageFeature4Description','publicHomepageFeature5Title','publicHomepageFeature5Description','publicHomepageFeature6Title','publicHomepageFeature6Description','publicHomepageDomainsStatusText','publicHomepageDomainsLinkText','publicHomepageDomainsViewAllText','publicHomepageFaqViewAllText','publicAvailableTitle','publicAvailableDescription','publicAvailableSearchTitle','publicAvailableSearchDescription','publicAvailableSearchPlaceholder','publicAvailableSearchButtonText','publicAvailableGuideAvailableTitle','publicAvailableGuideAvailableText','publicAvailableGuideUnavailableTitle','publicAvailableGuideUnavailableText','publicKnowledgeTitle','publicKnowledgeDescription','publicKnowledgeSearchPlaceholder','publicFeaturedTitle','publicFeaturedDescription','publicFeaturedCardBadgeText','publicFeaturedCardStatusText','publicFeaturedCardButtonText','publicFeaturedCardFallbackDescription','publicFeaturedQueryTitle','publicFeaturedQueryDescription','publicFeaturedQueryButtonText','publicNavigationTitle','publicNavigationDescription','publicNavigationBackText','publicNavigationGroupStart','publicNavigationGroupTools','publicNavigationGroupUser','publicNavigationGroupRequirements','publicFooterSubtitle','publicFooterServicesTitle','publicFooterInfoTitle','publicFooterStartTitle','publicFooterCopyrightText','notFoundText'
+  ];
+  const normOriginal = normalizeInlineEditableText(original);
+  fields.forEach(field => {
+    const current = normalizeInlineEditableText((settings.site as any)[field]);
+    if (current && current === normOriginal) {
+      (settings.site as any)[field] = cleanText(next, field === 'homepageNotice' ? 5000 : 500);
+      changed.push(`site.${field}`);
+    }
+  });
+  (settings.help?.categories || []).forEach((cat: any, catIndex: number) => {
+    if (normalizeInlineEditableText(cat.title) === normOriginal) { cat.title = cleanText(next, 80); changed.push(`help.categories.${catIndex}.title`); }
+    if (normalizeInlineEditableText(cat.subtitle) === normOriginal) { cat.subtitle = cleanText(next, 180); changed.push(`help.categories.${catIndex}.subtitle`); }
+    (cat.items || []).forEach((item: any, itemIndex: number) => {
+      if (normalizeInlineEditableText(item.q) === normOriginal) { item.q = cleanText(next, 200); changed.push(`help.categories.${catIndex}.items.${itemIndex}.q`); }
+    });
+  });
+  return changed;
+}
+
+async function adminUpdateTextOverride(request: Request, env: Env): Promise<Response> {
+  const admin = await requireAdmin(env, request);
+  const body = await readJson<Record<string, unknown>>(request, 64 * 1024);
+  const key = sanitizeTextOverrideKey(body.key);
+  const original = normalizeInlineEditableText(body.original);
+  const next = cleanText(body.text, 500).trim();
+  if (!key) throw new HttpError(400, 'INVALID_TEXT_KEY', '文本标识不正确');
+  if (!next) throw new HttpError(400, 'EMPTY_TEXT', '显示文字不能为空');
+  if (textLooksSensitive(original) || textLooksSensitive(next)) throw new HttpError(400, 'TEXT_NOT_EDITABLE', '该内容可能是域名、密钥、变量、注册码或数据值，不能通过快捷文字编辑修改');
+  const settings = await loadSettings(env);
+  const overrides = sanitizeTextOverrideMap((settings.site as any).textOverrides);
+  overrides[key] = next;
+  settings.site = { ...settings.site, textOverrides: overrides };
+  const synced = syncInlineTextToKnownSettings(settings, original, next);
+  await env.APP_KV.put(SETTINGS_KEY, JSON.stringify(settings));
+  await audit(env, request, admin.id, 'admin.inline_text_update', 'setting', key, { original, text: next, synced });
+  return ok({ key, text: next, synced, settings: adminSettingsView(settings, env) });
+}
+
 type AdminSettingGroup = 'site' | 'registration' | 'domain' | 'dns' | 'blacklist' | 'notification' | 'security' | 'automation';
 
 async function adminUpdateSettings(request: Request, env: Env, group: AdminSettingGroup): Promise<Response> {
@@ -6454,6 +6532,7 @@ function defaultSettings(env: Env): AppSettings {
       showQuota: true,
       showExpiryReminder: true,
       sidebarItems: defaultSidebarItems(),
+      textOverrides: {},
     },
     registration: {
       enabled: true,
