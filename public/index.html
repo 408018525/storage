@@ -35,8 +35,18 @@
       var canonical=document.querySelector('link[rel="canonical"]'); if(canonical)canonical.setAttribute('href','https://bloss.top'+(path==='/home'?'/' : path));
     })();
   </script>
-  <link rel="stylesheet" href="/styles.css?v=131">
-  <style id="boot-blank-style">html,body{background:#fff!important}#background-layer{display:none!important}</style>
+  <script id="display-theme-boot">
+    (function(){
+      try {
+        var mode = localStorage.getItem('storage_display_theme_mode_v134');
+        document.documentElement.setAttribute('data-theme', mode === 'dark' ? 'dark' : 'light');
+      } catch (_) {
+        document.documentElement.setAttribute('data-theme', 'light');
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="/styles.css?v=134">
+  <style id="boot-blank-style">html[data-theme="dark"],html[data-theme="dark"] body{background:#0b1120!important}html:not([data-theme="dark"]),html:not([data-theme="dark"]) body{background:#fff!important}#background-layer{display:none!important}</style>
 </head>
 <body>
   <noscript>
@@ -77,6 +87,6 @@
       }, 14000);
     })();
   </script>
-  <script defer src="/app.js?v=133"></script>
+  <script defer src="/app.js?v=134"></script>
 </body>
 </html>
