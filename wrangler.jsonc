@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "storage",
-  "main": "src/entry.ts",
+  "main": "src/index.ts",
   "compatibility_date": "2026-07-15",
   "workers_dev": true,
 
@@ -16,12 +16,12 @@
     "run_worker_first": ["/api/*"]
   },
 
-  // Cloudflare free email binding. With no destination restriction, the Worker
-  // may send only to destination addresses already verified in this account.
-  // The application validates recipients against the synchronized verified list.
+  // Cloudflare free email binding: only sends administrator alerts to the
+  // verified destination address below. Registration codes still use Resend.
   "send_email": [
     {
-      "name": "SEB"
+      "name": "SEB",
+      "destination_address": "admin@flore.top"
     }
   ],
 
