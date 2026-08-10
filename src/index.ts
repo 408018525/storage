@@ -201,6 +201,32 @@ interface HelpCategorySetting {
   items: HelpItemSetting[];
 }
 
+
+type WorkerVariableKind = 'plain_text' | 'json' | 'secret_text';
+
+interface WorkerVariableDocSetting {
+  name: string;
+  label?: string;
+  purpose?: string;
+  addMethod?: string;
+  suggestedType?: WorkerVariableKind;
+}
+
+interface DomainPointCostSetting {
+  suffix: string;
+  suffixAscii?: string;
+  label?: string;
+  cost: number;
+  enabled?: boolean;
+  note?: string;
+}
+
+interface SidebarNavItemSetting {
+  key: string;
+  label?: string;
+  order?: number;
+}
+
 interface AppSettings {
   site: {
     title: string;
@@ -396,6 +422,7 @@ interface AppSettings {
     notFoundText?: string;
     showQuota?: boolean;
     showExpiryReminder?: boolean;
+    sidebarItems?: SidebarNavItemSetting[];
   };
   registration: {
     enabled: boolean;
@@ -505,6 +532,7 @@ interface AppSettings {
   points: {
     enabled: boolean;
     domainApplicationCost: number;
+    domainApplicationCosts?: DomainPointCostSetting[];
     refundOnReject: boolean;
     registrationReward: number;
     firstDomainReward: number;
@@ -580,6 +608,9 @@ interface AppSettings {
     notifyAdminOnFailure?: boolean;
     dnsCleanupProtectionDays?: number;
     taskLogs?: unknown[];
+  };
+  workerVariables?: {
+    docs: WorkerVariableDocSetting[];
   };
 }
 
@@ -728,6 +759,8 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   if (method === 'GET' && pathname === '/api/admin/messages') return adminListMessages(request, env, url);
   if (method === 'POST' && pathname === '/api/admin/messages') return adminCreateMessage(request, env);
   if (method === 'GET' && pathname === '/api/admin/settings') return adminSettings(request, env);
+  if (method === 'GET' && pathname === '/api/admin/sidebar-settings') return adminSidebarSettings(request, env);
+  if (method === 'PUT' && pathname === '/api/admin/sidebar-settings') return adminUpdateSidebarSettings(request, env);
   if (method === 'GET' && pathname === '/api/admin/system-status') return adminSystemStatus(request, env);
   if (method === 'GET' && pathname === '/api/admin/settings/export') return adminExportSettings(request, env);
   if (method === 'POST' && pathname === '/api/admin/settings/import') return adminImportSettings(request, env);
@@ -1313,6 +1346,11 @@ async function publicConfigHandler(env: Env): Promise<Response> {
           proxied: x.proxied,
           registerOrder: Number(x.registerOrder || 0),
         })),
+      points: {
+        enabled: settings.points.enabled !== false,
+        domainApplicationCost: settings.points.domainApplicationCost,
+        domainApplicationCosts: sanitizeDomainPointCosts(settings.points.domainApplicationCosts, settings.dns.suffixes),
+      },
       turnstile: turnstilePublicConfig(env, settings),
       oauth: oauthPublicConfig(env, settings),
       needsBootstrap: Number(adminCount?.count || 0) === 0,
@@ -2282,6 +2320,7 @@ async function getOwnPoints(request: Request, env: Env): Promise<Response> {
     settings: {
       enabled: settings.points.enabled,
       domainApplicationCost: settings.points.domainApplicationCost,
+      domainApplicationCosts: sanitizeDomainPointCosts(settings.points.domainApplicationCosts, settings.dns.suffixes),
       registrationReward: settings.points.registrationReward,
       firstDomainReward: settings.points.firstDomainReward,
       dailyLoginReward: settings.points.dailyLoginReward,
@@ -2387,7 +2426,7 @@ async function adminPointsSettings(request: Request, env: Env): Promise<Response
   await requireAdmin(env,request);
   const settings = await loadSettings(env);
   const stats = await env.DB.prepare(`SELECT COUNT(*) AS wallets,COALESCE(SUM(balance),0) AS balance,COALESCE(SUM(lifetime_earned),0) AS earned,COALESCE(SUM(lifetime_spent),0) AS spent FROM point_wallets`).first<any>();
-  return ok({settings:settings.points,stats});
+  return ok({settings:{...settings.points, domainApplicationCosts: sanitizeDomainPointCosts(settings.points.domainApplicationCosts, settings.dns.suffixes)},stats,suffixes:settings.dns.suffixes});
 }
 
 async function adminUpdatePointsSettings(request: Request, env: Env): Promise<Response> {
@@ -2397,6 +2436,7 @@ async function adminUpdatePointsSettings(request: Request, env: Env): Promise<Re
   settings.points = {
     enabled:asBoolean(body.enabled,true),
     domainApplicationCost:clamp(Number(body.domainApplicationCost||0),0,1000000),
+    domainApplicationCosts:sanitizeDomainPointCosts((body as any).domainApplicationCosts, settings.dns.suffixes),
     refundOnReject:asBoolean(body.refundOnReject,true),
     registrationReward:clamp(Number(body.registrationReward||0),0,1000000),
     firstDomainReward:clamp(Number(body.firstDomainReward||0),0,1000000),
@@ -2719,7 +2759,7 @@ async function createApplication(request: Request, env: Env): Promise<Response> 
   const appStatus = autoApproved ? 'approved' : 'pending';
   const expiresAt = autoApproved ? new Date(Date.now() + settings.domain.validDays * DAY).toISOString() : null;
 
-  const pointCost = user.role === 'admin' || !settings.points.enabled ? 0 : Math.max(0, Number(settings.points.domainApplicationCost || 0));
+  const pointCost = user.role === 'admin' || !settings.points.enabled ? 0 : resolveDomainApplicationPointCost(settings, suffix);
   const insertApplication = env.DB.prepare(`
     INSERT INTO domain_applications (
       id,user_id,prefix_unicode,prefix_ascii,suffix_unicode,suffix_ascii,fqdn_unicode,fqdn_ascii,
@@ -5679,6 +5719,25 @@ async function adminSettings(request: Request, env: Env): Promise<Response> {
   return ok({ settings: adminSettingsView(await loadSettings(env), env) });
 }
 
+async function adminSidebarSettings(request: Request, env: Env): Promise<Response> {
+  await requireAdmin(env, request);
+  const settings = await loadSettings(env);
+  return ok({ items: sanitizeSidebarItems((settings.site as any).sidebarItems) });
+}
+
+async function adminUpdateSidebarSettings(request: Request, env: Env): Promise<Response> {
+  const admin = await requireAdmin(env, request);
+  const body = await readJson<Record<string, unknown>>(request, 256 * 1024);
+  const settings = await loadSettings(env);
+  settings.site = {
+    ...settings.site,
+    sidebarItems: sanitizeSidebarItems((body as any).items),
+  };
+  await env.APP_KV.put(SETTINGS_KEY, JSON.stringify(settings));
+  await audit(env, request, admin.id, 'admin.sidebar_settings', 'setting', 'sidebar');
+  return ok({ items: settings.site.sidebarItems, settings: adminSettingsView(settings, env) });
+}
+
 type AdminSettingGroup = 'site' | 'registration' | 'domain' | 'dns' | 'blacklist' | 'notification' | 'security' | 'automation';
 
 async function adminUpdateSettings(request: Request, env: Env, group: AdminSettingGroup): Promise<Response> {
@@ -6137,6 +6196,7 @@ async function loadSettings(env: Env): Promise<AppSettings> {
     points: {
       ...points,
       domainApplicationCost: clamp(Number(points.domainApplicationCost || 0), 0, 1000000),
+      domainApplicationCosts: sanitizeDomainPointCosts((points as any).domainApplicationCosts, dns.suffixes),
       registrationReward: clamp(Number(points.registrationReward || 0), 0, 1000000),
       firstDomainReward: clamp(Number(points.firstDomainReward || 0), 0, 1000000),
       dailyLoginReward: clamp(Number(points.dailyLoginReward || 0), 0, 1000000),
@@ -6180,6 +6240,9 @@ async function loadSettings(env: Env): Promise<AppSettings> {
       ...((saved as any).automation || {}),
       scanCycleMinutes: clamp(Number((saved as any).automation?.scanCycleMinutes || defaults.automation!.scanCycleMinutes), 5, 1440),
       dnsCleanupProtectionDays: clamp(Number((saved as any).automation?.dnsCleanupProtectionDays || defaults.automation?.dnsCleanupProtectionDays || 7), 1, 3650),
+    },
+    workerVariables: {
+      docs: sanitizeWorkerVariableDocs((saved as any).workerVariables?.docs),
     },
   };
 }
@@ -6373,6 +6436,7 @@ function defaultSettings(env: Env): AppSettings {
       notFoundText: '页面不存在或已移动',
       showQuota: true,
       showExpiryReminder: true,
+      sidebarItems: defaultSidebarItems(),
     },
     registration: {
       enabled: true,
@@ -6479,6 +6543,7 @@ function defaultSettings(env: Env): AppSettings {
     points: {
       enabled: true,
       domainApplicationCost: 0,
+      domainApplicationCosts: [],
       refundOnReject: true,
       registrationReward: 0,
       firstDomainReward: 0,
@@ -6566,6 +6631,9 @@ function defaultSettings(env: Env): AppSettings {
       notifyAdminOnFailure: true,
       dnsCleanupProtectionDays: 7,
       taskLogs: [],
+    },
+    workerVariables: {
+      docs: [],
     },
   };
 }
@@ -7035,8 +7103,6 @@ async function adminSyncCloudflareEmailAddresses(request: Request, env: Env): Pr
   });
 }
 
-type WorkerVariableKind = 'plain_text' | 'json' | 'secret_text';
-
 type WorkerVariableDefinition = {
   label: string;
   purpose: string;
@@ -7244,6 +7310,77 @@ const WORKER_VARIABLE_DEFINITIONS: Record<string, WorkerVariableDefinition> = {
     suggestedType: 'plain_text',
   },
 };
+
+
+function sanitizeWorkerVariableDocs(value: unknown): WorkerVariableDocSetting[] {
+  const input = Array.isArray(value) ? value : [];
+  const seen = new Set<string>();
+  const docs: WorkerVariableDocSetting[] = [];
+  for (const row of input as any[]) {
+    const name = String(row?.name || '').trim();
+    if (!isValidWorkerVariableName(name) || seen.has(name)) continue;
+    seen.add(name);
+    const typeRaw = String(row?.suggestedType || row?.type || '').trim().toLowerCase();
+    const suggestedType = typeRaw === 'json' ? 'json' : (typeRaw === 'secret_text' || typeRaw === 'secret' ? 'secret_text' : (typeRaw === 'plain_text' || typeRaw === 'text' ? 'plain_text' : undefined));
+    const label = cleanText(row?.label, 80);
+    const purpose = cleanText(row?.purpose, 1000);
+    const addMethod = cleanText(row?.addMethod, 1000);
+    if (!label && !purpose && !addMethod && !suggestedType) continue;
+    docs.push({ name, label, purpose, addMethod, suggestedType });
+  }
+  return docs.slice(0, 300);
+}
+
+function workerVariableDocMap(settings: AppSettings): Map<string, WorkerVariableDocSetting> {
+  return new Map(sanitizeWorkerVariableDocs(settings.workerVariables?.docs).map(item => [item.name, item]));
+}
+
+function applyWorkerVariableDoc(item: WorkerVariableItem, doc?: WorkerVariableDocSetting): WorkerVariableItem {
+  if (!doc) return item;
+  return {
+    ...item,
+    label: doc.label || item.label,
+    purpose: doc.purpose || item.purpose,
+    addMethod: doc.addMethod || item.addMethod,
+  };
+}
+
+function workerVariableDefinitionsWithDocs(settings: AppSettings): Record<string, WorkerVariableDefinition> {
+  const definitions: Record<string, WorkerVariableDefinition> = { ...WORKER_VARIABLE_DEFINITIONS };
+  for (const doc of sanitizeWorkerVariableDocs(settings.workerVariables?.docs)) {
+    const fallback = definitions[doc.name] || resolveWorkerVariableDefinition(doc.name, doc.suggestedType);
+    definitions[doc.name] = {
+      label: doc.label || fallback.label,
+      purpose: doc.purpose || fallback.purpose,
+      addMethod: doc.addMethod || fallback.addMethod,
+      suggestedType: doc.suggestedType || fallback.suggestedType,
+    };
+  }
+  return definitions;
+}
+
+async function saveWorkerVariableDoc(env: Env, name: string, type: WorkerVariableKind, body: Record<string, unknown>): Promise<WorkerVariableDefinition> {
+  const settings = await loadSettings(env);
+  const existing = sanitizeWorkerVariableDocs(settings.workerVariables?.docs);
+  const fallback = resolveWorkerVariableDefinition(name, type);
+  const current = existing.find(item => item.name === name) || {} as WorkerVariableDocSetting;
+  const nextDoc: WorkerVariableDocSetting = {
+    name,
+    label: cleanText(body.label, 80) || current.label || fallback.label,
+    purpose: cleanText(body.purpose, 1000) || current.purpose || fallback.purpose,
+    addMethod: cleanText(body.addMethod, 1000) || current.addMethod || fallback.addMethod,
+    suggestedType: type,
+  };
+  const nextDocs = sanitizeWorkerVariableDocs([...existing.filter(item => item.name !== name), nextDoc]);
+  settings.workerVariables = { docs: nextDocs };
+  await env.APP_KV.put(SETTINGS_KEY, JSON.stringify(settings));
+  return {
+    label: nextDoc.label || fallback.label,
+    purpose: nextDoc.purpose || fallback.purpose,
+    addMethod: nextDoc.addMethod || fallback.addMethod,
+    suggestedType: nextDoc.suggestedType || fallback.suggestedType,
+  };
+}
 
 function managedWorkerScriptName(env: Env): string {
   const value = cleanText(env.CF_WORKER_SCRIPT_NAME || 'storage', 80).replace(/[^a-zA-Z0-9_-]/g, '');
@@ -7453,6 +7590,8 @@ async function deleteWorkerSecret(request: Request, env: Env, name: string): Pro
 
 async function adminListManagedWorkerVariables(request: Request, env: Env): Promise<Response> {
   await requireAdmin(env, request);
+  const settings = await loadSettings(env);
+  const customDocMap = workerVariableDocMap(settings);
   const items: WorkerVariableItem[] = [];
   let syncMode = 'runtime-fallback';
   let warning = '';
@@ -7473,7 +7612,7 @@ async function adminListManagedWorkerVariables(request: Request, env: Env): Prom
     warning = '未配置 CF_WORKERS_API_TOKEN，只能显示当前运行时可见变量，不能同步 Cloudflare 后台完整类型。';
     items.push(...runtimeWorkerVariables(env));
   }
-  const variables = mergeWorkerVariableItems(items);
+  const variables = mergeWorkerVariableItems(items).map(item => applyWorkerVariableDoc(item, customDocMap.get(item.name)));
   return ok({
     enabled: Boolean(env.CF_WORKERS_API_TOKEN),
     accountIdConfigured: Boolean(env.CF_ACCOUNT_ID),
@@ -7481,7 +7620,7 @@ async function adminListManagedWorkerVariables(request: Request, env: Env): Prom
     syncMode,
     warning,
     variables,
-    definitions: WORKER_VARIABLE_DEFINITIONS,
+    definitions: workerVariableDefinitionsWithDocs(settings),
     protectedNames: Array.from(PROTECTED_WORKER_VARIABLE_NAMES),
     note: '这里通过 Worker /settings 同步文本、JSON 和密钥变量，并通过 /secrets 校验密钥列表。CF_WORKERS_API_TOKEN 本身必须在 Cloudflare 控制台维护，网站内不能修改。',
   });
@@ -7489,40 +7628,52 @@ async function adminListManagedWorkerVariables(request: Request, env: Env): Prom
 
 async function adminUpdateManagedWorkerVariable(request: Request, env: Env): Promise<Response> {
   const admin = await requireAdmin(env, request);
-  const body = await readJson<Record<string, unknown>>(request);
+  const body = await readJson<Record<string, unknown>>(request, 256 * 1024);
   const name = normalizeWorkerVariableName(body.name);
   if (PROTECTED_WORKER_VARIABLE_NAMES.has(name)) {
     throw new HttpError(403, 'WORKER_VARIABLE_PROTECTED', 'CF_WORKERS_API_TOKEN 只能在 Cloudflare 控制台修改，不能在网站内修改');
   }
   const type = normalizeWorkerVariableType(body.type, name);
-  const value = validateWorkerVariableValue(name, body.value, type);
+  const rawValue = String(body.value ?? '').trim();
+  const hasNewValue = rawValue.length > 0;
+  const hasDocPayload = Boolean(cleanText(body.label, 80) || cleanText(body.purpose, 1000) || cleanText(body.addMethod, 1000));
+  if (!hasNewValue && !hasDocPayload) throw new HttpError(400, 'WORKER_VARIABLE_VALUE_REQUIRED', '请输入变量值，或填写用途/添加方法后保存');
   const scriptName = managedWorkerScriptName(env);
-  if (type === 'secret_text') {
-    await putWorkerSecret(request, env, name, value);
-  } else {
-    const settings = await fetchWorkerScriptSettings(request, env);
-    const bindings = Array.isArray(settings?.bindings) ? settings.bindings : [];
-    const nextBindings = removeVariableBinding(bindings, name);
-    if (type === 'json') {
-      nextBindings.push({ name, type: 'json', json: parseJsonWorkerVariableValue(body.value) });
+  let valueHash = '';
+  if (hasNewValue) {
+    const value = validateWorkerVariableValue(name, body.value, type);
+    valueHash = await sha256(value);
+    if (type === 'secret_text') {
+      await putWorkerSecret(request, env, name, value);
     } else {
-      nextBindings.push({ name, type: 'plain_text', text: value });
+      const settings = await fetchWorkerScriptSettings(request, env);
+      const bindings = Array.isArray(settings?.bindings) ? settings.bindings : [];
+      const nextBindings = removeVariableBinding(bindings, name);
+      if (type === 'json') {
+        nextBindings.push({ name, type: 'json', json: parseJsonWorkerVariableValue(body.value) });
+      } else {
+        nextBindings.push({ name, type: 'plain_text', text: value });
+      }
+      await patchWorkerScriptBindings(request, env, nextBindings);
     }
-    await patchWorkerScriptBindings(request, env, nextBindings);
   }
+  const definition = await saveWorkerVariableDoc(env, name, type, body);
   await audit(env, request, admin.id, 'admin.worker_variable_update', 'worker_variable', name, {
     scriptName,
     type,
-    valueHash: await sha256(value),
+    valueChanged: hasNewValue,
+    valueHash,
+    docUpdated: true,
   });
-  const definition = resolveWorkerVariableDefinition(name, type);
   return ok({
     updated: true,
     name,
     type,
     label: definition.label,
+    purpose: definition.purpose,
+    addMethod: definition.addMethod,
     scriptName,
-    message: `${definition.label || name} 已提交到 Cloudflare；新值通常会在数秒内对后续请求生效`,
+    message: hasNewValue ? `${definition.label || name} 已提交到 Cloudflare；新值通常会在数秒内对后续请求生效` : `${definition.label || name} 的用途和添加方法已保存`,
   });
 }
 
@@ -8944,6 +9095,93 @@ function asBoolean(value: unknown, fallback: boolean): boolean {
 
 function isEnabled(value: unknown, fallback: boolean): boolean {
   return asBoolean(value, fallback);
+}
+
+
+const DEFAULT_SIDEBAR_ITEMS: Array<{key:string; label:string; group:'user'|'admin'}> = [
+  { key:'apply', label:'注册', group:'user' },
+  { key:'domains', label:'管理', group:'user' },
+  { key:'points', label:'积分', group:'user' },
+  { key:'invitations', label:'邀请', group:'user' },
+  { key:'settings', label:'设置', group:'user' },
+  { key:'messages', label:'消息中心', group:'user' },
+  { key:'logs', label:'日志', group:'user' },
+  { key:'help', label:'帮助', group:'user' },
+  { key:'admin', label:'管理概览', group:'admin' },
+  { key:'adminAnalytics', label:'分析页', group:'admin' },
+  { key:'adminApplications', label:'域名审核', group:'admin' },
+  { key:'adminUsers', label:'用户管理', group:'admin' },
+  { key:'adminInvitationSettings', label:'邀请设置', group:'admin' },
+  { key:'adminPointsSettings', label:'积分设置', group:'admin' },
+  { key:'adminRegistrationKeys', label:'注册密钥', group:'admin' },
+  { key:'adminSettings', label:'管理员设置', group:'admin' },
+  { key:'adminMessages', label:'消息中心', group:'admin' },
+  { key:'adminHelpSettings', label:'帮助中心设置', group:'admin' },
+  { key:'adminHelp', label:'管理员帮助中心', group:'admin' },
+  { key:'adminHomeSettings', label:'首页设置', group:'admin' },
+];
+
+function defaultSidebarItems(): SidebarNavItemSetting[] {
+  return DEFAULT_SIDEBAR_ITEMS.map((item, index) => ({ key: item.key, label: item.label, order: index + 1 }));
+}
+
+function sanitizeSidebarItems(value: unknown): SidebarNavItemSetting[] {
+  const input = Array.isArray(value) ? value : [];
+  const allowed = new Map(DEFAULT_SIDEBAR_ITEMS.map(item => [item.key, item]));
+  const seen = new Set<string>();
+  const cleaned: SidebarNavItemSetting[] = [];
+  input.forEach((row: any, index) => {
+    const key = cleanText(row?.key, 80);
+    if (!allowed.has(key) || seen.has(key)) return;
+    seen.add(key);
+    const fallback = allowed.get(key)!;
+    const label = cleanText(row?.label, 30) || fallback.label;
+    cleaned.push({ key, label, order: clamp(Number(row?.order || index + 1), 1, 1000) });
+  });
+  DEFAULT_SIDEBAR_ITEMS.forEach((item, index) => {
+    if (!seen.has(item.key)) cleaned.push({ key: item.key, label: item.label, order: 500 + index });
+  });
+  return cleaned.sort((a, b) => Number(a.order || 0) - Number(b.order || 0)).map((item, index) => ({ ...item, order: index + 1 }));
+}
+
+function sanitizeDomainPointCosts(value: unknown, suffixes: AppSettings['dns']['suffixes'] = []): DomainPointCostSetting[] {
+  const input = Array.isArray(value) ? value : [];
+  const suffixMap = new Map<string, any>();
+  for (const suffix of suffixes || []) {
+    suffixMap.set(normalizeSuffix(String(suffix.suffix || '')), suffix);
+    suffixMap.set(normalizeSuffix(String(suffix.suffixAscii || suffix.suffix || '')), suffix);
+  }
+  const result: DomainPointCostSetting[] = [];
+  const seen = new Set<string>();
+  for (const row of input as any[]) {
+    const rawSuffix = cleanText(row?.suffix || row?.suffixAscii, 200);
+    if (!rawSuffix) continue;
+    const normalized = normalizeSuffix(rawSuffix);
+    const matched = suffixMap.get(normalized);
+    const key = normalizeSuffix(String(matched?.suffixAscii || matched?.suffix || normalized));
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push({
+      suffix: String(matched?.suffix || normalized),
+      suffixAscii: String(matched?.suffixAscii || key),
+      label: cleanText(row?.label || matched?.label, 80),
+      cost: clamp(Number(row?.cost || 0), 0, 1000000),
+      enabled: asBoolean(row?.enabled, true),
+      note: cleanText(row?.note, 200),
+    });
+  }
+  return result;
+}
+
+function resolveDomainApplicationPointCost(settings: AppSettings, suffix: AppSettings['dns']['suffixes'][number]): number {
+  const fallback = clamp(Number(settings.points.domainApplicationCost || 0), 0, 1000000);
+  const rows = sanitizeDomainPointCosts(settings.points.domainApplicationCosts, settings.dns.suffixes);
+  const suffixKeys = new Set([
+    normalizeSuffix(String(suffix.suffix || '')),
+    normalizeSuffix(String(suffix.suffixAscii || suffix.suffix || '')),
+  ].filter(Boolean));
+  const matched = rows.find(row => row.enabled !== false && (suffixKeys.has(normalizeSuffix(row.suffix)) || suffixKeys.has(normalizeSuffix(row.suffixAscii || row.suffix))));
+  return matched ? clamp(Number(matched.cost || 0), 0, 1000000) : fallback;
 }
 
 function cleanText(value: unknown, max = 200): string {
