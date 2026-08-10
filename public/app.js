@@ -1251,6 +1251,7 @@ const DEFAULT_BOOT_CONFIG = {
     enabledRegister: true,
     enabledApply: true
   },
+  oauth: { github: { enabled:false, configured:false, loginAvailable:false, allowRegister:false, allowAccountBinding:false, requireVerifiedEmail:true, callbackPath:'/api/auth/github/callback' } },
   domain: DEFAULT_DOMAIN_CONFIG,
   dns: {
     suffix: 'flore.top',
@@ -1277,6 +1278,7 @@ function normalizeBootConfig(config) {
   const safe = { ...DEFAULT_BOOT_CONFIG, ...(config || {}) };
   safe.site = { ...DEFAULT_BOOT_CONFIG.site, ...(config?.site || {}) };
   safe.turnstile = { ...DEFAULT_BOOT_CONFIG.turnstile, ...(config?.turnstile || {}) };
+  safe.oauth = { ...DEFAULT_BOOT_CONFIG.oauth, ...(config?.oauth || {}), github: { ...DEFAULT_BOOT_CONFIG.oauth.github, ...(config?.oauth?.github || {}) } };
   safe.domain = { ...DEFAULT_DOMAIN_CONFIG, ...(config?.domain || {}) };
   safe.dns = { ...DEFAULT_BOOT_CONFIG.dns, ...(config?.dns || {}) };
   safe.dnsRecordTypes = normalizedDnsTypePolicies(config?.dnsRecordTypes || config?.dns?.recordTypePolicies || DEFAULT_BOOT_CONFIG.dnsRecordTypes);
@@ -2220,6 +2222,40 @@ function clearRememberedLogin() {
   try { localStorage.removeItem(REMEMBERED_LOGIN_KEY); } catch (_) {}
 }
 
+function githubOAuthConfig() {
+  return state.config?.oauth?.github || { enabled:false, configured:false, loginAvailable:false, allowRegister:false, allowAccountBinding:false };
+}
+function githubOAuthAvailable() {
+  const g = githubOAuthConfig();
+  return Boolean(g.loginAvailable || (g.enabled && g.configured));
+}
+function githubOAuthStartUrl(mode = 'login', extra = {}) {
+  const url = new URL('/api/auth/github', location.origin);
+  url.searchParams.set('mode', mode === 'bind' ? 'bind' : 'login');
+  const redirect = extra.redirect || (mode === 'bind' ? '/account' : '/apply');
+  url.searchParams.set('redirect', redirect);
+  const invite = extra.invite || (currentRoutePath() === '/register' ? new URL(location.href).searchParams.get('invite') : '');
+  if (invite) url.searchParams.set('invite', invite);
+  return `${url.pathname}${url.search}`;
+}
+function githubAuthButtonHtml(context = 'login') {
+  const g = githubOAuthConfig();
+  if (!githubOAuthAvailable()) return '';
+  const label = context === 'bind' ? '绑定 GitHub 账号' : (context === 'register' ? '使用 GitHub 注册 / 登录' : '使用 GitHub 登录');
+  const hint = g.requireVerifiedEmail === false ? '使用 GitHub 授权后进入账户。' : '需要 GitHub 账号存在已验证邮箱。';
+  return `<div class="oauth-login-box"><a class="btn github-oauth-btn" href="${attr(githubOAuthStartUrl(context === 'bind' ? 'bind' : 'login', { redirect: context === 'bind' ? '/account' : '/apply' }))}"><span class="github-oauth-mark">●</span>${esc(label)}</a><small>${esc(hint)}</small></div>`;
+}
+function consumeOauthToast() {
+  const url = new URL(location.href);
+  const error = url.searchParams.get('github_error');
+  const success = url.searchParams.get('github_success');
+  if (!error && !success) return;
+  setTimeout(() => toast(error || success, error ? 'error' : 'success'), 80);
+  url.searchParams.delete('github_error');
+  url.searchParams.delete('github_success');
+  history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+}
+
 async function renderLogin() {
   const turn = state.config.turnstile || {};
   const site = state.config?.site || {};
@@ -2253,11 +2289,13 @@ async function renderLogin() {
           ${authAgreementHtml('agreeTerms')}
           <button class="btn primary login-submit" type="submit" disabled>登录账户</button>
         </form>
+        ${githubAuthButtonHtml('login')}
         <div class="login-divider"></div>
         <p class="login-register-row"><span>还没有账号？</span> <a href="/register">立即注册</a></p>
         <p class="login-feedback-row"><span>出现问题？</span><a href="https://mailform.flore.top" target="_blank" rel="noopener">点击反馈</a></p>
       </section>
     </main>`;
+  consumeOauthToast();
   await mountHumanVerification('[data-human-verification="login"]', 'login', turn.actionLogin || 'login');
   bindAgreementLinks();
   bindAuthAgreementState('#login-form', '.login-submit');
@@ -2325,6 +2363,7 @@ async function renderRegister() {
       <div class="wide">${authAgreementHtml('agreeTerms')}</div>
       <button class="btn primary wide" type="submit" disabled>注册</button>
     </form>
+    ${githubAuthButtonHtml('register')}
     <p class="auth-link">已有账户？ <a href="/login">登录</a></p>`);
   await mountHumanVerification('[data-human-verification="register"]', 'register', turn.actionRegister || 'register');
   bindAgreementLinks();
@@ -2519,17 +2558,17 @@ async function renderPoints() {
     const rows = (data.transactions || []).map(row => `<tr><td>${fmtDate(row.created_at,true)}</td><td><b class="points-amount ${Number(row.amount)>=0?'plus':'minus'}">${Number(row.amount)>=0?'+':''}${esc(row.amount)}</b></td><td>${esc(row.description || row.type || '积分变动')}</td><td>${esc(row.balance_after)}</td></tr>`).join('');
     shell('积分', `
       ${settings.enabled === false ? '<div class="notice">当前积分功能暂未开放，历史余额和交易记录仅供查看。</div>' : ''}
-      <section class="card points-hero-v130">
+      <section class="card points-hero-v131">
         <div><span>当前余额</span><strong>${Number(wallet.balance||0).toLocaleString()}</strong><small>累计获得 ${Number(wallet.lifetime_earned||0).toLocaleString()} · 累计使用 ${Number(wallet.lifetime_spent||0).toLocaleString()}</small></div>
         <div class="points-price-note"><b>域名积分价格</b><span>${Number(settings.domainApplicationCost||0)>0 ? `每次提交申请 ${Number(settings.domainApplicationCost)} 积分` : '当前域名申请不收取积分'}</span></div>
       </section>
       <section class="card"><div class="section-head"><div><h2>口令兑换</h2><p>输入管理员发放的兑换口令，可兑换积分或域名注册额度。</p></div></div>
-        <form id="points-redeem-form" class="inline-form-v130"><input name="code" maxlength="80" required placeholder="请输入兑换口令"><button class="btn primary" type="submit">立即兑换</button></form>
+        <form id="points-redeem-form" class="inline-form-v131"><input name="code" maxlength="80" required placeholder="请输入兑换口令"><button class="btn primary" type="submit">立即兑换</button></form>
       </section>
       <section class="card"><div class="section-head"><div><h2>交易记录</h2><p>记录奖励、兑换、域名申请扣除、退款和管理员发放。</p></div></div>
         <div class="table-wrap"><table><thead><tr><th>时间</th><th>变动</th><th>说明</th><th>余额</th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="muted">暂无积分交易记录</td></tr>'}</tbody></table></div>
       </section>
-      <section class="card subtle-card-v130"><h3>积分规则</h3><p class="pre-line-v130">${esc(settings.rulesText || '积分仅用于本站活动和服务，不支持提现或转让。')}</p></section>
+      <section class="card subtle-card-v131"><h3>积分规则</h3><p class="pre-line-v131">${esc(settings.rulesText || '积分仅用于本站活动和服务，不支持提现或转让。')}</p></section>
     `);
     document.querySelector('#points-redeem-form')?.addEventListener('submit', async e => {
       e.preventDefault(); const btn=e.submitter; btn.disabled=true;
@@ -2550,13 +2589,13 @@ async function renderInviteCenter() {
     const rows=(data.records||[]).map(r=>`<tr><td>${esc(r.invitee_username||'用户')}</td><td>${fmtDate(r.created_at,true)}</td><td>${esc(r.status==='rewarded'?'已奖励':r.status==='pending'?'待激活':'未奖励')}</td><td>+${Number(r.inviter_points||0)}</td><td>+${Number(r.inviter_quota||0)}</td></tr>`).join('');
     shell('邀请', `
       ${st.enabled === false ? '<div class="notice">当前邀请活动暂未开放，历史邀请记录仍可查看。</div>' : ''}
-      <section class="card invite-hero-v130"><span>邀请好友得积分</span><h2>邀请好友得积分</h2><p>${esc(st.enabled === false ? '邀请活动当前暂停' : rewardText)}</p></section>
-      <section class="stats-grid invite-stats-v130"><div class="stat-card"><span>已邀请人数</span><strong>${Number(stats.total||0)}</strong></div><div class="stat-card"><span>今日邀请</span><strong>${Number(stats.today||0)}</strong></div><div class="stat-card"><span>已获得积分</span><strong>${Number(stats.earnedPoints||0)}</strong></div><div class="stat-card"><span>获得域名额度</span><strong>${Number(stats.earnedQuota||0)}</strong></div></section>
+      <section class="card invite-hero-v131"><span>邀请好友得积分</span><h2>邀请好友得积分</h2><p>${esc(st.enabled === false ? '邀请活动当前暂停' : rewardText)}</p></section>
+      <section class="stats-grid invite-stats-v131"><div class="stat-card"><span>已邀请人数</span><strong>${Number(stats.total||0)}</strong></div><div class="stat-card"><span>今日邀请</span><strong>${Number(stats.today||0)}</strong></div><div class="stat-card"><span>已获得积分</span><strong>${Number(stats.earnedPoints||0)}</strong></div><div class="stat-card"><span>获得域名额度</span><strong>${Number(stats.earnedQuota||0)}</strong></div></section>
       <section class="card"><div class="section-head"><div><h2>我的邀请码</h2><p>复制邀请码或邀请链接发给好友。通过邀请链接打开注册页会自动填写邀请码。</p></div></div>
-        <div class="copy-field-v130"><input id="invite-code-value" value="${attr(data.inviteCode||'')}" ${st.customCodeEnabled?'':'readonly'}><button class="btn soft" id="copy-invite-code" type="button">复制邀请码</button>${st.customCodeEnabled?'<button class="btn soft" id="save-invite-code" type="button">自定义邀请码</button>':''}</div>
-        <div class="copy-field-v130"><input id="invite-link-value" readonly value="${attr(data.inviteLink||'')}"><button class="btn primary" id="copy-invite-link" type="button">复制邀请链接</button></div>
+        <div class="copy-field-v131"><input id="invite-code-value" value="${attr(data.inviteCode||'')}" ${st.customCodeEnabled?'':'readonly'}><button class="btn soft" id="copy-invite-code" type="button">复制邀请码</button>${st.customCodeEnabled?'<button class="btn soft" id="save-invite-code" type="button">自定义邀请码</button>':''}</div>
+        <div class="copy-field-v131"><input id="invite-link-value" readonly value="${attr(data.inviteLink||'')}"><button class="btn primary" id="copy-invite-link" type="button">复制邀请链接</button></div>
       </section>
-      <section class="card"><div class="section-head"><div><h2>活动规则</h2><p>奖励规则由管理员设置，异常邀请可能被取消奖励。</p></div></div><p class="pre-line-v130">${esc(st.rulesText||'暂无活动规则')}</p></section>
+      <section class="card"><div class="section-head"><div><h2>活动规则</h2><p>奖励规则由管理员设置，异常邀请可能被取消奖励。</p></div></div><p class="pre-line-v131">${esc(st.rulesText||'暂无活动规则')}</p></section>
       <section class="card"><div class="section-head"><div><h2>邀请记录</h2><p>最多显示最近 100 条邀请记录。</p></div></div><div class="table-wrap"><table><thead><tr><th>好友</th><th>注册时间</th><th>状态</th><th>积分奖励</th><th>额度奖励</th></tr></thead><tbody>${rows||'<tr><td colspan="5" class="muted">暂无邀请记录</td></tr>'}</tbody></table></div></section>
     `);
     document.querySelector('#copy-invite-code')?.addEventListener('click',()=>copyToClipboard(data.inviteCode||'','邀请码已复制'));
@@ -2569,8 +2608,8 @@ async function renderAdminInvitationSettings() {
   shell('邀请设置', `<div class="loading-card">正在读取邀请设置…</div>`);
   try {
     const data=await api('/api/admin/invitation-settings'), x=data.settings||{}, stats=data.stats||{};
-    shell('邀请设置', `<section class="card admin-feature-settings-v130">
-      <div class="settings-toolbar"><div><h2>邀请设置</h2><p>配置邀请奖励、域名额度、奖励对象、限制条件与活动规则。</p></div><div class="mini-stats-v130"><span>累计邀请 <b>${Number(stats.total||0)}</b></span><span>累计发积分 <b>${Number(stats.points||0)}</b></span></div></div>
+    shell('邀请设置', `<section class="card admin-feature-settings-v131">
+      <div class="settings-toolbar"><div><h2>邀请设置</h2><p>配置邀请奖励、域名额度、奖励对象、限制条件与活动规则。</p></div><div class="mini-stats-v131"><span>累计邀请 <b>${Number(stats.total||0)}</b></span><span>累计发积分 <b>${Number(stats.points||0)}</b></span></div></div>
       <form id="admin-invite-settings-form" class="form-grid settings-grid">
         <label class="check wide"><input name="enabled" type="checkbox" ${x.enabled!==false?'checked':''}> 开启邀请活动 <em>关闭后保留历史记录，但新注册不再产生邀请奖励。</em></label>
         <label class="field"><span>邀请人奖励积分</span><input name="inviterPoints" type="number" min="0" value="${fieldValue(x.inviterPoints||0)}"></label>
@@ -2597,7 +2636,7 @@ async function renderAdminPointsSettings() {
     const codes=(codesData.codes||[]).map(c=>`<tr><td><code>${esc(c.code)}</code></td><td>${Number(c.points||0)}</td><td>${Number(c.domain_quota||0)}</td><td>${Number(c.used_count||0)} / ${Number(c.max_uses||0)===0?'不限':Number(c.max_uses)}</td><td>${esc(c.status==='active'?'可用':'停用')}</td><td><button class="btn danger small point-code-disable" data-id="${attr(c.id)}">停用</button></td></tr>`).join('');
     shell('积分设置', `
       <section class="stats-grid"><div class="stat-card"><span>积分账户</span><strong>${Number(stats.wallets||0)}</strong></div><div class="stat-card"><span>当前积分总额</span><strong>${Number(stats.balance||0).toLocaleString()}</strong></div><div class="stat-card"><span>累计发放</span><strong>${Number(stats.earned||0).toLocaleString()}</strong></div><div class="stat-card"><span>累计消耗</span><strong>${Number(stats.spent||0).toLocaleString()}</strong></div></section>
-      <section class="card admin-feature-settings-v130"><div class="section-head"><div><h2>积分政策</h2><p>设置注册奖励、域名积分价格、退款政策和自动发放。</p></div></div>
+      <section class="card admin-feature-settings-v131"><div class="section-head"><div><h2>积分政策</h2><p>设置注册奖励、域名积分价格、退款政策和自动发放。</p></div></div>
         <form id="admin-points-settings-form" class="form-grid settings-grid">
           <label class="check wide"><input name="enabled" type="checkbox" ${x.enabled!==false?'checked':''}> 开启积分系统</label>
           <label class="field"><span>域名申请价格/积分</span><input name="domainApplicationCost" type="number" min="0" value="${fieldValue(x.domainApplicationCost||0)}"><em>0 表示免费；提交成功时扣除。</em></label>
@@ -2922,20 +2961,20 @@ function normalizeHelpCategories(raw) {
 
 const HELP_V130_ADDONS = [
   { key:'points', title:'积分与兑换', subtitle:'积分余额、口令兑换、域名积分价格、奖励、退款和交易记录', items:[
-    { id:'points-v130-1', q:'积分可以用来做什么？', a:'<p>积分用于本站设置的活动与服务，例如管理员可以设置域名申请需要消耗积分。具体价格以“积分”页面显示为准。</p>' },
-    { id:'points-v130-2', q:'在哪里查看积分余额和交易记录？', a:'<p>登录后打开左侧“积分”，顶部显示当前余额、累计获得与累计使用；下方“交易记录”会列出奖励、兑换、扣除、退款和管理员发放。</p>' },
-    { id:'points-v130-3', q:'兑换口令怎么使用？', a:'<p>进入“积分 → 口令兑换”，输入管理员发放的有效口令后提交。口令可能发放积分、域名注册额度或两者同时发放，并可能有有效期和次数限制。</p>' },
-    { id:'points-v130-4', q:'为什么兑换口令提示已使用或已失效？', a:'<p>口令可能已经达到总使用次数、单用户使用次数、到期或被管理员停用。请核对口令并查看提示；仍有疑问可通过工单联系管理员。</p>' },
-    { id:'points-v130-5', q:'域名申请被拒绝后积分会退吗？', a:'<p>是否退回由管理员的积分政策决定。若开启“申请被拒绝自动退回积分”，系统会写入一条退款交易；否则不会自动退回。</p>' },
-    { id:'points-v130-6', q:'积分能不能提现或转给其他账号？', a:'<p>默认不能。积分是站内权益，不等同现金；是否开放其他用途以管理员发布的积分规则为准。</p>' }
+    { id:'points-v131-1', q:'积分可以用来做什么？', a:'<p>积分用于本站设置的活动与服务，例如管理员可以设置域名申请需要消耗积分。具体价格以“积分”页面显示为准。</p>' },
+    { id:'points-v131-2', q:'在哪里查看积分余额和交易记录？', a:'<p>登录后打开左侧“积分”，顶部显示当前余额、累计获得与累计使用；下方“交易记录”会列出奖励、兑换、扣除、退款和管理员发放。</p>' },
+    { id:'points-v131-3', q:'兑换口令怎么使用？', a:'<p>进入“积分 → 口令兑换”，输入管理员发放的有效口令后提交。口令可能发放积分、域名注册额度或两者同时发放，并可能有有效期和次数限制。</p>' },
+    { id:'points-v131-4', q:'为什么兑换口令提示已使用或已失效？', a:'<p>口令可能已经达到总使用次数、单用户使用次数、到期或被管理员停用。请核对口令并查看提示；仍有疑问可通过工单联系管理员。</p>' },
+    { id:'points-v131-5', q:'域名申请被拒绝后积分会退吗？', a:'<p>是否退回由管理员的积分政策决定。若开启“申请被拒绝自动退回积分”，系统会写入一条退款交易；否则不会自动退回。</p>' },
+    { id:'points-v131-6', q:'积分能不能提现或转给其他账号？', a:'<p>默认不能。积分是站内权益，不等同现金；是否开放其他用途以管理员发布的积分规则为准。</p>' }
   ]},
   { key:'invite', title:'邀请好友', subtitle:'邀请码、邀请链接、双方奖励、自定义邀请码、邀请记录与防刷规则', items:[
-    { id:'invite-v130-1', q:'如何邀请好友并获得奖励？', a:'<p>打开左侧“邀请”，复制邀请码或邀请链接发给好友。好友通过邀请链接注册时会自动带入邀请码；满足当前活动规则后系统发放奖励。</p>' },
-    { id:'invite-v130-2', q:'邀请人和新用户分别能获得多少奖励？', a:'<p>奖励积分、域名额度以及奖励对象都由管理员设置。“邀请”页面顶部会显示当前活动的实际奖励政策。</p>' },
-    { id:'invite-v130-3', q:'为什么好友注册了但奖励还没到账？', a:'<p>如果活动要求新用户先激活，奖励会保持“待激活”；另外每日奖励上限、累计上限、邀请人账号年龄或异常邀请规则也可能影响发放。</p>' },
-    { id:'invite-v130-4', q:'可以自定义邀请码吗？', a:'<p>管理员开启后可以。邀请码必须全站唯一，长度 4–24 位，只能使用字母、数字、下划线或短横线。修改后旧邀请码链接将不再用于新的邀请。</p>' },
-    { id:'invite-v130-5', q:'在哪里查看邀请记录？', a:'<p>打开“邀请”页面，下方“邀请记录”显示最近邀请的用户、注册时间、奖励状态、积分和额度奖励。</p>' },
-    { id:'invite-v130-6', q:'自邀或批量注册会怎样？', a:'<p>邀请活动禁止自邀、批量虚假账号或其他刷奖励行为。异常邀请可以不发奖励，管理员也可以按活动规则限制账号。</p>' }
+    { id:'invite-v131-1', q:'如何邀请好友并获得奖励？', a:'<p>打开左侧“邀请”，复制邀请码或邀请链接发给好友。好友通过邀请链接注册时会自动带入邀请码；满足当前活动规则后系统发放奖励。</p>' },
+    { id:'invite-v131-2', q:'邀请人和新用户分别能获得多少奖励？', a:'<p>奖励积分、域名额度以及奖励对象都由管理员设置。“邀请”页面顶部会显示当前活动的实际奖励政策。</p>' },
+    { id:'invite-v131-3', q:'为什么好友注册了但奖励还没到账？', a:'<p>如果活动要求新用户先激活，奖励会保持“待激活”；另外每日奖励上限、累计上限、邀请人账号年龄或异常邀请规则也可能影响发放。</p>' },
+    { id:'invite-v131-4', q:'可以自定义邀请码吗？', a:'<p>管理员开启后可以。邀请码必须全站唯一，长度 4–24 位，只能使用字母、数字、下划线或短横线。修改后旧邀请码链接将不再用于新的邀请。</p>' },
+    { id:'invite-v131-5', q:'在哪里查看邀请记录？', a:'<p>打开“邀请”页面，下方“邀请记录”显示最近邀请的用户、注册时间、奖励状态、积分和额度奖励。</p>' },
+    { id:'invite-v131-6', q:'自邀或批量注册会怎样？', a:'<p>邀请活动禁止自邀、批量虚假账号或其他刷奖励行为。异常邀请可以不发奖励，管理员也可以按活动规则限制账号。</p>' }
   ]}
 ];
 function helpCategories() {
@@ -4578,10 +4617,25 @@ async function showUserDevicesModal(u) {
   } catch (error) { toast(error.message, 'error'); }
 }
 
+
+function accountOauthCardHtml(data = {}) {
+  const github = data.github || githubOAuthConfig();
+  const accounts = Array.isArray(data.accounts) ? data.accounts : [];
+  const bound = accounts.find(item => item.provider === 'github');
+  if (bound) {
+    return `<section class="card oauth-account-card"><h2>第三方登录</h2><div class="oauth-bound-row"><div class="oauth-avatar">${bound.avatar_url ? `<img src="${attr(bound.avatar_url)}" alt="GitHub">` : 'GH'}</div><div><strong>已绑定 GitHub：@${esc(bound.provider_username || 'github')}</strong><span>${esc(bound.provider_email || '未读取邮箱')} · 绑定时间 ${fmtDate(bound.created_at, true)}</span></div></div><button class="btn soft" id="unbind-github" type="button">解除 GitHub 绑定</button></section>`;
+  }
+  if (github.enabled === false) return `<section class="card oauth-account-card"><h2>第三方登录</h2><p class="muted">管理员暂未开放 GitHub 登录。</p></section>`;
+  if (!github.configured) return `<section class="card oauth-account-card"><h2>第三方登录</h2><p class="muted">GitHub OAuth 还没有配置 Client ID 和 Client Secret。</p></section>`;
+  if (github.allowAccountBinding === false) return `<section class="card oauth-account-card"><h2>第三方登录</h2><p class="muted">管理员暂未开放账户绑定。</p></section>`;
+  return `<section class="card oauth-account-card"><h2>第三方登录</h2><p>绑定后，下次可以直接使用 GitHub 登录当前账户，积分、邀请、域名和消息都保持在这个账号下。</p>${githubAuthButtonHtml('bind')}</section>`;
+}
+
 async function renderAccount() {
   shell('账户设置', `<div class="loading-card">正在读取账户信息…</div>`);
   let devices = [];
   let blockingDomains = [];
+  let oauthData = { accounts: [], github: githubOAuthConfig() };
   try {
     const res = await api('/api/account/devices');
     devices = res.devices || [];
@@ -4593,6 +4647,11 @@ async function renderAccount() {
     blockingDomains = (apps.applications || []).filter(a => !['rejected','revoked','deleted'].includes(a.status));
   } catch (error) {
     console.warn('domain list before account delete failed', error);
+  }
+  try {
+    oauthData = await api('/api/account/oauth');
+  } catch (error) {
+    console.warn('oauth account list failed', error);
   }
   const hasBlockingDomains = blockingDomains.length > 0;
   const blockingTipHtml = hasBlockingDomains ? `<div class="notice danger account-delete-tip"><strong>暂不能注销账号</strong><p>还有 ${blockingDomains.length} 个域名没有注销完成，请先进入“域名管理”处理：</p><ul>${blockingDomains.slice(0,6).map(a => `<li>${esc(a.fqdnUnicode || a.fqdnAscii || '')} · ${esc(a.deleteRequested ? '待删除审核' : (a.statusText || a.status || '未处理'))}</li>`).join('')}</ul></div>` : '';
@@ -4619,10 +4678,18 @@ async function renderAccount() {
         </form>
       </section>
       <section class="card"><h2>修改密码</h2><form id="password-form" class="form-grid"><label class="field wide"><span>当前密码</span><input name="currentPassword" type="password" required></label><label class="field wide"><span>新密码</span><input name="newPassword" type="password" required minlength="8"></label><button class="btn primary wide" type="submit">修改密码</button></form></section>
+      ${accountOauthCardHtml(oauthData)}
       <section class="card wide"><div class="section-head"><div><h2>登录设备管理</h2><p>当前同账号已登录设备数量：${devices.length} 台。可以查看设备名称、设备IP、设备型号、首次登录和最近使用时间。</p></div></div>${deviceCardsHtml(devices)}</section>
       <section class="card danger-zone account-delete-card"><h2>注销账号</h2><p>注销前必须先处理完账号下所有正常、待审核或待删除审核域名。没有未注销域名后，才可以注销程序账号。</p>${blockingTipHtml}<button class="btn danger" id="delete-account" type="button" ${hasBlockingDomains ? 'disabled' : ''}>注销账号</button></section>
     </div>`);
+  consumeOauthToast();
   document.querySelector('[data-copy-account]')?.addEventListener('click', e => copyToClipboard(e.currentTarget.dataset.copyAccount, '已复制'));
+  document.querySelector('#unbind-github')?.addEventListener('click', async e => {
+    if (!confirm('确认解除当前账户与 GitHub 的绑定？解除后仍可用密码登录。')) return;
+    e.currentTarget.disabled = true;
+    try { await api('/api/account/oauth/github/unbind', { method:'POST', body:{} }); toast('GitHub 绑定已解除', 'success'); await renderAccount(); }
+    catch(error) { toast(error.message, 'error'); e.currentTarget.disabled = false; }
+  });
   document.querySelector('#profile-form')?.addEventListener('submit', async e => {
     e.preventDefault();
     const btn = e.submitter;
@@ -5118,7 +5185,7 @@ function adminHelpItemHtml(item, index) {
 }
 
 async function renderAdminHelpCenter() {
-  const v130AdminHelp = [
+  const v131AdminHelp = [
     { key:'points-invite', title:'积分与邀请运营', items:[
       { q:'积分余额或交易记录不一致怎么查', symptom:'用户反馈积分少了、多了，或交易记录与余额对不上。', cause:'可能是兑换、域名申请扣费、拒绝退款、邀请奖励、每日奖励或管理员发放中的某个环节未完成。', quick:'先用用户 ID 查询 point_wallets 与最近 point_transactions。', steps:['确认钱包 balance、lifetime_earned、lifetime_spent。','按 created_at 倒序查看 point_transactions。','检查 type/ref_id 是否对应域名申请、邀请或兑换口令。','如果是审核拒绝，确认是否存在 domain_application_refund。','不要直接改余额，先找缺失或重复交易。'], verify:'钱包余额等于历史交易累计结果，并且相关业务只出现一次对应记录。', collect:'用户ID、钱包行、最近20条交易、相关申请/邀请码/口令ID。', prevention:'所有积分变动都通过统一交易函数写入，避免只更新钱包不写流水。' },
       { q:'邀请好友注册后为什么没有奖励', symptom:'邀请记录存在，但状态显示待激活、未奖励或奖励为0。', cause:'可能启用了激活后奖励、每日/累计奖励上限、邀请人账号年龄限制，或积分系统已关闭。', quick:'先看 user_invitations.status 和当前邀请设置。', steps:['确认邀请活动 enabled。','确认被邀请账号是否 active。','核对 dailyRewardLimit、maxRewardsPerInviter、minAccountAgeHours。','确认 points.enabled；关闭积分时仍可发域名额度，但不发积分。','查看邀请记录的实际 inviter_points/invitee_points。'], verify:'满足规则的新邀请变为 rewarded，并产生正确积分流水/额度变化。', collect:'邀请记录ID、邀请双方用户ID、活动设置、被邀请账号状态。', prevention:'上线活动前用两个测试账号完整走一次邀请→注册→激活→到账流程。' },
@@ -5126,7 +5193,7 @@ async function renderAdminHelpCenter() {
       { q:'如何安全修改邀请或积分奖励政策', symptom:'准备调整奖励值但担心影响已邀请用户或历史流水。', cause:'新设置只应影响之后触发的奖励，历史交易不应被重算。', quick:'先导出管理员配置并记录当前奖励值。', steps:['导出配置。','修改邀请/积分设置。','保存后用测试账号验证新政策。','确认历史 point_transactions 和 user_invitations 未变化。','公告政策生效时间。'], verify:'新交易使用新规则，旧流水金额保持不变。', collect:'修改前后设置、测试用户ID、测试交易ID和生效时间。', prevention:'奖励政策变更按时间留档，不手工批量改历史流水。' }
     ]}
   ];
-  const adminHelpCategories = [...ADMIN_HELP_CATEGORIES_V90, ...v130AdminHelp];
+  const adminHelpCategories = [...ADMIN_HELP_CATEGORIES_V90, ...v131AdminHelp];
   const total = adminHelpCategories.reduce((sum, category) => sum + category.items.length, 0);
   shell('管理员帮助中心', `
     <section class="message-hero card admin-help-hero"><div><h2>管理员帮助中心</h2><p>按“先做一步 → 判断原因 → 按顺序处理 → 验证结果 → 收集证据”编写。覆盖快速应急、部署、D1、登录、验证、邮件、用户、域名、DNS、积分、邀请、消息、设置、自动化、界面、日志、HTTP 错误、安全与恢复。</p></div><div class="message-count"><strong>${total}</strong><span>独立处理方法</span></div></section>
@@ -6542,6 +6609,15 @@ async function renderAdminSettings() {
           <label class="check"><input name="autoActivate" type="checkbox" ${yn(reg.autoActivate)}> 注册后自动启用账户 <em>关闭后新用户需要管理员启用。</em></label>
           <label class="check"><input name="requireRegistrationKey" type="checkbox" ${yn(reg.requireRegistrationKey)}> 开启注册码注册 <em>开启后注册页显示注册码输入框，必须填写有效注册码。</em></label>
           <label class="check"><input name="blockTempEmail" type="checkbox" ${yn(reg.blockTempEmail)}> 拦截临时邮箱注册 <em>用于减少垃圾账号。</em></label>
+          <div class="settings-section-heading wide"><span>01-A</span><div><h3>GitHub 登录 / 注册</h3><p>使用 GitHub OAuth 接入第三方登录。Client ID 和 Client Secret 建议只放在 Cloudflare Worker 变量与密钥中。</p></div></div>
+          <div class="readonly-box wide"><b>GitHub OAuth 回调地址</b><p><code>${location.origin}/api/auth/github/callback</code></p><p>在 GitHub OAuth App 的 Authorization callback URL 中填写上面这个完整地址。Client Secret 不会显示，也不应写进代码仓库。</p><p>当前变量状态：Client ID ${reg.githubClientIdConfigured ? '已配置' : '未配置'}；Client Secret ${reg.githubClientSecretConfigured ? '已配置' : '未配置'}。</p></div>
+          <label class="check"><input name="githubLoginEnabled" type="checkbox" ${yn(reg.githubLoginEnabled !== false)}> 开启 GitHub 登录 <em>关闭后登录页、注册页和绑定入口都会隐藏。</em></label>
+          <label class="check"><input name="githubAllowRegister" type="checkbox" ${yn(reg.githubAllowRegister !== false)}> 允许 GitHub 新用户自动创建账户 <em>关闭后只允许已绑定过 GitHub 的老用户登录。</em></label>
+          <label class="check"><input name="githubAutoActivate" type="checkbox" ${yn(reg.githubAutoActivate !== false)}> GitHub 新账号自动启用 <em>关闭后新用户会创建为禁用状态，需要管理员启用。</em></label>
+          <label class="check"><input name="githubRequireVerifiedEmail" type="checkbox" ${yn(reg.githubRequireVerifiedEmail !== false)}> 要求 GitHub 已验证邮箱 <em>建议开启；避免无邮箱或未验证邮箱账号绕过联系信息。</em></label>
+          <label class="check"><input name="githubAllowAccountBinding" type="checkbox" ${yn(reg.githubAllowAccountBinding !== false)}> 允许用户在设置中绑定 / 解绑 GitHub <em>建议开启，已有账号可先登录密码后绑定。</em></label>
+          <label class="check"><input name="githubGrantDefaultQuota" type="checkbox" ${yn(reg.githubGrantDefaultQuota !== false)}> GitHub 新用户获得默认域名额度 <em>关闭后 GitHub 新用户初始额度为 0。</em></label>
+          <label class="check"><input name="githubGrantRegistrationReward" type="checkbox" ${yn(reg.githubGrantRegistrationReward !== false)}> GitHub 注册参与注册积分奖励 <em>关闭后不发“新用户注册奖励”，邀请奖励仍按活动规则处理。</em></label>
           <div class="settings-section-heading wide"><span>02</span><div><h3>Turnstile 人机验证</h3><p>配置 Turnstile 公钥和密钥；是否使用由下方“人机验证方式”统一控制，作用于登录、注册、域名申请和管理员添加用户。</p></div></div>
           <label class="field"><span>Turnstile Site Key</span><input name="turnstileSiteKey" value="${fieldValue(reg.turnstileSiteKey)}" placeholder="0x4..."><em>前台显示验证模块用；环境变量优先。</em></label>
           <label class="field"><span>Turnstile Secret Key</span><input name="turnstileSecret" type="password" value="" autocomplete="new-password" placeholder="${reg.turnstileSecretConfigured ? '已配置，留空保持不变' : '请输入 Secret Key'}"><em>密钥不会回显；留空保持原值。建议优先使用 Worker Secret。</em></label>
@@ -6733,7 +6809,7 @@ async function renderAdminSettings() {
           <p id="managed-worker-variable-status" class="muted wide">正在读取变量状态…</p>
           <div id="worker-variables-list" class="wide"><div class="loading-card">正在同步 Cloudflare Worker 变量…</div></div>
           <div class="settings-section-heading wide"><span>02</span><div><h3>常用变量用途速查</h3><p>下方只用于说明，实际变量以同步出来的 Cloudflare 列表为准。</p></div></div>
-          <div class="readonly-box wide"><b>邮件相关</b><p><code>EMAIL_FROM</code>：邮件发件地址。<br><code>EMAIL_FROM_NAME</code>：邮件显示名称。<br><code>CF_ADMIN_EMAIL</code>：管理员通知目标邮箱。<br><code>RESEND_API_KEY</code>：发送注册验证码到任意用户邮箱。<br><code>CF_EMAIL_ROUTING_API_TOKEN</code>：同步 Cloudflare 已验证邮箱。</p><b>DNS 相关</b><p><code>CF_API_TOKEN</code>：写入 Cloudflare DNS。<br><code>DNS_SUFFIX</code>、<code>DNS_ZONE_ID</code>、<code>DNS_ALLOWED_TYPES</code>、<code>DNS_DEFAULT_TYPE</code>、<code>DNS_TTL</code>、<code>DNS_PROXIED</code>：单根域名兼容配置；多根域名编辑器保存后会优先使用后台设置。</p><b>验证相关</b><p><code>TURNSTILE_SITE_KEY</code>：前端显示 Turnstile。<br><code>TURNSTILE_SECRET</code>：后端校验 Turnstile。<br><code>TURNSTILE_ACTION_LOGIN</code>、<code>TURNSTILE_ACTION_REGISTER</code>、<code>TURNSTILE_ACTION_APPLY</code>：区分登录、注册和域名申请场景。</p><b>管理相关</b><p><code>CF_ACCOUNT_ID</code>：Cloudflare 账户 ID。<br><code>CF_WORKERS_API_TOKEN</code>：允许网站内管理 Worker 变量；只能在 Cloudflare 控制台维护。</p></div>
+          <div class="readonly-box wide"><b>邮件相关</b><p><code>EMAIL_FROM</code>：邮件发件地址。<br><code>EMAIL_FROM_NAME</code>：邮件显示名称。<br><code>CF_ADMIN_EMAIL</code>：管理员通知目标邮箱。<br><code>RESEND_API_KEY</code>：发送注册验证码到任意用户邮箱。<br><code>CF_EMAIL_ROUTING_API_TOKEN</code>：同步 Cloudflare 已验证邮箱。</p><b>DNS 相关</b><p><code>CF_API_TOKEN</code>：写入 Cloudflare DNS。<br><code>DNS_SUFFIX</code>、<code>DNS_ZONE_ID</code>、<code>DNS_ALLOWED_TYPES</code>、<code>DNS_DEFAULT_TYPE</code>、<code>DNS_TTL</code>、<code>DNS_PROXIED</code>：单根域名兼容配置；多根域名编辑器保存后会优先使用后台设置。</p><b>验证相关</b><p><code>TURNSTILE_SITE_KEY</code>：前端显示 Turnstile。<br><code>TURNSTILE_SECRET</code>：后端校验 Turnstile。<br><code>TURNSTILE_ACTION_LOGIN</code>、<code>TURNSTILE_ACTION_REGISTER</code>、<code>TURNSTILE_ACTION_APPLY</code>：区分登录、注册和域名申请场景。</p><b>GitHub 登录相关</b><p><code>GITHUB_CLIENT_ID</code>：GitHub OAuth App 的 Client ID。<br><code>GITHUB_CLIENT_SECRET</code>：GitHub OAuth App 的 Client Secret，必须作为 Worker Secret 保存。</p><b>管理相关</b><p><code>CF_ACCOUNT_ID</code>：Cloudflare 账户 ID。<br><code>CF_WORKERS_API_TOKEN</code>：允许网站内管理 Worker 变量；只能在 Cloudflare 控制台维护。</p></div>
         </section>
       </div>
 
@@ -7088,8 +7164,8 @@ Object.assign(I18N_EN, {
   '未匹配':'Unmatched',
 });
 
-function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v130</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
-async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v130')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v130')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
+function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v131</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
+async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v131')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v131')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
 function bindSettingsTools() {
   const exportFn = async () => {
     try {
@@ -7188,6 +7264,13 @@ function buildRegistrationSettingsPayload(form) {
     autoActivate: formBoolean(form, 'autoActivate'),
     requireRegistrationKey: formBoolean(form, 'requireRegistrationKey'),
     blockTempEmail: formBoolean(form, 'blockTempEmail'),
+    githubLoginEnabled: formBoolean(form, 'githubLoginEnabled'),
+    githubAllowRegister: formBoolean(form, 'githubAllowRegister'),
+    githubAutoActivate: formBoolean(form, 'githubAutoActivate'),
+    githubRequireVerifiedEmail: formBoolean(form, 'githubRequireVerifiedEmail'),
+    githubAllowAccountBinding: formBoolean(form, 'githubAllowAccountBinding'),
+    githubGrantDefaultQuota: formBoolean(form, 'githubGrantDefaultQuota'),
+    githubGrantRegistrationReward: formBoolean(form, 'githubGrantRegistrationReward'),
     humanVerificationMode: formString(form, 'humanVerificationMode'),
     captchaBackgroundEnabled: formBoolean(form, 'captchaBackgroundEnabled'),
     captchaBackgroundMode: formString(form, 'captchaBackgroundMode'),
@@ -7380,6 +7463,7 @@ function bindSettingForm(selector, group, mapper) {
       const { settings } = await api(`/api/admin/settings/${group}`, { method:'PUT', body:payload });
       state.config.site = settings.site;
       state.config.registration = settings.registration;
+      if (settings.registration && state.config.oauth?.github) { state.config.oauth.github.enabled = settings.registration.githubLoginEnabled !== false; state.config.oauth.github.allowRegister = settings.registration.githubAllowRegister !== false; state.config.oauth.github.allowAccountBinding = settings.registration.githubAllowAccountBinding !== false; state.config.oauth.github.requireVerifiedEmail = settings.registration.githubRequireVerifiedEmail !== false; }
       state.config.domain = domainConfig(settings.domain);
       state.config.dns = settings.dns;
       state.config.dnsRecordTypes = settings.dns?.recordTypePolicies || state.config.dnsRecordTypes;
