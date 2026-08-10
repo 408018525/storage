@@ -24,3 +24,8 @@ DNS_RESERVED_PREFIXES=www,api,admin,apply,storage,mail,smtp,imap,pop,ftp,cdn,sta
 
 # Multi-suffix alternative:
 # DNS_SUFFIXES_JSON=[{"label":"主域名","suffix":"example.com","zoneId":"0123456789abcdef0123456789abcdef","allowedTypes":["CNAME","A","AAAA"],"defaultType":"CNAME","ttl":1,"proxied":false,"enabled":true}]
+
+# GitHub OAuth login
+GITHUB_CLIENT_ID=
+# Put the real value in Cloudflare Workers Secrets, not in GitHub.
+GITHUB_CLIENT_SECRET=
