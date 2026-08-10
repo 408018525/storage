@@ -1736,6 +1736,22 @@ function oauthPublicConfig(env: Env, settings: AppSettings) {
   };
 }
 
+function hasUsableLocalPassword(user: Pick<UserRow, 'password_hash' | 'password_salt'> | null | undefined): boolean {
+  return Boolean(user?.password_hash && user?.password_salt);
+}
+
+function userPermissionMeta(user: Pick<UserRow, 'permissions_json'> | null | undefined): Record<string, unknown> {
+  try { return JSON.parse(String(user?.permissions_json || '{}')) || {}; } catch { return {}; }
+}
+
+async function canSkipCurrentPasswordForGithubAccount(env: Env, user: UserRow): Promise<boolean> {
+  const link = await env.DB.prepare(`SELECT id FROM oauth_accounts WHERE provider='github' AND user_id=? LIMIT 1`).bind(user.id).first<{ id: string }>();
+  if (!link) return false;
+  if (!hasUsableLocalPassword(user)) return true;
+  const meta = userPermissionMeta(user);
+  return meta.oauthCreated === 'github' || /^gh[_-]/i.test(String(user.username || ''));
+}
+
 function internalRedirectPath(raw: unknown, fallback = '/apply'): string {
   const value = String(raw || '').trim();
   if (!value || !value.startsWith('/') || value.startsWith('//') || value.startsWith('/api/')) return fallback;
@@ -1895,13 +1911,11 @@ async function githubOAuthCallback(request: Request, env: Env, url: URL): Promis
 
     const userId = crypto.randomUUID();
     const username = await availableGithubUsername(env, providerUsername);
-    const randomPassword = randomToken(32);
-    const { hash, salt } = await hashPassword(randomPassword);
     const status: UserStatus = settings.registration.githubAutoActivate === false ? 'disabled' : 'active';
     const domainQuota = settings.registration.githubGrantDefaultQuota === false ? 0 : Number(settings.domain.defaultQuota || 3);
     await env.DB.batch([
       env.DB.prepare(`INSERT INTO users (id, username, email, password_hash, password_salt, role, status, domain_quota, permissions_json) VALUES (?, ?, ?, ?, ?, 'user', ?, ?, ?)`)
-        .bind(userId, username, email, hash, salt, status, domainQuota, JSON.stringify({ canApply: true })),
+        .bind(userId, username, email, '', '', status, domainQuota, JSON.stringify({ canApply: true, oauthCreated: 'github' })),
       env.DB.prepare(`INSERT INTO oauth_accounts (id,user_id,provider,provider_user_id,provider_username,provider_email,avatar_url) VALUES (?,?,?,?,?,?,?)`)
         .bind(crypto.randomUUID(), userId, 'github', providerUserId, providerUsername, email, avatarUrl),
     ]);
@@ -2002,10 +2016,11 @@ async function changeOwnPassword(request: Request, env: Env): Promise<Response> 
   const newPassword = validatePassword(body.newPassword);
 
   const row = await env.DB.prepare(`
-    SELECT password_hash,password_salt FROM users WHERE id=?
-  `).bind(user.id).first<{ password_hash: string; password_salt: string }>();
+    SELECT password_hash,password_salt,permissions_json FROM users WHERE id=?
+  `).bind(user.id).first<{ password_hash: string; password_salt: string; permissions_json?: string | null }>();
 
-  if (!row || !(await verifyPassword(currentPassword, row.password_hash, row.password_salt))) {
+  const passwordCanBeSkipped = !currentPassword && row && await canSkipCurrentPasswordForGithubAccount(env, { ...user, password_hash: row.password_hash, password_salt: row.password_salt, permissions_json: row.permissions_json || user.permissions_json });
+  if (!passwordCanBeSkipped && (!row || !(await verifyPassword(currentPassword, row.password_hash, row.password_salt)))) {
     throw new HttpError(401, 'INVALID_CURRENT_PASSWORD', '当前密码不正确');
   }
 
@@ -2074,10 +2089,12 @@ async function deleteOwnAccount(request: Request, env: Env): Promise<Response> {
   }
 
   const row = await env.DB.prepare(`
-    SELECT password_hash,password_salt FROM users WHERE id=? AND status='active'
-  `).bind(user.id).first<{ password_hash: string; password_salt: string }>();
+    SELECT password_hash,password_salt,permissions_json FROM users WHERE id=? AND status='active'
+  `).bind(user.id).first<{ password_hash: string; password_salt: string; permissions_json?: string | null }>();
 
-  if (!row || !(await verifyPassword(currentPassword, row.password_hash, row.password_salt))) {
+  const oauthDeleteConfirm = String(body.oauthDeleteConfirm || '').toLowerCase() === 'github';
+  const passwordCanBeSkipped = oauthDeleteConfirm && row && await canSkipCurrentPasswordForGithubAccount(env, { ...user, password_hash: row.password_hash, password_salt: row.password_salt, permissions_json: row.permissions_json || user.permissions_json });
+  if (!passwordCanBeSkipped && (!row || !(await verifyPassword(currentPassword, row.password_hash, row.password_salt)))) {
     throw new HttpError(401, 'INVALID_CURRENT_PASSWORD', '当前密码不正确');
   }
 
@@ -8126,6 +8143,7 @@ function serializeUser(user: UserRow) {
     role: user.role,
     status: user.status,
     domainQuota: Math.max(0, Number(user.domain_quota ?? 3)),
+    hasPassword: Boolean(user.password_hash && user.password_salt),
     createdAt: user.created_at,
     lastLoginAt: user.last_login_at || null,
   };
