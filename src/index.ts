@@ -210,6 +210,7 @@ interface AppSettings {
     maintenanceMode?: boolean;
     maintenanceMessage?: string;
     themeMode?: string;
+    stylePreset?: 'soft-blue' | 'mist' | 'mint' | 'warm' | 'mono' | 'violet';
     noticeStartAt?: string;
     noticeEndAt?: string;
     accent: string;
@@ -478,6 +479,39 @@ interface AppSettings {
   help: {
     categories: HelpCategorySetting[];
   };
+  invitation: {
+    enabled: boolean;
+    inviterPoints: number;
+    inviteePoints: number;
+    inviterQuota: number;
+    inviteeQuota: number;
+    rewardReceiver: 'both' | 'inviter' | 'invitee';
+    requireActiveInvitee: boolean;
+    dailyRewardLimit: number;
+    maxRewardsPerInviter: number;
+    customCodeEnabled: boolean;
+    minAccountAgeHours: number;
+    rulesText: string;
+  };
+  points: {
+    enabled: boolean;
+    domainApplicationCost: number;
+    refundOnReject: boolean;
+    registrationReward: number;
+    firstDomainReward: number;
+    dailyLoginReward: number;
+    dailyLoginEnabled: boolean;
+    automaticGrantEnabled: boolean;
+    automaticGrantPoints: number;
+    automaticGrantCronLabel: string;
+    automaticGrantCadence: 'daily' | 'weekly' | 'monthly';
+    automaticGrantTime: string;
+    automaticGrantMinimumAccountDays: number;
+    automaticGrantMinimumDomains: number;
+    automaticGrantRequirement: string;
+    maxBalance: number;
+    rulesText: string;
+  };
   dns: {
     envManaged: boolean;
     reservedPrefixes: string[];
@@ -609,6 +643,10 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   if (method === 'PATCH' && pathname === '/api/account/profile') return updateOwnProfile(request, env);
   if (method === 'POST' && pathname === '/api/account/delete') return deleteOwnAccount(request, env);
   if (method === 'GET' && pathname === '/api/account/devices') return listOwnLoginDevices(request, env);
+  if (method === 'GET' && pathname === '/api/points') return getOwnPoints(request, env);
+  if (method === 'POST' && pathname === '/api/points/redeem') return redeemPointCode(request, env);
+  if (method === 'GET' && pathname === '/api/invitations') return getOwnInvitations(request, env);
+  if (method === 'PATCH' && pathname === '/api/invitations/code') return updateOwnInviteCode(request, env);
 
   if (method === 'GET' && pathname === '/api/applications') return listOwnApplications(request, env);
   if (method === 'POST' && pathname === '/api/applications/check-availability') return checkDomainAvailability(request, env);
@@ -667,6 +705,13 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   if (method === 'POST' && pathname === '/api/admin/users') return adminCreateUser(request, env);
   if (method === 'GET' && pathname === '/api/admin/registration-keys') return adminListRegistrationKeys(request, env);
   if (method === 'POST' && pathname === '/api/admin/registration-keys') return adminCreateRegistrationKey(request, env);
+  if (method === 'GET' && pathname === '/api/admin/invitation-settings') return adminInvitationSettings(request, env);
+  if (method === 'PUT' && pathname === '/api/admin/invitation-settings') return adminUpdateInvitationSettings(request, env);
+  if (method === 'GET' && pathname === '/api/admin/points-settings') return adminPointsSettings(request, env);
+  if (method === 'PUT' && pathname === '/api/admin/points-settings') return adminUpdatePointsSettings(request, env);
+  if (method === 'POST' && pathname === '/api/admin/point-codes') return adminCreatePointCode(request, env);
+  if (method === 'POST' && pathname === '/api/admin/points/grant') return adminGrantPoints(request, env);
+  if (method === 'GET' && pathname === '/api/admin/point-codes') return adminListPointCodes(request, env);
   if (method === 'GET' && pathname === '/api/admin/messages') return adminListMessages(request, env, url);
   if (method === 'POST' && pathname === '/api/admin/messages') return adminCreateMessage(request, env);
   if (method === 'GET' && pathname === '/api/admin/settings') return adminSettings(request, env);
@@ -697,6 +742,9 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
 
   match = pathname.match(/^\/api\/admin\/messages\/([^/]+)\/send$/);
   if (match && method === 'POST') return adminSendMessage(request, env, decodeURIComponent(match[1]));
+
+  match = pathname.match(/^\/api\/admin\/point-codes\/([^/]+)$/);
+  if (match && method === 'DELETE') return adminDeletePointCode(request, env, decodeURIComponent(match[1]));
 
   match = pathname.match(/^\/api\/admin\/settings\/(site|registration|domain|dns|blacklist|notification|security|automation)$/);
   if (match && method === 'PUT') return adminUpdateSettings(request, env, match[1] as AdminSettingGroup);
@@ -920,6 +968,85 @@ async function ensureSchema(env: Env): Promise<void> {
         FOREIGN KEY(user_id) REFERENCES users(id)
       )
     `),
+    env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS point_wallets (
+        user_id TEXT PRIMARY KEY,
+        balance INTEGER NOT NULL DEFAULT 0,
+        lifetime_earned INTEGER NOT NULL DEFAULT 0,
+        lifetime_spent INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY(user_id) REFERENCES users(id)
+      )
+    `),
+    env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS point_transactions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        amount INTEGER NOT NULL,
+        balance_after INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        description TEXT,
+        ref_type TEXT,
+        ref_id TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY(user_id) REFERENCES users(id)
+      )
+    `),
+    env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS point_redeem_codes (
+        id TEXT PRIMARY KEY,
+        code TEXT NOT NULL COLLATE NOCASE UNIQUE,
+        points INTEGER NOT NULL DEFAULT 0,
+        domain_quota INTEGER NOT NULL DEFAULT 0,
+        max_uses INTEGER NOT NULL DEFAULT 1,
+        used_count INTEGER NOT NULL DEFAULT 0,
+        per_user_limit INTEGER NOT NULL DEFAULT 1,
+        status TEXT NOT NULL DEFAULT 'active',
+        expires_at TEXT,
+        created_by TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `),
+    env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS point_redeem_usages (
+        id TEXT PRIMARY KEY,
+        code_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        used_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY(code_id) REFERENCES point_redeem_codes(id),
+        FOREIGN KEY(user_id) REFERENCES users(id)
+      )
+    `),
+    env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS user_invite_codes (
+        user_id TEXT PRIMARY KEY,
+        code TEXT NOT NULL COLLATE NOCASE UNIQUE,
+        custom INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY(user_id) REFERENCES users(id)
+      )
+    `),
+    env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS user_invitations (
+        id TEXT PRIMARY KEY,
+        inviter_user_id TEXT NOT NULL,
+        invitee_user_id TEXT NOT NULL UNIQUE,
+        invite_code TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'rewarded',
+        inviter_points INTEGER NOT NULL DEFAULT 0,
+        invitee_points INTEGER NOT NULL DEFAULT 0,
+        inviter_quota INTEGER NOT NULL DEFAULT 0,
+        invitee_quota INTEGER NOT NULL DEFAULT 0,
+        rewarded_at TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY(inviter_user_id) REFERENCES users(id),
+        FOREIGN KEY(invitee_user_id) REFERENCES users(id)
+      )
+    `),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_points_tx_user ON point_transactions(user_id, created_at)'),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_point_code_status ON point_redeem_codes(status, expires_at)'),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_invites_inviter ON user_invitations(inviter_user_id, created_at)'),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_invites_invitee ON user_invitations(invitee_user_id)'),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token_hash)'),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_apps_user ON domain_applications(user_id, created_at)'),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_apps_fqdn ON domain_applications(fqdn_ascii)'),
@@ -1096,6 +1223,11 @@ async function hardDeleteUser(env: Env, userId: string): Promise<void> {
   const messageIds = (messages.results || []).map(m => m.id);
 
   await env.DB.batch([
+    env.DB.prepare(`DELETE FROM point_redeem_usages WHERE user_id=?`).bind(userId),
+    env.DB.prepare(`DELETE FROM point_transactions WHERE user_id=?`).bind(userId),
+    env.DB.prepare(`DELETE FROM point_wallets WHERE user_id=?`).bind(userId),
+    env.DB.prepare(`DELETE FROM user_invitations WHERE inviter_user_id=? OR invitee_user_id=?`).bind(userId, userId),
+    env.DB.prepare(`DELETE FROM user_invite_codes WHERE user_id=?`).bind(userId),
     env.DB.prepare(`DELETE FROM message_reads WHERE user_id=?`).bind(userId),
     env.DB.prepare(`DELETE FROM user_message_deletions WHERE user_id=?`).bind(userId),
     env.DB.prepare(`DELETE FROM message_reads WHERE message_id IN (SELECT id FROM system_messages WHERE sender_user_id=? OR target_user_id=?)`).bind(userId, userId),
@@ -1399,10 +1531,11 @@ async function register(request: Request, env: Env): Promise<Response> {
     VALUES (?, ?, ?, ?, ?, ?, 'user', ?, ?, ?)
   `).bind(id, username, email, phone, hash, salt, status, settings.domain.defaultQuota, JSON.stringify({ canApply: true })).run();
 
+  await processRegistrationRewards(env, id, body.inviteCode, status, settings).catch(error => console.error('registration reward failed', error));
   if (registrationKey) await consumeRegistrationKey(env, registrationKey.id, id, username);
   if (emailVerificationKey) await env.DB.prepare(`DELETE FROM email_verification_codes WHERE email=? COLLATE NOCASE`).bind(emailVerificationKey).run().catch(() => undefined);
 
-  await audit(env, request, id, 'auth.register', 'user', id, { status, registrationKeyId: registrationKey?.id || null, emailVerified: Boolean(emailVerificationKey) });
+  await audit(env, request, id, 'auth.register', 'user', id, { status, registrationKeyId: registrationKey?.id || null, emailVerified: Boolean(emailVerificationKey), inviteCode: cleanText(body.inviteCode,40) || null });
 
   // 注册接口只负责创建账户，不再自动创建登录会话。
   // 这样即使旧数据库 sessions 表结构不一致，也不会出现“用户已创建但注册提示失败”。
@@ -1507,6 +1640,13 @@ async function logout(request: Request, env: Env): Promise<Response> {
 
 async function authMe(request: Request, env: Env): Promise<Response> {
   const user = await getAuthUser(env, request);
+  if (user?.status === 'active') {
+    try {
+      const settings = await loadSettings(env);
+      await maybeApplyDailyLoginReward(env, user, settings);
+      await maybeApplyAutomaticPointGrant(env, user, settings);
+    } catch {}
+  }
   return ok({ user: user ? serializeUser(user) : null });
 }
 
@@ -1649,6 +1789,409 @@ async function deleteOwnAccount(request: Request, env: Env): Promise<Response> {
   return withCookie(ok({ deleted: true, purged: true }), await destroySession(env, request));
 }
 
+
+
+
+// ---------------------------------------------------------------------------
+// Points & invitation center (v130)
+// ---------------------------------------------------------------------------
+
+type PointWalletRow = { user_id: string; balance: number; lifetime_earned: number; lifetime_spent: number; updated_at: string };
+
+async function ensurePointWallet(env: Env, userId: string): Promise<void> {
+  await env.DB.prepare(`INSERT OR IGNORE INTO point_wallets (user_id,balance,lifetime_earned,lifetime_spent) VALUES (?,0,0,0)`).bind(userId).run();
+}
+
+async function readPointWallet(env: Env, userId: string): Promise<PointWalletRow> {
+  await ensurePointWallet(env, userId);
+  const row = await env.DB.prepare(`SELECT * FROM point_wallets WHERE user_id=?`).bind(userId).first<PointWalletRow>();
+  return row || { user_id:userId, balance:0, lifetime_earned:0, lifetime_spent:0, updated_at:new Date().toISOString() };
+}
+
+async function changePoints(env: Env, userId: string, amount: number, type: string, description: string, refType = '', refId = '', maxBalance = 100000000): Promise<number> {
+  const delta = Math.trunc(Number(amount || 0));
+  if (!delta) return (await readPointWallet(env, userId)).balance;
+  const wallet = await readPointWallet(env, userId);
+  const next = wallet.balance + delta;
+  if (next < 0) throw new HttpError(403, 'POINTS_INSUFFICIENT', `积分不足，当前余额 ${wallet.balance}`);
+  if (next > maxBalance) throw new HttpError(409, 'POINTS_MAX_BALANCE', `积分余额超过上限 ${maxBalance}`);
+  await env.DB.batch([
+    env.DB.prepare(`UPDATE point_wallets SET balance=?,lifetime_earned=lifetime_earned+?,lifetime_spent=lifetime_spent+?,updated_at=datetime('now') WHERE user_id=?`)
+      .bind(next, delta > 0 ? delta : 0, delta < 0 ? -delta : 0, userId),
+    env.DB.prepare(`INSERT INTO point_transactions (id,user_id,amount,balance_after,type,description,ref_type,ref_id) VALUES (?,?,?,?,?,?,?,?)`)
+      .bind(crypto.randomUUID(), userId, delta, next, cleanText(type,60), cleanText(description,500), cleanText(refType,60), cleanText(refId,120)),
+  ]);
+  return next;
+}
+
+function invitationRewards(settings: AppSettings) {
+  const mode = settings.invitation.rewardReceiver || 'both';
+  const pointsEnabled = settings.points.enabled !== false;
+  return {
+    inviterPoints: !pointsEnabled || mode === 'invitee' ? 0 : Number(settings.invitation.inviterPoints || 0),
+    inviteePoints: !pointsEnabled || mode === 'inviter' ? 0 : Number(settings.invitation.inviteePoints || 0),
+    inviterQuota: mode === 'invitee' ? 0 : Number(settings.invitation.inviterQuota || 0),
+    inviteeQuota: mode === 'inviter' ? 0 : Number(settings.invitation.inviteeQuota || 0),
+  };
+}
+
+function generatedInviteCode(): string {
+  return `DN${randomToken(8).replace(/[^A-Za-z0-9]/g,'').slice(0,10)}`.toUpperCase();
+}
+
+async function getOrCreateInviteCode(env: Env, userId: string): Promise<string> {
+  const existing = await env.DB.prepare(`SELECT code FROM user_invite_codes WHERE user_id=?`).bind(userId).first<{code:string}>();
+  if (existing?.code) return existing.code;
+  for (let i=0;i<8;i++) {
+    const code = generatedInviteCode();
+    try {
+      await env.DB.prepare(`INSERT INTO user_invite_codes (user_id,code,custom) VALUES (?,?,0)`).bind(userId, code).run();
+      return code;
+    } catch {}
+  }
+  throw new HttpError(500, 'INVITE_CODE_CREATE_FAILED', '邀请码生成失败，请稍后重试');
+}
+
+async function resolveInviterByCode(env: Env, codeInput: unknown): Promise<UserRow | null> {
+  const code = cleanText(codeInput, 40).trim();
+  if (!code) return null;
+  return await env.DB.prepare(`
+    SELECT u.* FROM user_invite_codes c JOIN users u ON u.id=c.user_id
+    WHERE c.code=? COLLATE NOCASE AND u.status='active' LIMIT 1
+  `).bind(code).first<UserRow>();
+}
+
+async function invitationRewardAllowed(env: Env, inviter: UserRow, settings: AppSettings): Promise<{allowed:boolean; reason?:string}> {
+  const minHours = Number(settings.invitation.minAccountAgeHours || 0);
+  if (minHours > 0) {
+    const created = parseDate(inviter.created_at);
+    if (created && Date.now() - created.getTime() < minHours * 3600000) return { allowed:false, reason:'邀请人账号注册时间未达到奖励要求' };
+  }
+  const totalLimit = Number(settings.invitation.maxRewardsPerInviter || 0);
+  if (totalLimit > 0) {
+    const row = await env.DB.prepare(`SELECT COUNT(*) AS count FROM user_invitations WHERE inviter_user_id=? AND status='rewarded'`).bind(inviter.id).first<{count:number}>();
+    if (Number(row?.count || 0) >= totalLimit) return { allowed:false, reason:'邀请奖励总次数已达到上限' };
+  }
+  const dailyLimit = Number(settings.invitation.dailyRewardLimit || 0);
+  if (dailyLimit > 0) {
+    const row = await env.DB.prepare(`SELECT COUNT(*) AS count FROM user_invitations WHERE inviter_user_id=? AND status='rewarded' AND date(created_at)=date('now')`).bind(inviter.id).first<{count:number}>();
+    if (Number(row?.count || 0) >= dailyLimit) return { allowed:false, reason:'今日邀请奖励次数已达到上限' };
+  }
+  return { allowed:true };
+}
+
+async function rewardInvitation(env: Env, invitationId: string, inviter: UserRow, invitee: UserRow, inviteCode: string, settings: AppSettings): Promise<void> {
+  const allowed = await invitationRewardAllowed(env, inviter, settings);
+  if (!allowed.allowed) {
+    await env.DB.prepare(`UPDATE user_invitations SET status='limited' WHERE id=?`).bind(invitationId).run();
+    return;
+  }
+  const r = invitationRewards(settings);
+  if (r.inviterPoints) await ensurePointWallet(env, inviter.id);
+  if (r.inviteePoints) await ensurePointWallet(env, invitee.id);
+  const inviterWallet = r.inviterPoints ? await readPointWallet(env, inviter.id) : null;
+  const inviteeWallet = r.inviteePoints ? await readPointWallet(env, invitee.id) : null;
+  const maxBalance = Math.max(1, Number(settings.points.maxBalance || 100000000));
+  const inviterPoints = inviterWallet ? Math.max(0, Math.min(r.inviterPoints, maxBalance - inviterWallet.balance)) : 0;
+  const inviteePoints = inviteeWallet ? Math.max(0, Math.min(r.inviteePoints, maxBalance - inviteeWallet.balance)) : 0;
+  const stmts: any[] = [];
+  if (inviterPoints && inviterWallet) {
+    const next = inviterWallet.balance + inviterPoints;
+    stmts.push(env.DB.prepare(`UPDATE point_wallets SET balance=?,lifetime_earned=lifetime_earned+?,updated_at=datetime('now') WHERE user_id=?`).bind(next,inviterPoints,inviter.id));
+    stmts.push(env.DB.prepare(`INSERT INTO point_transactions (id,user_id,amount,balance_after,type,description,ref_type,ref_id) VALUES (?,?,?,?,?,?,?,?)`).bind(crypto.randomUUID(),inviter.id,inviterPoints,next,'invite_reward',`邀请 ${invitee.username} 注册奖励`,'invitation',invitationId));
+  }
+  if (inviteePoints && inviteeWallet) {
+    const next = inviteeWallet.balance + inviteePoints;
+    stmts.push(env.DB.prepare(`UPDATE point_wallets SET balance=?,lifetime_earned=lifetime_earned+?,updated_at=datetime('now') WHERE user_id=?`).bind(next,inviteePoints,invitee.id));
+    stmts.push(env.DB.prepare(`INSERT INTO point_transactions (id,user_id,amount,balance_after,type,description,ref_type,ref_id) VALUES (?,?,?,?,?,?,?,?)`).bind(crypto.randomUUID(),invitee.id,inviteePoints,next,'invite_reward',`通过邀请码 ${inviteCode} 注册奖励`,'invitation',invitationId));
+  }
+  if (r.inviterQuota) stmts.push(env.DB.prepare(`UPDATE users SET domain_quota=COALESCE(domain_quota,0)+?,updated_at=datetime('now') WHERE id=?`).bind(r.inviterQuota, inviter.id));
+  if (r.inviteeQuota) stmts.push(env.DB.prepare(`UPDATE users SET domain_quota=COALESCE(domain_quota,0)+?,updated_at=datetime('now') WHERE id=?`).bind(r.inviteeQuota, invitee.id));
+  stmts.push(env.DB.prepare(`UPDATE user_invitations SET status='rewarded',inviter_points=?,invitee_points=?,inviter_quota=?,invitee_quota=?,rewarded_at=datetime('now') WHERE id=?`).bind(inviterPoints,inviteePoints,r.inviterQuota,r.inviteeQuota,invitationId));
+  await env.DB.batch(stmts);
+}
+
+async function processRegistrationRewards(env: Env, userId: string, inviteCodeInput: unknown, status: string, settings: AppSettings): Promise<void> {
+  const invitee = await env.DB.prepare(`SELECT * FROM users WHERE id=?`).bind(userId).first<UserRow>();
+  if (!invitee) return;
+  await ensurePointWallet(env, userId);
+  if (settings.points.enabled && Number(settings.points.registrationReward || 0) > 0) {
+    await changePoints(env, userId, Number(settings.points.registrationReward), 'registration_reward', '新用户注册奖励', 'user', userId, settings.points.maxBalance);
+  }
+  if (!settings.invitation.enabled) return;
+  const inviter = await resolveInviterByCode(env, inviteCodeInput);
+  if (!inviter || inviter.id === userId) return;
+  const code = cleanText(inviteCodeInput,40).trim();
+  const id = crypto.randomUUID();
+  try {
+    await env.DB.prepare(`INSERT INTO user_invitations (id,inviter_user_id,invitee_user_id,invite_code,status) VALUES (?,?,?,?,?)`)
+      .bind(id, inviter.id, userId, code, settings.invitation.requireActiveInvitee && status !== 'active' ? 'pending' : 'processing').run();
+  } catch { return; }
+  if (settings.invitation.requireActiveInvitee && status !== 'active') return;
+  await rewardInvitation(env, id, inviter, invitee, code, settings);
+}
+
+async function fulfillPendingInvitation(env: Env, inviteeUserId: string): Promise<void> {
+  const settings = await loadSettings(env);
+  if (!settings.invitation.enabled) return;
+  const row = await env.DB.prepare(`SELECT * FROM user_invitations WHERE invitee_user_id=? AND status='pending' LIMIT 1`).bind(inviteeUserId).first<any>();
+  if (!row) return;
+  const inviter = await env.DB.prepare(`SELECT * FROM users WHERE id=? AND status='active'`).bind(row.inviter_user_id).first<UserRow>();
+  const invitee = await env.DB.prepare(`SELECT * FROM users WHERE id=? AND status='active'`).bind(inviteeUserId).first<UserRow>();
+  if (!inviter || !invitee) return;
+  await rewardInvitation(env, row.id, inviter, invitee, row.invite_code, settings);
+}
+
+async function maybeApplyDailyLoginReward(env: Env, user: UserRow, settings: AppSettings): Promise<void> {
+  if (!settings.points.enabled || !settings.points.dailyLoginEnabled || Number(settings.points.dailyLoginReward || 0) <= 0 || user.role === 'admin' || user.status !== 'active') return;
+  const day = new Date().toISOString().slice(0,10);
+  const exists = await env.DB.prepare(`SELECT id FROM point_transactions WHERE user_id=? AND type='daily_login_reward' AND ref_id=? LIMIT 1`).bind(user.id, day).first<{id:string}>();
+  if (exists) return;
+  await changePoints(env, user.id, Number(settings.points.dailyLoginReward), 'daily_login_reward', `每日登录奖励 ${day}`, 'daily_login', day, settings.points.maxBalance);
+}
+
+function automaticPointPeriodKey(now: Date, cadence: string): string {
+  const y = now.getUTCFullYear();
+  const m = String(now.getUTCMonth()+1).padStart(2,'0');
+  const d = String(now.getUTCDate()).padStart(2,'0');
+  if (cadence === 'daily') return `${y}-${m}-${d}`;
+  if (cadence === 'weekly') {
+    const start = new Date(Date.UTC(y,0,1));
+    const week = Math.ceil((((now.getTime()-start.getTime())/DAY)+start.getUTCDay()+1)/7);
+    return `${y}-W${String(week).padStart(2,'0')}`;
+  }
+  return `${y}-${m}`;
+}
+
+async function maybeApplyAutomaticPointGrant(env: Env, user: UserRow, settings: AppSettings): Promise<void> {
+  if (!settings.points.enabled || !settings.points.automaticGrantEnabled || Number(settings.points.automaticGrantPoints || 0) <= 0 || user.status !== 'active') return;
+  const ageDays = Number(settings.points.automaticGrantMinimumAccountDays || 0);
+  const created = parseDate(user.created_at);
+  if (ageDays > 0 && created && Date.now()-created.getTime() < ageDays*DAY) return;
+  const minDomains = Number(settings.points.automaticGrantMinimumDomains || 0);
+  if (minDomains > 0) {
+    const row = await env.DB.prepare(`SELECT COUNT(*) AS count FROM domain_applications WHERE user_id=? AND status='approved' AND (deleted_at IS NULL OR deleted_at='')`).bind(user.id).first<{count:number}>();
+    if (Number(row?.count || 0) < minDomains) return;
+  }
+  const now = new Date();
+  const time = String(settings.points.automaticGrantTime || '09:00');
+  const [hh,mm] = time.split(':').map(Number);
+  if (now.getUTCHours()*60 + now.getUTCMinutes() < hh*60 + mm) return;
+  const period = automaticPointPeriodKey(now, settings.points.automaticGrantCadence || 'monthly');
+  const exists = await env.DB.prepare(`SELECT id FROM point_transactions WHERE user_id=? AND type='auto_grant' AND ref_id=? LIMIT 1`).bind(user.id, period).first<{id:string}>();
+  if (exists) return;
+  await changePoints(env, user.id, Number(settings.points.automaticGrantPoints), 'auto_grant', `自动积分发放 ${period}`, 'auto_period', period, settings.points.maxBalance);
+}
+
+async function refundDomainApplicationCost(env: Env, app: ApplicationRow, settings: AppSettings): Promise<void> {
+  if (!settings.points.enabled || !settings.points.refundOnReject) return;
+  const charged = await env.DB.prepare(`SELECT * FROM point_transactions WHERE user_id=? AND type='domain_application_cost' AND ref_id=? ORDER BY datetime(created_at) DESC LIMIT 1`).bind(app.user_id, app.id).first<any>();
+  if (!charged || Number(charged.amount || 0) >= 0) return;
+  const already = await env.DB.prepare(`SELECT id FROM point_transactions WHERE user_id=? AND type='domain_application_refund' AND ref_id=? LIMIT 1`).bind(app.user_id,app.id).first<any>();
+  if (already) return;
+  await changePoints(env,app.user_id,-Number(charged.amount),'domain_application_refund',`域名申请被拒绝退回积分：${app.fqdn_unicode || app.fqdn_ascii}`,'domain_application',app.id,settings.points.maxBalance);
+}
+
+async function getOwnPoints(request: Request, env: Env): Promise<Response> {
+  const user = await requireUser(env, request);
+  const settings = await loadSettings(env);
+  await maybeApplyDailyLoginReward(env, user, settings);
+  await maybeApplyAutomaticPointGrant(env, user, settings);
+  const wallet = await readPointWallet(env, user.id);
+  const tx = await env.DB.prepare(`SELECT id,amount,balance_after,type,description,ref_type,ref_id,created_at FROM point_transactions WHERE user_id=? ORDER BY datetime(created_at) DESC LIMIT 100`).bind(user.id).all<any>();
+  return ok({
+    wallet,
+    transactions: tx.results || [],
+    settings: {
+      enabled: settings.points.enabled,
+      domainApplicationCost: settings.points.domainApplicationCost,
+      registrationReward: settings.points.registrationReward,
+      firstDomainReward: settings.points.firstDomainReward,
+      dailyLoginReward: settings.points.dailyLoginReward,
+      rulesText: settings.points.rulesText,
+    },
+  });
+}
+
+async function redeemPointCode(request: Request, env: Env): Promise<Response> {
+  const user = await requireUser(env, request);
+  const settings = await loadSettings(env);
+  if (!settings.points.enabled) throw new HttpError(403,'POINTS_DISABLED','积分功能暂未开放');
+  const body = await readJson<Record<string,unknown>>(request);
+  const codeText = cleanText(body.code,80).trim();
+  if (!codeText) throw new HttpError(400,'POINT_CODE_REQUIRED','请输入兑换口令');
+  const code = await env.DB.prepare(`SELECT * FROM point_redeem_codes WHERE code=? COLLATE NOCASE AND status='active' LIMIT 1`).bind(codeText).first<any>();
+  if (!code) throw new HttpError(404,'POINT_CODE_INVALID','兑换口令不存在或已停用');
+  if (code.expires_at && new Date(code.expires_at).getTime() <= Date.now()) throw new HttpError(410,'POINT_CODE_EXPIRED','兑换口令已过期');
+  if (Number(code.max_uses || 0) > 0 && Number(code.used_count || 0) >= Number(code.max_uses)) throw new HttpError(409,'POINT_CODE_USED_UP','兑换口令已达到使用次数上限');
+  const usage = await env.DB.prepare(`SELECT COUNT(*) AS count FROM point_redeem_usages WHERE code_id=? AND user_id=?`).bind(code.id,user.id).first<{count:number}>();
+  if (Number(code.per_user_limit || 1) > 0 && Number(usage?.count || 0) >= Number(code.per_user_limit)) throw new HttpError(409,'POINT_CODE_USER_LIMIT','您已经使用过该兑换口令');
+  const wallet = await readPointWallet(env,user.id);
+  const points = Math.max(0,Number(code.points||0));
+  const quota = Math.max(0,Number(code.domain_quota||0));
+  if (points && wallet.balance + points > settings.points.maxBalance) throw new HttpError(409,'POINTS_MAX_BALANCE','兑换后将超过积分余额上限');
+  const next = wallet.balance + points;
+  const stmts:any[] = [
+    env.DB.prepare(`UPDATE point_redeem_codes SET used_count=used_count+1 WHERE id=?`).bind(code.id),
+    env.DB.prepare(`INSERT INTO point_redeem_usages (id,code_id,user_id) VALUES (?,?,?)`).bind(crypto.randomUUID(),code.id,user.id),
+  ];
+  if (points) {
+    stmts.push(env.DB.prepare(`UPDATE point_wallets SET balance=?,lifetime_earned=lifetime_earned+?,updated_at=datetime('now') WHERE user_id=?`).bind(next,points,user.id));
+    stmts.push(env.DB.prepare(`INSERT INTO point_transactions (id,user_id,amount,balance_after,type,description,ref_type,ref_id) VALUES (?,?,?,?,?,?,?,?)`).bind(crypto.randomUUID(),user.id,points,next,'redeem_code',`兑换口令 ${codeText}`,'redeem_code',code.id));
+  }
+  if (quota) stmts.push(env.DB.prepare(`UPDATE users SET domain_quota=COALESCE(domain_quota,0)+?,updated_at=datetime('now') WHERE id=?`).bind(quota,user.id));
+  await env.DB.batch(stmts);
+  await audit(env,request,user.id,'points.redeem','point_code',code.id,{points,quota});
+  return ok({ redeemed:true, points, domainQuota:quota, balance:next });
+}
+
+async function getOwnInvitations(request: Request, env: Env): Promise<Response> {
+  const user = await requireUser(env, request);
+  const settings = await loadSettings(env);
+  const code = await getOrCreateInviteCode(env,user.id);
+  const counts = await env.DB.prepare(`SELECT COUNT(*) AS total,SUM(CASE WHEN date(created_at)=date('now') THEN 1 ELSE 0 END) AS today,COALESCE(SUM(inviter_points),0) AS points,COALESCE(SUM(inviter_quota),0) AS quota FROM user_invitations WHERE inviter_user_id=?`).bind(user.id).first<any>();
+  const records = await env.DB.prepare(`SELECT i.id,i.status,i.invite_code,i.inviter_points,i.invitee_points,i.inviter_quota,i.invitee_quota,i.created_at,i.rewarded_at,u.username AS invitee_username FROM user_invitations i JOIN users u ON u.id=i.invitee_user_id WHERE i.inviter_user_id=? ORDER BY datetime(i.created_at) DESC LIMIT 100`).bind(user.id).all<any>();
+  const origin = new URL(request.url).origin;
+  const rewards = invitationRewards(settings);
+  return ok({
+    inviteCode:code,
+    inviteLink:`${origin}/register?invite=${encodeURIComponent(code)}`,
+    stats:{ total:Number(counts?.total||0), today:Number(counts?.today||0), earnedPoints:Number(counts?.points||0), earnedQuota:Number(counts?.quota||0) },
+    records:records.results||[],
+    settings:{ enabled:settings.invitation.enabled, ...rewards, rewardReceiver:settings.invitation.rewardReceiver, customCodeEnabled:settings.invitation.customCodeEnabled, rulesText:settings.invitation.rulesText },
+  });
+}
+
+async function updateOwnInviteCode(request: Request, env: Env): Promise<Response> {
+  const user = await requireUser(env,request);
+  const settings = await loadSettings(env);
+  if (!settings.invitation.customCodeEnabled) throw new HttpError(403,'CUSTOM_INVITE_CODE_DISABLED','管理员未开放自定义邀请码');
+  const body = await readJson<Record<string,unknown>>(request);
+  const code = cleanText(body.code,30).trim();
+  if (!/^[A-Za-z0-9_-]{4,24}$/.test(code)) throw new HttpError(400,'INVALID_INVITE_CODE','邀请码需为 4-24 位字母、数字、下划线或短横线');
+  await getOrCreateInviteCode(env,user.id);
+  try { await env.DB.prepare(`UPDATE user_invite_codes SET code=?,custom=1,updated_at=datetime('now') WHERE user_id=?`).bind(code,user.id).run(); }
+  catch { throw new HttpError(409,'INVITE_CODE_EXISTS','该邀请码已经被使用'); }
+  await audit(env,request,user.id,'invitation.code_update','user',user.id,{code});
+  return ok({ code, inviteLink:`${new URL(request.url).origin}/register?invite=${encodeURIComponent(code)}` });
+}
+
+async function adminInvitationSettings(request: Request, env: Env): Promise<Response> {
+  await requireAdmin(env,request);
+  const settings = await loadSettings(env);
+  const stats = await env.DB.prepare(`SELECT COUNT(*) AS total,COALESCE(SUM(inviter_points+invitee_points),0) AS points,COALESCE(SUM(inviter_quota+invitee_quota),0) AS quota FROM user_invitations`).first<any>();
+  return ok({ settings:settings.invitation, stats });
+}
+
+async function adminUpdateInvitationSettings(request: Request, env: Env): Promise<Response> {
+  const admin = await requireAdmin(env,request);
+  const body = await readJson<Record<string,unknown>>(request);
+  const settings = await loadSettings(env);
+  settings.invitation = {
+    enabled:asBoolean(body.enabled,true),
+    inviterPoints:clamp(Number(body.inviterPoints||0),0,1000000),
+    inviteePoints:clamp(Number(body.inviteePoints||0),0,1000000),
+    inviterQuota:clamp(Number(body.inviterQuota||0),0,10000),
+    inviteeQuota:clamp(Number(body.inviteeQuota||0),0,10000),
+    rewardReceiver:['both','inviter','invitee'].includes(String(body.rewardReceiver||'both')) ? String(body.rewardReceiver||'both') as any : 'both',
+    requireActiveInvitee:asBoolean(body.requireActiveInvitee,false),
+    dailyRewardLimit:clamp(Number(body.dailyRewardLimit||0),0,10000),
+    maxRewardsPerInviter:clamp(Number(body.maxRewardsPerInviter||0),0,1000000),
+    customCodeEnabled:asBoolean(body.customCodeEnabled,true),
+    minAccountAgeHours:clamp(Number(body.minAccountAgeHours||0),0,8760),
+    rulesText:cleanText(body.rulesText,10000),
+  };
+  await env.APP_KV.put(SETTINGS_KEY,JSON.stringify(settings));
+  await audit(env,request,admin.id,'admin.invitation_settings','setting','invitation');
+  return ok({settings:settings.invitation});
+}
+
+async function adminPointsSettings(request: Request, env: Env): Promise<Response> {
+  await requireAdmin(env,request);
+  const settings = await loadSettings(env);
+  const stats = await env.DB.prepare(`SELECT COUNT(*) AS wallets,COALESCE(SUM(balance),0) AS balance,COALESCE(SUM(lifetime_earned),0) AS earned,COALESCE(SUM(lifetime_spent),0) AS spent FROM point_wallets`).first<any>();
+  return ok({settings:settings.points,stats});
+}
+
+async function adminUpdatePointsSettings(request: Request, env: Env): Promise<Response> {
+  const admin = await requireAdmin(env,request);
+  const body = await readJson<Record<string,unknown>>(request);
+  const settings = await loadSettings(env);
+  settings.points = {
+    enabled:asBoolean(body.enabled,true),
+    domainApplicationCost:clamp(Number(body.domainApplicationCost||0),0,1000000),
+    refundOnReject:asBoolean(body.refundOnReject,true),
+    registrationReward:clamp(Number(body.registrationReward||0),0,1000000),
+    firstDomainReward:clamp(Number(body.firstDomainReward||0),0,1000000),
+    dailyLoginReward:clamp(Number(body.dailyLoginReward||0),0,1000000),
+    dailyLoginEnabled:asBoolean(body.dailyLoginEnabled,false),
+    automaticGrantEnabled:asBoolean(body.automaticGrantEnabled,false),
+    automaticGrantPoints:clamp(Number(body.automaticGrantPoints||0),0,1000000),
+    automaticGrantCronLabel:cleanText(body.automaticGrantCronLabel,80),
+    automaticGrantCadence:['daily','weekly','monthly'].includes(String(body.automaticGrantCadence||'monthly')) ? String(body.automaticGrantCadence||'monthly') as any : 'monthly',
+    automaticGrantTime:/^\d{2}:\d{2}$/.test(String(body.automaticGrantTime||'09:00')) ? String(body.automaticGrantTime||'09:00') : '09:00',
+    automaticGrantMinimumAccountDays:clamp(Number(body.automaticGrantMinimumAccountDays||0),0,3650),
+    automaticGrantMinimumDomains:clamp(Number(body.automaticGrantMinimumDomains||0),0,10000),
+    automaticGrantRequirement:cleanText(body.automaticGrantRequirement,500),
+    maxBalance:clamp(Number(body.maxBalance||100000000),1,1000000000),
+    rulesText:cleanText(body.rulesText,10000),
+  };
+  await env.APP_KV.put(SETTINGS_KEY,JSON.stringify(settings));
+  await audit(env,request,admin.id,'admin.points_settings','setting','points');
+  return ok({settings:settings.points});
+}
+
+async function adminCreatePointCode(request: Request, env: Env): Promise<Response> {
+  const admin = await requireAdmin(env,request);
+  const body = await readJson<Record<string,unknown>>(request);
+  const raw = cleanText(body.code,80).trim();
+  const code = raw || `PTS-${randomToken(8).replace(/[^A-Za-z0-9]/g,'').slice(0,10).toUpperCase()}`;
+  if (!/^[A-Za-z0-9_-]{4,64}$/.test(code)) throw new HttpError(400,'INVALID_POINT_CODE','兑换口令格式不正确');
+  const points = clamp(Number(body.points||0),0,1000000);
+  const quota = clamp(Number(body.domainQuota||0),0,10000);
+  if (!points && !quota) throw new HttpError(400,'POINT_CODE_EMPTY','积分和域名额度至少设置一项奖励');
+  const id=crypto.randomUUID();
+  try {
+    await env.DB.prepare(`INSERT INTO point_redeem_codes (id,code,points,domain_quota,max_uses,per_user_limit,status,expires_at,created_by) VALUES (?,?,?,?,?,?,?,?,?)`)
+      .bind(id,code,points,quota,clamp(Number(body.maxUses||1),0,1000000),clamp(Number(body.perUserLimit||1),0,10000),'active',cleanText(body.expiresAt,80)||null,admin.id).run();
+  } catch { throw new HttpError(409,'POINT_CODE_EXISTS','兑换口令已存在'); }
+  await audit(env,request,admin.id,'admin.point_code_create','point_code',id,{code,points,quota});
+  return ok({id,code});
+}
+
+async function adminListPointCodes(request: Request, env: Env): Promise<Response> {
+  await requireAdmin(env,request);
+  const rows=await env.DB.prepare(`SELECT id,code,points,domain_quota,max_uses,used_count,per_user_limit,status,expires_at,created_at FROM point_redeem_codes ORDER BY datetime(created_at) DESC LIMIT 300`).all<any>();
+  return ok({codes:rows.results||[]});
+}
+
+async function adminDeletePointCode(request: Request, env: Env, id: string): Promise<Response> {
+  const admin=await requireAdmin(env,request);
+  await env.DB.prepare(`UPDATE point_redeem_codes SET status='disabled' WHERE id=?`).bind(id).run();
+  await audit(env,request,admin.id,'admin.point_code_disable','point_code',id);
+  return ok({disabled:true});
+}
+
+async function adminGrantPoints(request: Request, env: Env): Promise<Response> {
+  const admin=await requireAdmin(env,request);
+  const body=await readJson<Record<string,unknown>>(request);
+  const settings=await loadSettings(env);
+  const amount=clamp(Number(body.amount||0),1,1000000);
+  const description=cleanText(body.description,300)||'管理员发放积分';
+  const targetType=String(body.targetType||'user');
+  let users:UserRow[]=[];
+  if (targetType==='all') {
+    const rows=await env.DB.prepare(`SELECT * FROM users WHERE role='user' AND status='active' ORDER BY created_at DESC LIMIT 5000`).all<UserRow>(); users=rows.results||[];
+  } else {
+    const identity=cleanText(body.identity,200).trim();
+    const row=await env.DB.prepare(`SELECT * FROM users WHERE id=? OR username=? COLLATE NOCASE OR email=? COLLATE NOCASE LIMIT 1`).bind(identity,identity,identity).first<UserRow>();
+    if (!row) throw new HttpError(404,'USER_NOT_FOUND','未找到目标用户'); users=[row];
+  }
+  let success=0;
+  for (const u of users) { try { await changePoints(env,u.id,amount,'admin_grant',description,'admin',admin.id,settings.points.maxBalance); success++; } catch {} }
+  await audit(env,request,admin.id,'admin.points_grant','user',targetType,{amount,success});
+  return ok({success,total:users.length});
+}
 
 function applicationDnsProjection(alias: string = 'a'): string {
   const live = `(r.deleted_at IS NULL OR r.deleted_at='')`;
@@ -1899,7 +2442,8 @@ async function createApplication(request: Request, env: Env): Promise<Response> 
   const appStatus = autoApproved ? 'approved' : 'pending';
   const expiresAt = autoApproved ? new Date(Date.now() + settings.domain.validDays * DAY).toISOString() : null;
 
-  await env.DB.prepare(`
+  const pointCost = user.role === 'admin' || !settings.points.enabled ? 0 : Math.max(0, Number(settings.points.domainApplicationCost || 0));
+  const insertApplication = env.DB.prepare(`
     INSERT INTO domain_applications (
       id,user_id,prefix_unicode,prefix_ascii,suffix_unicode,suffix_ascii,fqdn_unicode,fqdn_ascii,
       record_type,record_content,proxied,ttl,status,expires_at,reviewed_at
@@ -1907,9 +2451,24 @@ async function createApplication(request: Request, env: Env): Promise<Response> 
   `).bind(
     id, user.id, prefix.unicode, prefix.ascii, suffix.suffix, suffix.suffixAscii, fqdnUnicode, fqdnAscii,
     suffix.defaultType, '', suffix.proxied ? 1 : 0, suffix.ttl, appStatus, expiresAt, autoApproved ? new Date().toISOString() : null,
-  ).run();
+  );
+  if (pointCost > 0) {
+    const wallet = await readPointWallet(env,user.id);
+    if (wallet.balance < pointCost) throw new HttpError(403,'POINTS_INSUFFICIENT',`申请该域名需要 ${pointCost} 积分，当前余额 ${wallet.balance}`);
+    const next = wallet.balance - pointCost;
+    await env.DB.batch([
+      insertApplication,
+      env.DB.prepare(`UPDATE point_wallets SET balance=?,lifetime_spent=lifetime_spent+?,updated_at=datetime('now') WHERE user_id=?`).bind(next,pointCost,user.id),
+      env.DB.prepare(`INSERT INTO point_transactions (id,user_id,amount,balance_after,type,description,ref_type,ref_id) VALUES (?,?,?,?,?,?,?,?)`).bind(crypto.randomUUID(),user.id,-pointCost,next,'domain_application_cost',`申请域名 ${fqdnUnicode}`,'domain_application',id),
+    ]);
+  } else {
+    await insertApplication.run();
+  }
+  if (Number(activeCount?.count || 0) === 0 && user.role !== 'admin' && settings.points.enabled && Number(settings.points.firstDomainReward || 0) > 0) {
+    await changePoints(env,user.id,Number(settings.points.firstDomainReward),'first_domain_reward',`首次提交域名申请奖励：${fqdnUnicode}`,'domain_application',id,settings.points.maxBalance).catch(()=>undefined);
+  }
 
-  await audit(env, request, user.id, 'application.create', 'domain_application', id, { fqdnAscii });
+  await audit(env, request, user.id, 'application.create', 'domain_application', id, { fqdnAscii, pointCost });
   if (appStatus === 'pending') {
     await sendAdminCloudflareEmailSafe(env, 'domain_review', {
       subject: `【域名待审核】${fqdnUnicode}`,
@@ -3925,6 +4484,7 @@ async function adminReviewApplication(request: Request, env: Env, id: string, ac
       SET status='rejected',review_note=?,reviewed_at=datetime('now'),reviewed_by=?,error_message=NULL
       WHERE id=?
     `).bind(note, admin.id, id).run();
+    await refundDomainApplicationCost(env, app, settings).catch(error => console.error('domain point refund failed', error));
     await audit(env, request, admin.id, 'application.reject', 'domain_application', id, { note });
     await sendDomainStatusMessage(env, admin.id, app, '域名申请已被拒绝', note || '管理员拒绝了该域名申请。', 'warning');
     return ok({ status: 'rejected' });
@@ -4732,6 +5292,7 @@ async function adminUpdateUser(request: Request, env: Env, id: string): Promise<
     UPDATE users SET role=?,status=?,domain_quota=?,updated_at=datetime('now') WHERE id=?
   `).bind(role, status, quota, id).run();
 
+  if (status === 'active' && target.status !== 'active') await fulfillPendingInvitation(env, id).catch(error => console.error('pending invitation reward failed', error));
   await audit(env, request, admin.id, 'admin.user_update', 'user', id, { role, status, quota });
   return ok({ updated: true });
 }
@@ -4755,9 +5316,21 @@ async function adminUpdateHelpSettings(request: Request, env: Env): Promise<Resp
 
 function defaultHelpSettings(): { categories: HelpCategorySetting[] } {
   return { categories: [
-    { key:'faq', title:'常见问题', subtitle:'账号、注册、审核、登录、额度、语言、消息等常见问题', items: [] },
+    { key:'faq', title:'常见问题', subtitle:'账号、注册、审核、登录、额度、消息与安全等常见问题', items: [] },
     { key:'dns', title:'DNS 记录说明', subtitle:'A / AAAA / CNAME / TXT / MX / NS、代理、TTL、生效时间、第三方平台配置', items: [] },
     { key:'domain', title:'域名管理问题', subtitle:'解析管理、删除撤销、续期、禁用、管理员处理、手机端操作等问题', items: [] },
+    { key:'points', title:'积分与兑换', subtitle:'余额、口令兑换、域名积分价格、奖励、退款和交易记录', items: [
+      { id:'points-v130-1', q:'积分可以用来做什么？', a:'<p>积分用于本站设置的活动与服务，例如域名申请积分价格。具体规则以积分页面和管理员公告为准。</p>' },
+      { id:'points-v130-2', q:'如何兑换积分口令？', a:'<p>登录后进入“积分”，在“口令兑换”输入有效口令。口令可能发放积分、域名额度或两者同时发放。</p>' },
+      { id:'points-v130-3', q:'在哪里看积分交易记录？', a:'<p>“积分”页面会记录奖励、兑换、域名申请扣除、退款和管理员发放，并显示每笔变动后的余额。</p>' },
+      { id:'points-v130-4', q:'域名申请被拒绝会退积分吗？', a:'<p>由管理员政策决定。开启自动退款时，审核拒绝后会自动生成退款交易。</p>' },
+    ] },
+    { key:'invite', title:'邀请好友', subtitle:'邀请码、邀请链接、奖励条件、自定义邀请码、邀请记录和防刷规则', items: [
+      { id:'invite-v130-1', q:'如何邀请好友？', a:'<p>进入“邀请”，复制邀请码或邀请链接发给好友。通过邀请链接注册会自动填写邀请码。</p>' },
+      { id:'invite-v130-2', q:'邀请奖励什么时候到账？', a:'<p>满足当前活动规则后发放。如果管理员要求新用户先激活，会先显示待激活状态。</p>' },
+      { id:'invite-v130-3', q:'为什么邀请没有奖励？', a:'<p>可能触发每日/累计上限、账号年龄要求、待激活条件或防刷规则。可在邀请记录查看状态，仍有疑问请提交工单。</p>' },
+      { id:'invite-v130-4', q:'可以自定义邀请码吗？', a:'<p>管理员开放后可以。邀请码需全站唯一，长度 4–24 位，仅允许字母、数字、下划线和短横线。</p>' },
+    ] },
   ] };
 }
 
@@ -4839,7 +5412,8 @@ async function adminUpdateSettings(request: Request, env: Env, group: AdminSetti
       headerThirdPartyJs: cleanText(body.headerThirdPartyJs, 20000),
       maintenanceMode: asBoolean(body.maintenanceMode, false),
       maintenanceMessage: cleanText(body.maintenanceMessage, 1000),
-      themeMode: ['light','dark','system'].includes(String(body.themeMode)) ? String(body.themeMode) : 'light',
+      themeMode: 'light',
+      stylePreset: ['soft-blue','mist','mint','warm','mono','violet'].includes(String(body.stylePreset || 'soft-blue')) ? String(body.stylePreset || 'soft-blue') as any : 'soft-blue',
       noticeStartAt: cleanText(body.noticeStartAt, 80),
       noticeEndAt: cleanText(body.noticeEndAt, 80),
       accent: normalizeHexColor(body.accent, '#4f63f6'),
@@ -5225,6 +5799,8 @@ async function loadSettings(env: Env): Promise<AppSettings> {
   const site = { ...defaults.site, ...(saved.site || {}) };
   const registration = { ...defaults.registration, ...(saved.registration || {}) };
   const domain = { ...defaults.domain, ...(saved.domain || {}) };
+  const invitation = { ...defaults.invitation, ...((saved as any).invitation || {}) };
+  const points = { ...defaults.points, ...((saved as any).points || {}) };
   const dnsSaved = (saved as any).dns || {};
   const hadSavedRecordTypePolicies = Array.isArray(dnsSaved.recordTypePolicies);
   let sanitizedSuffixes = sanitizeDnsSuffixes(dnsSaved.suffixes, defaults.dns.suffixes);
@@ -5255,6 +5831,31 @@ async function loadSettings(env: Env): Promise<AppSettings> {
     registration,
     domain,
     help: { categories: Array.isArray((saved as any).help?.categories) ? sanitizeHelpCategories((saved as any).help.categories) : defaults.help.categories },
+    invitation: {
+      ...invitation,
+      inviterPoints: clamp(Number(invitation.inviterPoints || 0), 0, 1000000),
+      inviteePoints: clamp(Number(invitation.inviteePoints || 0), 0, 1000000),
+      inviterQuota: clamp(Number(invitation.inviterQuota || 0), 0, 10000),
+      inviteeQuota: clamp(Number(invitation.inviteeQuota || 0), 0, 10000),
+      dailyRewardLimit: clamp(Number(invitation.dailyRewardLimit || 0), 0, 10000),
+      maxRewardsPerInviter: clamp(Number(invitation.maxRewardsPerInviter || 0), 0, 1000000),
+      minAccountAgeHours: clamp(Number(invitation.minAccountAgeHours || 0), 0, 8760),
+      rulesText: cleanText(invitation.rulesText, 10000),
+    },
+    points: {
+      ...points,
+      domainApplicationCost: clamp(Number(points.domainApplicationCost || 0), 0, 1000000),
+      registrationReward: clamp(Number(points.registrationReward || 0), 0, 1000000),
+      firstDomainReward: clamp(Number(points.firstDomainReward || 0), 0, 1000000),
+      dailyLoginReward: clamp(Number(points.dailyLoginReward || 0), 0, 1000000),
+      automaticGrantPoints: clamp(Number(points.automaticGrantPoints || 0), 0, 1000000),
+      automaticGrantCadence: ['daily','weekly','monthly'].includes(String(points.automaticGrantCadence || 'monthly')) ? String(points.automaticGrantCadence || 'monthly') as any : 'monthly',
+      automaticGrantTime: /^\d{2}:\d{2}$/.test(String(points.automaticGrantTime || '09:00')) ? String(points.automaticGrantTime || '09:00') : '09:00',
+      automaticGrantMinimumAccountDays: clamp(Number(points.automaticGrantMinimumAccountDays || 0), 0, 3650),
+      automaticGrantMinimumDomains: clamp(Number(points.automaticGrantMinimumDomains || 0), 0, 10000),
+      maxBalance: clamp(Number(points.maxBalance || 100000000), 0, 1000000000),
+      rulesText: cleanText(points.rulesText, 10000),
+    },
     dns,
     blacklist: {
       prefixes: sanitizeStringList((saved as any).blacklist?.prefixes),
@@ -5314,6 +5915,7 @@ function defaultSettings(env: Env): AppSettings {
       maintenanceMode: false,
       maintenanceMessage: '系统维护中，请稍后再试。',
       themeMode: 'light',
+      stylePreset: 'soft-blue',
       noticeStartAt: '',
       noticeEndAt: '',
       accent: '#4f63f6',
@@ -5560,6 +6162,39 @@ function defaultSettings(env: Env): AppSettings {
       hardDeleteAfterExpireDays: 30,
       blockedPrefixText: reserved.join('\n'),
       adminOnlyPrefixText: 'admin\nroot\nsystem',
+    },
+    invitation: {
+      enabled: true,
+      inviterPoints: 100,
+      inviteePoints: 100,
+      inviterQuota: 0,
+      inviteeQuota: 0,
+      rewardReceiver: 'both',
+      requireActiveInvitee: false,
+      dailyRewardLimit: 20,
+      maxRewardsPerInviter: 0,
+      customCodeEnabled: true,
+      minAccountAgeHours: 0,
+      rulesText: '1. 每个新用户仅能绑定一位邀请人。\n2. 禁止自邀、批量注册、虚假账号或其他刷奖励行为。\n3. 发现异常邀请时，管理员可撤销奖励并限制账户。\n4. 邀请奖励以系统实际到账记录为准。',
+    },
+    points: {
+      enabled: true,
+      domainApplicationCost: 0,
+      refundOnReject: true,
+      registrationReward: 0,
+      firstDomainReward: 0,
+      dailyLoginReward: 0,
+      dailyLoginEnabled: false,
+      automaticGrantEnabled: false,
+      automaticGrantPoints: 0,
+      automaticGrantCronLabel: '每月1日',
+      automaticGrantCadence: 'monthly',
+      automaticGrantTime: '09:00',
+      automaticGrantMinimumAccountDays: 0,
+      automaticGrantMinimumDomains: 0,
+      automaticGrantRequirement: '账户状态正常',
+      maxBalance: 100000000,
+      rulesText: '积分用于平台内活动、兑换和域名申请等场景。积分不可提现、不可转让，异常获取的积分可被撤销。',
     },
     help: defaultHelpSettings(),
     dns: {
@@ -7381,20 +8016,20 @@ async function adminSystemStatus(request: Request, env: Env): Promise<Response> 
       (SELECT COUNT(*) FROM audit_logs WHERE datetime(created_at) >= datetime('now','-' || ? || ' days')) AS logsRetained
   `).bind(auditRetentionDays).first<any>();
   return ok({
-    version: 'v129',
+    version: 'v130',
     settingsKey: SETTINGS_KEY,
     kv: { storage: 'Workers KV', estimatedKeys: '由 Cloudflare 控制台查看实际占用' },
     cfApi: { configured: Boolean(resolveDnsToken(env, settings)), status: resolveDnsToken(env, settings) ? '已配置' : '未配置' },
     cron: { enabled: Boolean(settings.automation?.enabled), expression: settings.automation?.cronExpression || '' },
     counts: { ...counts, logs4d: Number(counts?.logsRetained || 0) },
     auditRetentionDays,
-    update: { current: 'v129', latest: '请以当前部署包为准' },
+    update: { current: 'v130', latest: '请以当前部署包为准' },
   });
 }
 
 async function adminExportSettings(request: Request, env: Env): Promise<Response> {
   await requireAdmin(env, request);
-  return ok({ exportedAt: new Date().toISOString(), version: 'v129', settings: await loadSettings(env) });
+  return ok({ exportedAt: new Date().toISOString(), version: 'v130', settings: await loadSettings(env) });
 }
 
 async function adminImportSettings(request: Request, env: Env): Promise<Response> {
