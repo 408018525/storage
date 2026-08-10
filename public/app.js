@@ -725,12 +725,63 @@ function applyI18n(root = app) {
 function reportMissingI18n() {}
 function ensureI18nObserver() {}
 function bindLanguageControls() {}
+
+const DISPLAY_THEME_KEY = 'storage_display_theme_mode_v134';
+function currentDisplayTheme() {
+  try {
+    const saved = localStorage.getItem(DISPLAY_THEME_KEY);
+    if (saved === 'dark' || saved === 'light') return saved;
+  } catch (_) {}
+  return 'light';
+}
+function applyDisplayTheme(mode = currentDisplayTheme()) {
+  const next = mode === 'dark' ? 'dark' : 'light';
+  document.documentElement.dataset.theme = next;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', next === 'dark' ? '#0f172a' : '#5468ff');
+  syncThemeButtons();
+}
+function setDisplayTheme(mode) {
+  const next = mode === 'dark' ? 'dark' : 'light';
+  try { localStorage.setItem(DISPLAY_THEME_KEY, next); } catch (_) {}
+  applyDisplayTheme(next);
+}
+function toggleDisplayTheme() {
+  setDisplayTheme(currentDisplayTheme() === 'dark' ? 'light' : 'dark');
+}
+function themeToggleHtml() {
+  const dark = currentDisplayTheme() === 'dark';
+  return `<button class="theme-toggle-v134 ${dark ? 'is-dark' : 'is-light'}" type="button" data-theme-toggle aria-label="切换日夜显示" title="切换日夜显示"><span class="theme-toggle-track-v134"><span class="theme-toggle-sun-v134">☀</span><span class="theme-toggle-moon-v134">☾</span><span class="theme-toggle-knob-v134"></span></span></button>`;
+}
+function themeCornerHtml() {
+  return `<div class="theme-corner-v134">${themeToggleHtml()}</div>`;
+}
+function syncThemeButtons() {
+  const dark = currentDisplayTheme() === 'dark';
+  document.querySelectorAll('[data-theme-toggle]').forEach(btn => {
+    btn.classList.toggle('is-dark', dark);
+    btn.classList.toggle('is-light', !dark);
+    btn.setAttribute('aria-pressed', dark ? 'true' : 'false');
+    btn.setAttribute('title', dark ? '切换到日间显示' : '切换到夜间显示');
+  });
+}
+function bindThemeControls(root = document) {
+  root.querySelectorAll('[data-theme-toggle]').forEach(btn => {
+    if (btn.dataset.themeBound === '1') return;
+    btn.dataset.themeBound = '1';
+    btn.addEventListener('click', event => {
+      event.preventDefault();
+      toggleDisplayTheme();
+    });
+  });
+  syncThemeButtons();
+}
 Object.assign(I18N_EN, {
   '按根域名分页显示；注册时间、到期时间和剩余时间进入域名详情后查看。':'Grouped and paginated by root domain. Open a domain to view registration and expiry details.',
   '上一页':'Previous','下一页':'Next','根域名':'Root Domain'
 });
 
-function afterRender() { applyI18n(); }
+function afterRender() { applyDisplayTheme(currentDisplayTheme()); bindThemeControls(); applyI18n(); }
 function analyticsVisitorId() {
   const key = 'storage_analytics_visitor_id';
   try {
@@ -933,6 +984,7 @@ function openModal(title, subtitle, content, size = '') {
     if (e.target.classList.contains('modal-backdrop')) closeModal();
   });
   bindLanguageControls();
+  bindThemeControls(modalRoot);
   applyI18n(modalRoot);
 }
 async function api(path, options = {}) {
@@ -1168,8 +1220,8 @@ function applyTheme() {
   const site = state.config?.site || {};
   document.documentElement.style.setProperty('--accent', site.accent || '#4f63f6');
   document.documentElement.style.setProperty('--accent-2', site.accent2 || '#7c4dff');
-  document.documentElement.dataset.theme = 'light';
   document.documentElement.dataset.stylePreset = site.stylePreset || 'soft-blue';
+  applyDisplayTheme(currentDisplayTheme());
   document.title = lang() === 'en' ? 'Domain Registration Center' : (site.title || '免费二级域名注册中心');
   let favicon = document.querySelector('link[rel="icon"]');
   if (site.faviconUrl) {
@@ -1479,7 +1531,7 @@ function publicHeader(active = 'home') {
     <div class="public-header-inner">
       ${site.publicHeaderShowBrand === false ? '<div></div>' : publicBrandHtml()}
       <nav class="public-nav-desktop">${links}</nav>
-      <div class="public-header-actions">${languageAction}${accountAction}</div>
+      <div class="public-header-actions">${languageAction}${themeToggleHtml()}${accountAction}</div>
       <details class="public-nav-mobile">
         <summary aria-label="${pub('打开导航','Open navigation')}">☰</summary>
         <div class="public-mobile-menu">${links}${mobileAccount ? `<hr>${mobileAccount}` : ''}</div>
@@ -2059,12 +2111,12 @@ async function route() {
 function renderNotFound() {
   const site = state.config?.site || {};
   if (state.me) return shell('404', `<section class="card"><h2>页面不存在</h2><p>${esc(site.notFoundText || '页面不存在或已移动')}</p><button class="btn primary" onclick="go('/apply')">返回首页</button></section>`);
-  app.innerHTML = `<main class="auth-wrap"><section class="auth-card"><h1>404</h1><p>${esc(site.notFoundText || '页面不存在或已移动')}</p><a class="btn primary" href="/home">返回首页</a></section></main>`;
+  app.innerHTML = `${themeCornerHtml()}<main class="auth-wrap"><section class="auth-card"><h1>404</h1><p>${esc(site.notFoundText || '页面不存在或已移动')}</p><a class="btn primary" href="/home">返回首页</a></section></main>`;
 }
 
 function authTemplate(title, subtitle, formHtml) {
   const site = state.config?.site || {};
-  return `${langButton()}<main class="auth-wrap">
+  return `${themeCornerHtml()}${langButton()}<main class="auth-wrap">
     <section class="auth-brand">
       <div class="auth-logo">${esc(site.logoText || '域')}</div>
       <h1>${esc(site.title || '免费二级域名注册中心')}</h1>
@@ -2274,7 +2326,7 @@ function consumeOauthToast() {
 async function renderLogin() {
   const turn = state.config.turnstile || {};
   const site = state.config?.site || {};
-  app.innerHTML = `${langButton()}
+  app.innerHTML = `${themeCornerHtml()}${langButton()}
     <main class="auth-wrap login-split-wrap">
       <section class="auth-brand login-split-brand">
         <div class="auth-logo">${esc(site.logoText || 'free')}</div>
@@ -2618,7 +2670,7 @@ function shell(title, content) {
       <header class="topbar">
         <button class="btn ghost menu-btn" id="menu">☰</button>
         <h1>${esc(title)}</h1>
-        <div class="topbar-actions">${langButton()}${statusBadge(state.me.status || 'active')}</div>
+        <div class="topbar-actions">${langButton()}${themeToggleHtml()}${statusBadge(state.me.status || 'active')}</div>
       </header>
       ${isNoticeActive(site) && !isAdmin ? `<div class="site-notice">${markdownLite(site.homepageNotice)}</div>` : ``}<section class="content">${content}</section>${(site.icp || site.footer || site.copyright) ? `<footer class="app-footer">${site.footer ? `<div class="footer-line footer-text">${esc(site.footer)}</div>` : ``}${site.copyright ? `<div class="footer-line footer-copyright">${esc(site.copyright)}</div>` : ``}${site.icp ? `<div class="footer-line footer-icp">${esc(site.icp)}</div>` : ``}</footer>` : ``}
     </main>
@@ -2654,6 +2706,7 @@ function shell(title, content) {
   document.querySelectorAll('.sidebar .nav:not(.support-nav-toggle), .sidebar .support-subnav-link').forEach(a => a.addEventListener('click', closeSidebar));
   bindSidebarCustomization();
   bindLanguageControls();
+  bindThemeControls();
   setTimeout(() => applyI18n(), 0);
 }
 
@@ -7900,6 +7953,7 @@ function startLiveI18nObserver() {
       try {
         applyI18n(document.body);
         bindLanguageControls();
+        bindThemeControls();
       } catch (e) {}
     }, 20);
   };
