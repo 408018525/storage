@@ -776,12 +776,108 @@ function bindThemeControls(root = document) {
   });
   syncThemeButtons();
 }
+
+const INLINE_TEXT_SELECTOR_V135 = 'h1,h2,h3,h4,h5,h6,p,small,label,legend,button,a,th,summary,b,strong,span,em,li';
+function normalizedInlineTextV135(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+function inlineTextKeyV135(value) {
+  const text = normalizedInlineTextV135(value);
+  let hash = 5381;
+  for (let i = 0; i < text.length; i += 1) hash = ((hash << 5) + hash + text.charCodeAt(i)) >>> 0;
+  return `txt_${hash.toString(36)}`;
+}
+function inlineTextOverridesV135() {
+  const map = state.config?.site?.textOverrides;
+  return map && typeof map === 'object' ? map : {};
+}
+function textLooksSensitiveV135(value) {
+  const text = normalizedInlineTextV135(value);
+  if (!text || text.length < 2 || text.length > 500) return true;
+  if (!/[A-Za-z\u4e00-\u9fff]/.test(text)) return true;
+  if (/^(https?:\/\/|[A-Za-z0-9_-]{20,}|[a-f0-9]{24,}|[0-9a-f]{8}-[0-9a-f-]{13,})/i.test(text)) return true;
+  if (/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(text)) return true;
+  if (/^(\*\.)?[A-Za-z0-9-]+(\.[A-Za-z0-9-]+){1,}$/.test(text)) return true;
+  if (/^[0-9\s:：,，.\-\/年月日天小时分钟秒%]+$/.test(text)) return true;
+  if (/^(A|AAAA|CNAME|TXT|MX|NS|CAA|SRV)$/i.test(text)) return true;
+  if (/token|secret|key|zone|client id|client secret|api|密钥|令牌|变量值|变量名称|环境变量|注册码|注册密钥|zone id/i.test(text)) return true;
+  return false;
+}
+function inlineTextBlockedV135(el) {
+  if (!el || el.nodeType !== 1) return true;
+  return Boolean(el.closest('input,textarea,select,[contenteditable="true"],.sidebar,.theme-toggle-v134,.lang-toggle,.turnstile,.cf-turnstile,.image-captcha,.image-captcha-wrap,code,pre,.mono,.modal-x,#toast-root,.toast,.nav-badge,.status-pill,.table-wrap td,.worker-variable-card,.variable-card,.dns-record-card,.dns-record-row,.registration-key-card,.domain-title code,.domain-name,.copy-field-v131'));
+}
+function isInlineTextCandidateV135(el) {
+  if (!el || !el.matches?.(INLINE_TEXT_SELECTOR_V135)) return false;
+  if (inlineTextBlockedV135(el)) return false;
+  if (el.children && el.children.length > 0) return false;
+  const text = normalizedInlineTextV135(el.dataset.inlineTextOriginal || el.textContent || '');
+  if (textLooksSensitiveV135(text)) return false;
+  return true;
+}
+function setInlineElementTextV135(el, text) {
+  const raw = String(el.textContent || '');
+  const prefix = raw.match(/^\s*/)?.[0] || '';
+  const suffix = raw.match(/\s*$/)?.[0] || '';
+  el.textContent = `${prefix}${text}${suffix}`;
+}
+function applyInlineTextOverridesV135(root = document) {
+  const overrides = inlineTextOverridesV135();
+  root.querySelectorAll?.(INLINE_TEXT_SELECTOR_V135).forEach(el => {
+    if (!isInlineTextCandidateV135(el)) return;
+    const current = normalizedInlineTextV135(el.dataset.inlineTextOriginal || el.textContent || '');
+    if (!el.dataset.inlineTextOriginal) el.dataset.inlineTextOriginal = current;
+    const key = inlineTextKeyV135(current);
+    el.dataset.inlineTextKey = key;
+    el.classList.add('inline-text-editable-v135');
+    if (state.me?.role === 'admin') el.setAttribute('title', '管理员可右键/长按修改显示文字');
+    const next = overrides[key];
+    if (next && normalizedInlineTextV135(el.textContent) !== normalizedInlineTextV135(next)) setInlineElementTextV135(el, next);
+  });
+}
+async function editInlineTextTargetV135(el) {
+  if (state.me?.role !== 'admin' || !el || !el.dataset.inlineTextKey) return;
+  const original = normalizedInlineTextV135(el.dataset.inlineTextOriginal || el.textContent || '');
+  if (textLooksSensitiveV135(original)) return toast('该内容可能是域名、密钥、变量、注册码或数据值，不能通过快捷文字编辑修改', 'error');
+  const current = normalizedInlineTextV135(el.textContent || original);
+  const next = prompt(`修改显示文字\n原文：${original}`, current);
+  if (next === null) return;
+  const text = normalizedInlineTextV135(next);
+  if (!text) return toast('显示文字不能为空', 'error');
+  try {
+    const result = await api('/api/admin/text-overrides', { method:'POST', body:{ key:el.dataset.inlineTextKey, original, text, route:currentRoutePath() } });
+    state.config.site = { ...(state.config.site || {}), ...(result.settings?.site || {}), textOverrides:{ ...(state.config.site?.textOverrides || {}), [el.dataset.inlineTextKey]: result.text || text } };
+    document.querySelectorAll(`[data-inline-text-key="${CSS.escape(el.dataset.inlineTextKey)}"]`).forEach(node => setInlineElementTextV135(node, result.text || text));
+    toast(result.synced?.length ? '文字已保存，并同步到对应后台设置' : '文字已保存', 'success');
+  } catch(error) {
+    toast(error.message || '文字保存失败', 'error');
+  }
+}
+function bindInlineTextEditingV135() {
+  if (window.__inlineTextEditingV135Bound) return;
+  window.__inlineTextEditingV135Bound = true;
+  document.addEventListener('contextmenu', event => {
+    const target = event.target?.closest?.('[data-inline-text-key]');
+    if (!target || state.me?.role !== 'admin' || inlineTextBlockedV135(target)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    editInlineTextTargetV135(target);
+  });
+  let timer = 0;
+  let target = null;
+  document.addEventListener('touchstart', event => {
+    target = event.target?.closest?.('[data-inline-text-key]') || null;
+    if (!target || state.me?.role !== 'admin' || inlineTextBlockedV135(target)) return;
+    timer = setTimeout(() => { try { editInlineTextTargetV135(target); } finally { timer = 0; target = null; } }, 720);
+  }, { passive:true });
+  ['touchmove','touchend','touchcancel'].forEach(type => document.addEventListener(type, () => { if (timer) clearTimeout(timer); timer = 0; target = null; }, { passive:true }));
+}
 Object.assign(I18N_EN, {
   '按根域名分页显示；注册时间、到期时间和剩余时间进入域名详情后查看。':'Grouped and paginated by root domain. Open a domain to view registration and expiry details.',
   '上一页':'Previous','下一页':'Next','根域名':'Root Domain'
 });
 
-function afterRender() { applyDisplayTheme(currentDisplayTheme()); bindThemeControls(); applyI18n(); }
+function afterRender() { applyDisplayTheme(currentDisplayTheme()); bindThemeControls(); applyI18n(); applyInlineTextOverridesV135(); bindInlineTextEditingV135(); }
 function analyticsVisitorId() {
   const key = 'storage_analytics_visitor_id';
   try {
@@ -1312,7 +1408,8 @@ const DEFAULT_BOOT_CONFIG = {
     logoText: 'free',
     footer: '',
     icp: '',
-    copyright: ''
+    copyright: '',
+    textOverrides: {}
   },
   turnstile: {
     siteKey: '0x4AAAAAAD1yD8g5IE44JADq',
