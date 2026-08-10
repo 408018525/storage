@@ -2256,11 +2256,9 @@ function githubOAuthStartUrl(mode = 'login', extra = {}) {
   return `${url.pathname}${url.search}`;
 }
 function githubAuthButtonHtml(context = 'login') {
-  const g = githubOAuthConfig();
   if (!githubOAuthAvailable()) return '';
-  const label = context === 'bind' ? '绑定 GitHub 账号' : (context === 'register' ? '使用 GitHub 注册 / 登录' : '使用 GitHub 登录');
-  const hint = g.requireVerifiedEmail === false ? '使用 GitHub 授权后进入账户。' : '需要 GitHub 账号存在已验证邮箱。';
-  return `<div class="oauth-login-box"><a class="btn github-oauth-btn" href="${attr(githubOAuthStartUrl(context === 'bind' ? 'bind' : 'login', { redirect: context === 'bind' ? '/account' : '/apply' }))}"><span class="github-oauth-mark">●</span>${esc(label)}</a><small>${esc(hint)}</small></div>`;
+  const label = context === 'register' ? '使用 GitHub 注册 / 登录' : '使用 GitHub 登录';
+  return `<div class="oauth-login-box oauth-login-box-v133"><div class="oauth-divider-v133"><span>或</span></div><a class="github-oauth-btn github-oauth-btn-v133" href="${attr(githubOAuthStartUrl(context === 'bind' ? 'bind' : 'login', { redirect: context === 'bind' ? '/account' : '/apply' }))}">${esc(label)}</a></div>`;
 }
 function consumeOauthToast() {
   const url = new URL(location.href);
@@ -4788,6 +4786,13 @@ async function showUserDevicesModal(u) {
 }
 
 
+function accountCanSkipPasswordByOauth(data = {}) {
+  const accounts = Array.isArray(data.accounts) ? data.accounts : [];
+  const hasGithub = accounts.some(item => item.provider === 'github');
+  const username = String(state.me?.username || '');
+  return Boolean(hasGithub && (state.me?.hasPassword === false || /^gh[_-]/i.test(username)));
+}
+
 function accountOauthCardHtml(data = {}) {
   const github = data.github || githubOAuthConfig();
   const accounts = Array.isArray(data.accounts) ? data.accounts : [];
@@ -4825,6 +4830,10 @@ async function renderAccount() {
   }
   const hasBlockingDomains = blockingDomains.length > 0;
   const blockingTipHtml = hasBlockingDomains ? `<div class="notice danger account-delete-tip"><strong>暂不能注销账号</strong><p>还有 ${blockingDomains.length} 个域名没有注销完成，请先进入“域名管理”处理：</p><ul>${blockingDomains.slice(0,6).map(a => `<li>${esc(a.fqdnUnicode || a.fqdnAscii || '')} · ${esc(a.deleteRequested ? '待删除审核' : (a.statusText || a.status || '未处理'))}</li>`).join('')}</ul></div>` : '';
+  state.accountCanSkipPasswordByOauth = accountCanSkipPasswordByOauth(oauthData);
+  const passwordCardHtml = state.accountCanSkipPasswordByOauth
+    ? `<section class="card"><h2>设置登录密码</h2><p>当前账户由 GitHub 登录创建，暂时没有你自己设置过的密码。需要保留密码登录时，可在这里设置一个新密码。</p><form id="password-form" class="form-grid"><input name="currentPassword" type="hidden" value=""><label class="field wide"><span>新密码</span><input name="newPassword" type="password" required minlength="8" autocomplete="new-password"></label><button class="btn primary wide" type="submit">设置登录密码</button></form></section>`
+    : `<section class="card"><h2>修改密码</h2><form id="password-form" class="form-grid"><label class="field wide"><span>当前密码</span><input name="currentPassword" type="password" required autocomplete="current-password"></label><label class="field wide"><span>新密码</span><input name="newPassword" type="password" required minlength="8" autocomplete="new-password"></label><button class="btn primary wide" type="submit">修改密码</button></form></section>`;
   shell('账户设置', `
     <div class="grid two">
       <section class="card">
@@ -4847,7 +4856,7 @@ async function renderAccount() {
           <button class="btn primary wide" type="submit">保存账户资料</button>
         </form>
       </section>
-      <section class="card"><h2>修改密码</h2><form id="password-form" class="form-grid"><label class="field wide"><span>当前密码</span><input name="currentPassword" type="password" required></label><label class="field wide"><span>新密码</span><input name="newPassword" type="password" required minlength="8"></label><button class="btn primary wide" type="submit">修改密码</button></form></section>
+      ${passwordCardHtml}
       ${accountOauthCardHtml(oauthData)}
       <section class="card wide"><div class="section-head"><div><h2>登录设备管理</h2><p>当前同账号已登录设备数量：${devices.length} 台。可以查看设备名称、设备IP、设备型号、首次登录和最近使用时间。</p></div></div>${deviceCardsHtml(devices)}</section>
       <section class="card danger-zone account-delete-card"><h2>注销账号</h2><p>注销前必须先处理完账号下所有正常、待审核或待删除审核域名。没有未注销域名后，才可以注销程序账号。</p>${blockingTipHtml}<button class="btn danger" id="delete-account" type="button" ${hasBlockingDomains ? 'disabled' : ''}>注销账号</button></section>
@@ -4918,17 +4927,21 @@ async function showDeleteAccountModal() {
     console.warn('load applications before delete failed', error);
   }
   const hasBlocking = blockingDomains.length > 0;
+  const skipPassword = Boolean(state.accountCanSkipPasswordByOauth);
   const domainListHtml = hasBlocking ? `
     <div class="delete-box blocking-domain-box">
       <p class="danger-text">当前账号还有以下域名没有完成注销，暂时不能注销程序账号：</p>
       <ul class="blocking-domain-list">${blockingDomains.map(a => `<li><strong>${esc(a.fqdnUnicode || a.fqdnAscii || '')}</strong><span>${esc(a.deleteRequested ? '待删除审核' : (a.statusText || a.status || '未处理'))}</span></li>`).join('')}</ul>
       <p>请先进入“域名管理”申请删除这些域名，并等待管理员批准后再回来注销账号。</p>
     </div>` : '';
+  const passwordConfirmHtml = skipPassword
+    ? `<div class="delete-box oauth-delete-confirm-v133"><p><strong>GitHub 登录账户</strong></p><p>当前账户是通过 GitHub 创建或绑定的账户，注销时不再要求输入本地密码；请只输入账号名确认。</p><input name="currentPassword" type="hidden" value=""><input name="oauthDeleteConfirm" type="hidden" value="github"></div>`
+    : `<label class="field wide"><span>当前密码</span><input name="currentPassword" type="password" required ${hasBlocking ? 'disabled' : ''}></label>`;
   openModal('注销账号', '此操作不可直接恢复，请谨慎确认。', `
     <form id="delete-account-form" class="modal-form">
       <div class="delete-box"><p>当前账号：</p><strong>${esc(state.me.username)}</strong><p class="danger-text">注销后将退出登录，账号和相关数据会从 D1 / KV 中清理。</p></div>
       ${domainListHtml}
-      <label class="field wide"><span>当前密码</span><input name="currentPassword" type="password" required ${hasBlocking ? 'disabled' : ''}></label>
+      ${passwordConfirmHtml}
       <label class="field wide"><span>输入当前账号确认</span><input name="confirmAccount" placeholder="${attr(state.me.username)}" autocomplete="off" required ${hasBlocking ? 'disabled' : ''}><em>${hasBlocking ? '请先注销上方域名后再操作。' : '当前账号必须完全一致。'}</em></label>
       <div class="modal-actions"><button type="button" class="btn secondary" data-cancel>取消</button><button class="btn danger" id="confirm-delete-account" type="submit" disabled>确认注销</button></div>
     </form>
