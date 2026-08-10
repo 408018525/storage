@@ -56,6 +56,8 @@ export interface Env {
   TURNSTILE_ACTION_APPLY?: string;
   TURNSTILE_ACTION_LOGIN?: string;
   TURNSTILE_ACTION_REGISTER?: string;
+  GITHUB_CLIENT_ID?: string;
+  GITHUB_CLIENT_SECRET?: string;
 }
 
 type Role = 'admin' | 'user';
@@ -447,6 +449,13 @@ interface AppSettings {
     failedRegisterBanMinutes?: number;
     blockVpnProxy?: boolean;
     requireRegistrationKey?: boolean;
+    githubLoginEnabled?: boolean;
+    githubAllowRegister?: boolean;
+    githubAutoActivate?: boolean;
+    githubRequireVerifiedEmail?: boolean;
+    githubAllowAccountBinding?: boolean;
+    githubGrantDefaultQuota?: boolean;
+    githubGrantRegistrationReward?: boolean;
   };
   domain: {
     defaultQuota: number;
@@ -635,6 +644,8 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
 
   if (method === 'POST' && pathname === '/api/auth/login') return login(request, env);
   if (method === 'POST' && pathname === '/api/auth/register') return register(request, env);
+  if (method === 'GET' && pathname === '/api/auth/github') return startGithubOAuth(request, env, url);
+  if (method === 'GET' && pathname === '/api/auth/github/callback') return githubOAuthCallback(request, env, url);
   if (method === 'POST' && pathname === '/api/auth/email-verification/send') return sendRegistrationEmailCode(request, env);
   if (method === 'POST' && pathname === '/api/auth/captcha/challenge') return createImageCaptchaChallenge(request, env);
   if (method === 'POST' && pathname === '/api/auth/logout') return logout(request, env);
@@ -642,6 +653,8 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   if (method === 'POST' && pathname === '/api/auth/change-password') return changeOwnPassword(request, env);
   if (method === 'PATCH' && pathname === '/api/account/profile') return updateOwnProfile(request, env);
   if (method === 'POST' && pathname === '/api/account/delete') return deleteOwnAccount(request, env);
+  if (method === 'GET' && pathname === '/api/account/oauth') return listOwnOauthAccounts(request, env);
+  if (method === 'POST' && pathname === '/api/account/oauth/github/unbind') return unbindOwnGithubAccount(request, env);
   if (method === 'GET' && pathname === '/api/account/devices') return listOwnLoginDevices(request, env);
   if (method === 'GET' && pathname === '/api/points') return getOwnPoints(request, env);
   if (method === 'POST' && pathname === '/api/points/redeem') return redeemPointCode(request, env);
@@ -1043,10 +1056,28 @@ async function ensureSchema(env: Env): Promise<void> {
         FOREIGN KEY(invitee_user_id) REFERENCES users(id)
       )
     `),
+    env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS oauth_accounts (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        provider_user_id TEXT NOT NULL,
+        provider_username TEXT,
+        provider_email TEXT,
+        avatar_url TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(provider, provider_user_id),
+        UNIQUE(provider, user_id),
+        FOREIGN KEY(user_id) REFERENCES users(id)
+      )
+    `),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_points_tx_user ON point_transactions(user_id, created_at)'),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_point_code_status ON point_redeem_codes(status, expires_at)'),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_invites_inviter ON user_invitations(inviter_user_id, created_at)'),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_invites_invitee ON user_invitations(invitee_user_id)'),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_oauth_accounts_user ON oauth_accounts(user_id)'),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_oauth_accounts_provider ON oauth_accounts(provider, provider_user_id)'),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token_hash)'),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_apps_user ON domain_applications(user_id, created_at)'),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_apps_fqdn ON domain_applications(fqdn_ascii)'),
@@ -1168,10 +1199,12 @@ async function cleanupHardDeletedRows(env: Env): Promise<void> {
     `DELETE FROM message_reads WHERE user_id IN (SELECT id FROM users WHERE status='deleted')`,
     `DELETE FROM system_messages WHERE sender_user_id IN (SELECT id FROM users WHERE status='deleted') OR target_user_id IN (SELECT id FROM users WHERE status='deleted')`,
     `DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE status='deleted')`,
+    `DELETE FROM oauth_accounts WHERE user_id IN (SELECT id FROM users WHERE status='deleted')`,
     `DELETE FROM audit_logs WHERE actor_user_id IN (SELECT id FROM users WHERE status='deleted') OR (target_type='user' AND target_id IN (SELECT id FROM users WHERE status='deleted'))`,
     `DELETE FROM users WHERE status='deleted'`,
     `DELETE FROM domain_applications WHERE deleted_at IS NOT NULL AND deleted_at!=''`,
     `DELETE FROM sessions WHERE user_id NOT IN (SELECT id FROM users)`,
+    `DELETE FROM oauth_accounts WHERE user_id NOT IN (SELECT id FROM users)`,
     `DELETE FROM email_verification_codes WHERE datetime(expires_at) < datetime('now')`,
   ];
   for (const sql of statements) {
@@ -1236,6 +1269,7 @@ async function hardDeleteUser(env: Env, userId: string): Promise<void> {
     env.DB.prepare(`DELETE FROM dns_records WHERE user_id=? OR application_id IN (SELECT id FROM domain_applications WHERE user_id=?)`).bind(userId, userId),
     env.DB.prepare(`DELETE FROM domain_applications WHERE user_id=?`).bind(userId),
     env.DB.prepare(`DELETE FROM sessions WHERE user_id=?`).bind(userId),
+    env.DB.prepare(`DELETE FROM oauth_accounts WHERE user_id=?`).bind(userId),
     env.DB.prepare(`DELETE FROM audit_logs WHERE actor_user_id=? OR (target_type='user' AND target_id=?)`).bind(userId, userId),
     env.DB.prepare(`DELETE FROM users WHERE id=?`).bind(userId),
   ]);
@@ -1280,6 +1314,7 @@ async function publicConfigHandler(env: Env): Promise<Response> {
           registerOrder: Number(x.registerOrder || 0),
         })),
       turnstile: turnstilePublicConfig(env, settings),
+      oauth: oauthPublicConfig(env, settings),
       needsBootstrap: Number(adminCount?.count || 0) === 0,
     },
   });
@@ -1629,6 +1664,248 @@ async function login(request: Request, env: Env): Promise<Response> {
   const cookie = await createSession(env, request, user.id, Boolean(body.remember));
   await audit(env, request, user.id, 'auth.login', 'user', user.id);
   return withCookie(ok({ user: serializeUser(user), accountDisabled, message: accountDisabled ? '你的账户已被禁用' : '' }), cookie);
+}
+
+
+type GithubOAuthState = {
+  mode: 'login' | 'bind';
+  userId?: string | null;
+  redirectTo?: string;
+  inviteCode?: string;
+  createdAt: string;
+};
+
+type GithubEmail = { email?: string; primary?: boolean; verified?: boolean; visibility?: string | null };
+type GithubProfile = { id: number | string; login: string; name?: string | null; email?: string | null; avatar_url?: string | null };
+
+function githubOAuthConfigured(env: Env): boolean {
+  return Boolean(String(env.GITHUB_CLIENT_ID || '').trim() && String(env.GITHUB_CLIENT_SECRET || '').trim());
+}
+
+function oauthPublicConfig(env: Env, settings: AppSettings) {
+  const enabled = settings.registration.githubLoginEnabled !== false;
+  const configured = githubOAuthConfigured(env);
+  return {
+    github: {
+      enabled,
+      configured,
+      loginAvailable: enabled && configured,
+      allowRegister: settings.registration.githubAllowRegister !== false,
+      allowAccountBinding: settings.registration.githubAllowAccountBinding !== false,
+      requireVerifiedEmail: settings.registration.githubRequireVerifiedEmail !== false,
+      callbackPath: '/api/auth/github/callback',
+    },
+  };
+}
+
+function internalRedirectPath(raw: unknown, fallback = '/apply'): string {
+  const value = String(raw || '').trim();
+  if (!value || !value.startsWith('/') || value.startsWith('//') || value.startsWith('/api/')) return fallback;
+  try {
+    const url = new URL(value, 'https://local.example');
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch { return fallback; }
+}
+
+function redirectWithAuthMessage(request: Request, path: string, key: string, message: string): Response {
+  const url = new URL(path, new URL(request.url).origin);
+  url.searchParams.set(key, message.slice(0, 180));
+  return Response.redirect(url.toString(), 302);
+}
+
+async function startGithubOAuth(request: Request, env: Env, url: URL): Promise<Response> {
+  await rateLimit(env, request, 'github_oauth_start', 60, 600);
+  const settings = await loadSettings(env);
+  if (settings.registration.githubLoginEnabled === false) throw new HttpError(403, 'GITHUB_LOGIN_DISABLED', 'GitHub 登录暂未开放');
+  if (!githubOAuthConfigured(env)) throw new HttpError(503, 'GITHUB_OAUTH_UNCONFIGURED', 'GitHub OAuth 未配置，请先在 Worker 变量中配置 GITHUB_CLIENT_ID 和 GITHUB_CLIENT_SECRET');
+
+  const mode = url.searchParams.get('mode') === 'bind' ? 'bind' : 'login';
+  let userId: string | null = null;
+  if (mode === 'bind') {
+    if (settings.registration.githubAllowAccountBinding === false) throw new HttpError(403, 'GITHUB_BIND_DISABLED', '暂不允许绑定 GitHub 账号');
+    const user = await requireUser(env, request);
+    userId = user.id;
+  }
+  const state = randomToken(32);
+  const payload: GithubOAuthState = {
+    mode,
+    userId,
+    redirectTo: internalRedirectPath(url.searchParams.get('redirect'), mode === 'bind' ? '/account' : '/apply'),
+    inviteCode: cleanText(url.searchParams.get('invite'), 40),
+    createdAt: new Date().toISOString(),
+  };
+  await env.APP_KV.put(`oauth:github:state:${state}`, JSON.stringify(payload), { expirationTtl: 10 * 60 });
+
+  const authUrl = new URL('https://github.com/login/oauth/authorize');
+  authUrl.searchParams.set('client_id', String(env.GITHUB_CLIENT_ID || '').trim());
+  authUrl.searchParams.set('redirect_uri', `${url.origin}/api/auth/github/callback`);
+  authUrl.searchParams.set('scope', 'read:user user:email');
+  authUrl.searchParams.set('state', state);
+  return Response.redirect(authUrl.toString(), 302);
+}
+
+async function exchangeGithubCode(env: Env, code: string, redirectUri: string): Promise<string> {
+  const body = new URLSearchParams();
+  body.set('client_id', String(env.GITHUB_CLIENT_ID || '').trim());
+  body.set('client_secret', String(env.GITHUB_CLIENT_SECRET || '').trim());
+  body.set('code', code);
+  body.set('redirect_uri', redirectUri);
+  const response = await fetch('https://github.com/login/oauth/access_token', {
+    method: 'POST',
+    headers: { accept: 'application/json', 'content-type': 'application/x-www-form-urlencoded' },
+    body,
+  });
+  const data: any = await response.json().catch(() => ({}));
+  if (!response.ok || !data.access_token) throw new HttpError(502, 'GITHUB_TOKEN_FAILED', data.error_description || `GitHub 授权换取 token 失败 HTTP ${response.status}`);
+  return String(data.access_token);
+}
+
+async function fetchGithubIdentity(accessToken: string): Promise<{ profile: GithubProfile; email: string | null; verifiedEmail: boolean }> {
+  const headers = { authorization: `Bearer ${accessToken}`, accept: 'application/vnd.github+json', 'user-agent': 'cloudflare-subdomain-portal' };
+  const profileRes = await fetch('https://api.github.com/user', { headers });
+  const profile: GithubProfile = await profileRes.json().catch(() => ({} as GithubProfile));
+  if (!profileRes.ok || !profile?.id || !profile?.login) throw new HttpError(502, 'GITHUB_PROFILE_FAILED', `读取 GitHub 用户资料失败 HTTP ${profileRes.status}`);
+
+  let emails: GithubEmail[] = [];
+  try {
+    const emailRes = await fetch('https://api.github.com/user/emails', { headers });
+    if (emailRes.ok) emails = await emailRes.json().catch(() => []);
+  } catch {}
+  const primaryVerified = emails.find(item => item.primary && item.verified && item.email);
+  const anyVerified = emails.find(item => item.verified && item.email);
+  const fallbackPublicEmail = String(profile.email || '').trim();
+  const email = String(primaryVerified?.email || anyVerified?.email || fallbackPublicEmail || '').trim().toLowerCase() || null;
+  const verifiedEmail = Boolean(primaryVerified || anyVerified);
+  return { profile, email, verifiedEmail };
+}
+
+async function availableGithubUsername(env: Env, githubLogin: string): Promise<string> {
+  const base = cleanText(`gh_${githubLogin}`, 52).replace(/\s+/g, '_') || `gh_${randomToken(5)}`;
+  for (let i = 0; i < 50; i++) {
+    const candidate = i === 0 ? base : `${base}_${i + 1}`;
+    const exists = await env.DB.prepare(`SELECT id FROM users WHERE username=? COLLATE NOCASE LIMIT 1`).bind(candidate).first<{ id: string }>();
+    if (!exists) return candidate;
+  }
+  return `gh_${randomToken(10)}`;
+}
+
+async function finishGithubLogin(env: Env, request: Request, user: UserRow, redirectTo: string, action: string, meta: Record<string, unknown> = {}): Promise<Response> {
+  if (user.role === 'admin' && user.status !== 'active') throw new HttpError(403, 'ACCOUNT_DISABLED', '管理员账户已被禁用');
+  try {
+    await env.DB.prepare(`UPDATE users SET last_login_at=datetime('now'), updated_at=datetime('now') WHERE id=?`).bind(user.id).run();
+  } catch {}
+  const cookie = await createSession(env, request, user.id, true);
+  await audit(env, request, user.id, action, 'user', user.id, meta);
+  return withCookie(Response.redirect(new URL(redirectTo || '/apply', new URL(request.url).origin).toString(), 302), cookie);
+}
+
+async function githubOAuthCallback(request: Request, env: Env, url: URL): Promise<Response> {
+  try {
+    await rateLimit(env, request, 'github_oauth_callback', 60, 600);
+    const error = cleanText(url.searchParams.get('error_description') || url.searchParams.get('error'), 240);
+    if (error) return redirectWithAuthMessage(request, '/login', 'github_error', `GitHub 授权未完成：${error}`);
+    const code = cleanText(url.searchParams.get('code'), 300);
+    const stateToken = cleanText(url.searchParams.get('state'), 200);
+    if (!code || !stateToken) return redirectWithAuthMessage(request, '/login', 'github_error', 'GitHub 回调参数不完整，请重新登录');
+
+    const stateKey = `oauth:github:state:${stateToken}`;
+    const rawState = await env.APP_KV.get(stateKey);
+    await env.APP_KV.delete(stateKey).catch(() => undefined);
+    if (!rawState) return redirectWithAuthMessage(request, '/login', 'github_error', 'GitHub 登录状态已过期，请重新发起登录');
+    const state = JSON.parse(rawState) as GithubOAuthState;
+    const settings = await loadSettings(env);
+    if (settings.registration.githubLoginEnabled === false) return redirectWithAuthMessage(request, '/login', 'github_error', 'GitHub 登录已被管理员关闭');
+    if (!githubOAuthConfigured(env)) return redirectWithAuthMessage(request, '/login', 'github_error', 'GitHub OAuth 未配置完整');
+
+    const accessToken = await exchangeGithubCode(env, code, `${url.origin}/api/auth/github/callback`);
+    const { profile, email, verifiedEmail } = await fetchGithubIdentity(accessToken);
+    if (settings.registration.githubRequireVerifiedEmail !== false && !verifiedEmail) {
+      return redirectWithAuthMessage(request, '/login', 'github_error', 'GitHub 账号没有可读取的已验证邮箱，请在 GitHub 公开或验证邮箱后重试');
+    }
+    const providerUserId = String(profile.id);
+    const providerUsername = cleanText(profile.login, 120);
+    const avatarUrl = cleanText(profile.avatar_url, 500);
+
+    const existingLink = await env.DB.prepare(`SELECT * FROM oauth_accounts WHERE provider='github' AND provider_user_id=? LIMIT 1`).bind(providerUserId).first<any>();
+    if (existingLink) {
+      await env.DB.prepare(`UPDATE oauth_accounts SET provider_username=?,provider_email=?,avatar_url=?,updated_at=datetime('now') WHERE id=?`).bind(providerUsername, email, avatarUrl, existingLink.id).run().catch(() => undefined);
+      const user = await env.DB.prepare(`SELECT * FROM users WHERE id=? AND status!='deleted' LIMIT 1`).bind(existingLink.user_id).first<UserRow>();
+      if (!user) return redirectWithAuthMessage(request, '/login', 'github_error', 'GitHub 绑定的本地账户不存在');
+      return finishGithubLogin(env, request, user, state.redirectTo || '/apply', 'auth.github_login', { githubId: providerUserId, githubLogin: providerUsername });
+    }
+
+    if (state.mode === 'bind') {
+      if (settings.registration.githubAllowAccountBinding === false) return redirectWithAuthMessage(request, '/account', 'github_error', '管理员已关闭 GitHub 绑定');
+      if (!state.userId) return redirectWithAuthMessage(request, '/account', 'github_error', '绑定状态无效，请重新登录后绑定');
+      const currentUser = await env.DB.prepare(`SELECT * FROM users WHERE id=? AND status!='deleted' LIMIT 1`).bind(state.userId).first<UserRow>();
+      if (!currentUser) return redirectWithAuthMessage(request, '/login', 'github_error', '当前账户不存在，请重新登录');
+      const currentHasGithub = await env.DB.prepare(`SELECT id FROM oauth_accounts WHERE provider='github' AND user_id=? LIMIT 1`).bind(currentUser.id).first<{ id: string }>();
+      if (currentHasGithub) return redirectWithAuthMessage(request, '/account', 'github_error', '当前账户已经绑定过 GitHub');
+      await env.DB.prepare(`INSERT INTO oauth_accounts (id,user_id,provider,provider_user_id,provider_username,provider_email,avatar_url) VALUES (?,?,?,?,?,?,?)`)
+        .bind(crypto.randomUUID(), currentUser.id, 'github', providerUserId, providerUsername, email, avatarUrl).run();
+      await audit(env, request, currentUser.id, 'auth.github_bind', 'user', currentUser.id, { githubId: providerUserId, githubLogin: providerUsername });
+      return redirectWithAuthMessage(request, '/account', 'github_success', 'GitHub 账号已绑定');
+    }
+
+    if (email) {
+      const emailUser = await env.DB.prepare(`SELECT id FROM users WHERE email=? COLLATE NOCASE AND status!='deleted' LIMIT 1`).bind(email).first<{ id: string }>();
+      if (emailUser) return redirectWithAuthMessage(request, '/login', 'github_error', '该 GitHub 邮箱已存在本地账户。请先用原账户登录，再到“设置”里绑定 GitHub。');
+    }
+    if (settings.registration.githubAllowRegister === false || settings.registration.enabled === false) {
+      return redirectWithAuthMessage(request, '/login', 'github_error', '当前不允许使用 GitHub 创建新账户，请联系管理员');
+    }
+
+    const userId = crypto.randomUUID();
+    const username = await availableGithubUsername(env, providerUsername);
+    const randomPassword = randomToken(32);
+    const { hash, salt } = await hashPassword(randomPassword);
+    const status: UserStatus = settings.registration.githubAutoActivate === false ? 'disabled' : 'active';
+    const domainQuota = settings.registration.githubGrantDefaultQuota === false ? 0 : Number(settings.domain.defaultQuota || 3);
+    await env.DB.batch([
+      env.DB.prepare(`INSERT INTO users (id, username, email, password_hash, password_salt, role, status, domain_quota, permissions_json) VALUES (?, ?, ?, ?, ?, 'user', ?, ?, ?)`)
+        .bind(userId, username, email, hash, salt, status, domainQuota, JSON.stringify({ canApply: true })),
+      env.DB.prepare(`INSERT INTO oauth_accounts (id,user_id,provider,provider_user_id,provider_username,provider_email,avatar_url) VALUES (?,?,?,?,?,?,?)`)
+        .bind(crypto.randomUUID(), userId, 'github', providerUserId, providerUsername, email, avatarUrl),
+    ]);
+    const rewardSettings: AppSettings = settings.registration.githubGrantRegistrationReward === false
+      ? { ...settings, points: { ...settings.points, registrationReward: 0 } }
+      : settings;
+    await processRegistrationRewards(env, userId, state.inviteCode || null, status, rewardSettings).catch(err => console.error('github registration reward failed', err));
+    await audit(env, request, userId, 'auth.github_register', 'user', userId, { githubId: providerUserId, githubLogin: providerUsername, emailVerified: verifiedEmail, inviteCode: state.inviteCode || null, status });
+    const user = await env.DB.prepare(`SELECT * FROM users WHERE id=? LIMIT 1`).bind(userId).first<UserRow>();
+    if (!user) return redirectWithAuthMessage(request, '/login', 'github_error', 'GitHub 账户已创建，但读取账户失败，请用用户名登录或联系管理员');
+    return finishGithubLogin(env, request, user, state.redirectTo || '/apply', 'auth.github_login', { githubId: providerUserId, githubLogin: providerUsername, newlyCreated: true });
+  } catch (err) {
+    console.error('github oauth callback failed', err);
+    const message = err instanceof HttpError ? err.message : (err instanceof Error ? err.message : 'GitHub 登录失败，请稍后重试');
+    try { await audit(env, request, null, 'auth.github_failed', 'oauth', 'github', { message }); } catch {}
+    return redirectWithAuthMessage(request, '/login', 'github_error', message);
+  }
+}
+
+async function listOwnOauthAccounts(request: Request, env: Env): Promise<Response> {
+  const user = await requireUser(env, request);
+  const settings = await loadSettings(env);
+  const rows = await env.DB.prepare(`SELECT provider,provider_user_id,provider_username,provider_email,avatar_url,created_at,updated_at FROM oauth_accounts WHERE user_id=? ORDER BY datetime(created_at) DESC`).bind(user.id).all<any>();
+  return ok({
+    accounts: rows.results || [],
+    github: {
+      enabled: settings.registration.githubLoginEnabled !== false,
+      configured: githubOAuthConfigured(env),
+      allowAccountBinding: settings.registration.githubAllowAccountBinding !== false,
+    },
+  });
+}
+
+async function unbindOwnGithubAccount(request: Request, env: Env): Promise<Response> {
+  const user = await requireUser(env, request);
+  const settings = await loadSettings(env);
+  if (settings.registration.githubAllowAccountBinding === false) throw new HttpError(403, 'GITHUB_BIND_DISABLED', '管理员已关闭 GitHub 绑定/解绑');
+  const row = await env.DB.prepare(`SELECT id FROM oauth_accounts WHERE provider='github' AND user_id=? LIMIT 1`).bind(user.id).first<{ id: string }>();
+  if (!row) throw new HttpError(404, 'GITHUB_NOT_BOUND', '当前账户未绑定 GitHub');
+  await env.DB.prepare(`DELETE FROM oauth_accounts WHERE id=?`).bind(row.id).run();
+  await audit(env, request, user.id, 'auth.github_unbind', 'user', user.id);
+  return ok({ unbound: true });
 }
 
 async function logout(request: Request, env: Env): Promise<Response> {
@@ -3254,6 +3531,11 @@ function operationActionText(action: string): string {
   const map: Record<string, string> = {
     'setup.bootstrap_admin': '初始化管理员',
     'auth.register': '注册账号',
+    'auth.github_login': 'GitHub 登录',
+    'auth.github_register': 'GitHub 注册',
+    'auth.github_bind': '绑定 GitHub',
+    'auth.github_unbind': '解绑 GitHub',
+    'auth.github_failed': 'GitHub 登录失败',
     'auth.login': '登录账户',
     'auth.logout': '退出登录',
     'auth.login_failed': '登录失败',
@@ -5364,6 +5646,9 @@ function cleanHtmlText(value: unknown, max = 8000): string {
 
 function adminSettingsView(settings: AppSettings, env: Env): any {
   const safeSettings: any = JSON.parse(JSON.stringify(settings));
+  safeSettings.registration.githubClientIdConfigured = Boolean(env.GITHUB_CLIENT_ID);
+  safeSettings.registration.githubClientSecretConfigured = Boolean(env.GITHUB_CLIENT_SECRET);
+  safeSettings.registration.githubCallbackUrl = '按当前访问域名自动生成：/api/auth/github/callback';
   safeSettings.registration.turnstileSecretConfigured = Boolean(settings.registration.turnstileSecret || env.TURNSTILE_SECRET);
   safeSettings.registration.turnstileSecret = '';
   safeSettings.registration.emailApiKeyConfigured = Boolean(settings.registration.emailApiKey || env.RESEND_API_KEY);
@@ -5662,6 +5947,13 @@ async function adminUpdateSettings(request: Request, env: Env, group: AdminSetti
       failedRegisterBanMinutes: clamp(Number(body.failedRegisterBanMinutes || 0), 0, 10080),
       blockVpnProxy: asBoolean(body.blockVpnProxy, false),
       requireRegistrationKey: asBoolean(body.requireRegistrationKey, false),
+      githubLoginEnabled: asBoolean(body.githubLoginEnabled, true),
+      githubAllowRegister: asBoolean(body.githubAllowRegister, true),
+      githubAutoActivate: asBoolean(body.githubAutoActivate, true),
+      githubRequireVerifiedEmail: asBoolean(body.githubRequireVerifiedEmail, true),
+      githubAllowAccountBinding: asBoolean(body.githubAllowAccountBinding, true),
+      githubGrantDefaultQuota: asBoolean(body.githubGrantDefaultQuota, true),
+      githubGrantRegistrationReward: asBoolean(body.githubGrantRegistrationReward, true),
     };
     if ((settings.registration.captchaNoiseLinesMin || 0) > (settings.registration.captchaNoiseLinesMax || 0)) {
       const value = settings.registration.captchaNoiseLinesMin || 0;
@@ -6134,6 +6426,13 @@ function defaultSettings(env: Env): AppSettings {
       failedRegisterBanMinutes: 0,
       blockVpnProxy: false,
       requireRegistrationKey: false,
+      githubLoginEnabled: true,
+      githubAllowRegister: true,
+      githubAutoActivate: true,
+      githubRequireVerifiedEmail: true,
+      githubAllowAccountBinding: true,
+      githubGrantDefaultQuota: true,
+      githubGrantRegistrationReward: true,
     },
     domain: {
       defaultQuota: 3,
@@ -8016,20 +8315,20 @@ async function adminSystemStatus(request: Request, env: Env): Promise<Response> 
       (SELECT COUNT(*) FROM audit_logs WHERE datetime(created_at) >= datetime('now','-' || ? || ' days')) AS logsRetained
   `).bind(auditRetentionDays).first<any>();
   return ok({
-    version: 'v130',
+    version: 'v131',
     settingsKey: SETTINGS_KEY,
     kv: { storage: 'Workers KV', estimatedKeys: '由 Cloudflare 控制台查看实际占用' },
     cfApi: { configured: Boolean(resolveDnsToken(env, settings)), status: resolveDnsToken(env, settings) ? '已配置' : '未配置' },
     cron: { enabled: Boolean(settings.automation?.enabled), expression: settings.automation?.cronExpression || '' },
     counts: { ...counts, logs4d: Number(counts?.logsRetained || 0) },
     auditRetentionDays,
-    update: { current: 'v130', latest: '请以当前部署包为准' },
+    update: { current: 'v131', latest: '请以当前部署包为准' },
   });
 }
 
 async function adminExportSettings(request: Request, env: Env): Promise<Response> {
   await requireAdmin(env, request);
-  return ok({ exportedAt: new Date().toISOString(), version: 'v130', settings: await loadSettings(env) });
+  return ok({ exportedAt: new Date().toISOString(), version: 'v131', settings: await loadSettings(env) });
 }
 
 async function adminImportSettings(request: Request, env: Env): Promise<Response> {
