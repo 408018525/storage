@@ -80,6 +80,23 @@ function suffixList() {
     .map(entry => entry.item);
 }
 
+function normalizeSuffixKey(value) {
+  return String(value || '').trim().replace(/^\.+/, '').toLowerCase();
+}
+function pointPricingConfig() {
+  return state.config?.points || { enabled:false, domainApplicationCost:0, domainApplicationCosts:[] };
+}
+function pointCostForSuffix(suffixValue) {
+  const points = pointPricingConfig();
+  if (points.enabled === false) return 0;
+  const key = normalizeSuffixKey(suffixValue);
+  const row = (points.domainApplicationCosts || []).find(item => item && item.enabled !== false && (normalizeSuffixKey(item.suffix) === key || normalizeSuffixKey(item.suffixAscii) === key));
+  return Math.max(0, Number(row ? row.cost : (points.domainApplicationCost || 0)) || 0);
+}
+function pointCostLabel(cost) {
+  return Number(cost || 0) > 0 ? `${Number(cost).toLocaleString()} 积分` : '免费';
+}
+
 const SUPPORTED_DNS_TYPES = ['A','AAAA','CNAME','TXT','MX','NS','CAA','SRV'];
 const DEFAULT_DNS_TYPE_LABELS = {
   A: 'A（IPv4）',
@@ -2427,11 +2444,130 @@ async function renderRegister() {
   });
 }
 
-function nav(hash, icon, text) {
+const SIDEBAR_NAV_BASE = [
+  { key:'apply', group:'user', hash:'/apply', icon:'＋', label:'注册' },
+  { key:'domains', group:'user', hash:'/domains', icon:'🌐', label:'管理' },
+  { key:'points', group:'user', hash:'/points', icon:'◆', label:'积分' },
+  { key:'invitations', group:'user', hash:'/invite', icon:'↗', label:'邀请' },
+  { key:'settings', group:'user', hash:'/account', icon:'⚙', label:'设置' },
+  { key:'messages', group:'user', hash:'/messages', icon:'✉', label:'消息中心' },
+  { key:'logs', group:'user', hash:'/logs', icon:'↩', label:'日志' },
+  { key:'help', group:'user', hash:'/support/knowledge', icon:'☸', label:'帮助', support:true },
+  { key:'admin', group:'admin', hash:'/admin', icon:'▦', label:'管理概览' },
+  { key:'adminAnalytics', group:'admin', hash:'/admin/analytics', icon:'◌', label:'分析页' },
+  { key:'adminApplications', group:'admin', hash:'/admin/applications', icon:'✓', label:'域名审核' },
+  { key:'adminUsers', group:'admin', hash:'/admin/users', icon:'♟', label:'用户管理' },
+  { key:'adminInvitationSettings', group:'admin', hash:'/admin/invitation-settings', icon:'↗', label:'邀请设置' },
+  { key:'adminPointsSettings', group:'admin', hash:'/admin/points-settings', icon:'◆', label:'积分设置' },
+  { key:'adminRegistrationKeys', group:'admin', hash:'/admin/registration-keys', icon:'⌘', label:'注册密钥' },
+  { key:'adminSettings', group:'admin', hash:'/admin/settings', icon:'⚙', label:'管理员设置' },
+  { key:'adminMessages', group:'admin', hash:'/messages', icon:'✉', label:'消息中心' },
+  { key:'adminHelpSettings', group:'admin', hash:'/admin/help-settings', icon:'☸', label:'帮助中心设置' },
+  { key:'adminHelp', group:'admin', hash:'/admin/help', icon:'🛠', label:'管理员帮助中心' },
+  { key:'adminHomeSettings', group:'admin', hash:'/admin/home-settings', icon:'⌂', label:'首页设置' },
+];
+function sidebarPrefs() {
+  const prefs = state.config?.site?.sidebarItems;
+  return Array.isArray(prefs) ? prefs : [];
+}
+function sidebarPrefMap() {
+  return new Map(sidebarPrefs().map((item, index) => [String(item?.key || ''), { ...item, order:Number(item?.order || index + 1) }]));
+}
+function sidebarLabel(item) {
+  const custom = sidebarPrefMap().get(item.key)?.label;
+  return String(custom || item.label || '').trim() || item.label;
+}
+function sortedSidebarItems(group) {
+  const pref = sidebarPrefMap();
+  return SIDEBAR_NAV_BASE.filter(item => item.group === group).map((item, index) => ({ ...item, label: sidebarLabel(item), __order: pref.get(item.key)?.order ?? (500 + index) }))
+    .sort((a, b) => Number(a.__order || 0) - Number(b.__order || 0));
+}
+function nav(hash, icon, text, options = {}) {
   const isMessage = hash === '/messages';
   const count = Number(state.messageUnread || 0);
   const badge = isMessage && count > 0 ? `<b class="nav-badge">${count > 9 ? '9+' : count}</b>` : '';
-  return `<a class="nav ${isMessage ? 'nav-message' : ''} ${currentRoutePath() === hash ? 'active' : ''}" href="${hash}"><span class="nav-icon">${icon}</span><span class="nav-label">${esc(text)}</span>${badge}</a>`;
+  const keyAttrs = options.key ? ` data-sidebar-key="${attr(options.key)}" data-sidebar-group="${attr(options.group || 'user')}" title="管理员可拖动排序；右键或长按改名"` : '';
+  return `<a class="nav ${isMessage ? 'nav-message' : ''} ${currentRoutePath() === hash ? 'active' : ''}" href="${hash}"${keyAttrs}><span class="nav-icon">${icon}</span><span class="nav-label">${esc(text)}</span>${badge}</a>`;
+}
+function supportNav(item) {
+  const open = currentRoutePath().startsWith('/support/') || currentRoutePath() === '/help';
+  return `<div class="support-nav-group ${open ? 'open' : ''}" data-sidebar-key="${attr(item.key)}" data-sidebar-group="${attr(item.group)}" title="管理员可拖动排序；右键或长按改名">
+    <button class="nav support-nav-toggle ${open ? 'active' : ''}" type="button" aria-expanded="${open ? 'true' : 'false'}"><span class="nav-icon">${item.icon}</span><span class="nav-label">${esc(item.label)}</span><span class="support-nav-chevron">⌄</span></button>
+    <div class="support-subnav">
+      <a class="support-subnav-link ${['/help','/support/knowledge'].includes(currentRoutePath()) ? 'active' : ''}" href="/support/knowledge"><span>?</span><b>问题库</b></a>
+      <a class="support-subnav-link ${currentRoutePath() === '/support/new' ? 'active' : ''}" href="/support/new"><span>＋</span><b>发起工单</b></a>
+      <a class="support-subnav-link ${currentRoutePath().startsWith('/support/tickets') || currentRoutePath().startsWith('/support/ticket/') ? 'active' : ''}" href="/support/tickets"><span>⌕</span><b>${state.me?.role === 'admin' ? '工单管理' : '查询工单'}</b></a>
+      <a class="support-subnav-link ${currentRoutePath() === '/support/contact' ? 'active' : ''}" href="/support/contact"><span>✉</span><b>联系客服</b></a>
+    </div>
+  </div>`;
+}
+function renderSidebarGroup(group, includeMessagesForUser = false) {
+  const rows = sortedSidebarItems(group).filter(item => includeMessagesForUser || item.key !== 'messages').map(item => item.support ? supportNav(item) : nav(item.hash, item.icon, item.label, { key:item.key, group:item.group })).join('');
+  return `<div class="sidebar-sort-group" data-sidebar-sort-group="${attr(group)}">${rows}</div>`;
+}
+function currentSidebarItemsFromDom() {
+  const map = sidebarPrefMap();
+  const rows = [];
+  document.querySelectorAll('[data-sidebar-key]').forEach((node, index) => {
+    const key = node.dataset.sidebarKey;
+    const base = SIDEBAR_NAV_BASE.find(item => item.key === key);
+    if (!base) return;
+    const existing = map.get(key) || {};
+    const label = node.querySelector('.nav-label')?.textContent?.trim() || existing.label || base.label;
+    rows.push({ key, label, order:index + 1 });
+  });
+  SIDEBAR_NAV_BASE.forEach((base, index) => {
+    if (!rows.some(row => row.key === base.key)) rows.push({ key:base.key, label:map.get(base.key)?.label || base.label, order:500 + index });
+  });
+  return rows;
+}
+async function saveSidebarItems(items, message = '侧边栏设置已保存') {
+  const result = await api('/api/admin/sidebar-settings', { method:'PUT', body:{ items } });
+  state.config.site = { ...(state.config.site || {}), sidebarItems: result.items || items };
+  toast(message, 'success');
+  router();
+}
+function bindSidebarCustomization() {
+  if (state.me?.role !== 'admin') return;
+  let dragKey = '';
+  document.querySelectorAll('[data-sidebar-key]').forEach(node => {
+    node.setAttribute('draggable', 'true');
+    node.classList.add('sidebar-editable-v132');
+    node.addEventListener('dragstart', event => { dragKey = node.dataset.sidebarKey || ''; node.classList.add('is-dragging'); try { event.dataTransfer.setData('text/plain', dragKey); } catch {} });
+    node.addEventListener('dragend', () => { dragKey = ''; node.classList.remove('is-dragging'); });
+    node.addEventListener('dragover', event => { event.preventDefault(); node.classList.add('is-drop-target'); });
+    node.addEventListener('dragleave', () => node.classList.remove('is-drop-target'));
+    node.addEventListener('drop', async event => {
+      event.preventDefault();
+      node.classList.remove('is-drop-target');
+      const fromKey = dragKey || event.dataTransfer?.getData('text/plain');
+      const toKey = node.dataset.sidebarKey;
+      if (!fromKey || !toKey || fromKey === toKey) return;
+      const from = document.querySelector(`[data-sidebar-key="${CSS.escape(fromKey)}"]`);
+      const to = document.querySelector(`[data-sidebar-key="${CSS.escape(toKey)}"]`);
+      const group = to.closest('[data-sidebar-sort-group]');
+      if (!from || !to || !group || from.closest('[data-sidebar-sort-group]') !== group) return toast('用户区和管理员区需要分别排序', 'error');
+      const rect = to.getBoundingClientRect();
+      group.insertBefore(from, event.clientY > rect.top + rect.height / 2 ? to.nextSibling : to);
+      try { await saveSidebarItems(currentSidebarItemsFromDom(), '侧边栏顺序已保存'); } catch(error) { toast(error.message, 'error'); router(); }
+    });
+    const rename = async event => {
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
+      const key = node.dataset.sidebarKey;
+      const base = SIDEBAR_NAV_BASE.find(item => item.key === key);
+      const current = node.querySelector('.nav-label')?.textContent?.trim() || base?.label || '';
+      const next = prompt(`修改“${current}”显示名称\n留空可恢复默认名称`, current);
+      if (next === null) return;
+      const label = String(next || '').trim() || base?.label || current;
+      const items = currentSidebarItemsFromDom().map(item => item.key === key ? { ...item, label } : item);
+      try { await saveSidebarItems(items, '侧边栏名称已保存'); } catch(error) { toast(error.message, 'error'); }
+    };
+    node.addEventListener('contextmenu', rename);
+    let longPress = 0;
+    node.addEventListener('touchstart', event => { longPress = setTimeout(() => rename(event), 680); }, { passive:false });
+    ['touchend','touchmove','touchcancel'].forEach(type => node.addEventListener(type, () => { if (longPress) clearTimeout(longPress); longPress = 0; }, { passive:true }));
+  });
 }
 
 function updateMessageBadgeDom() {
@@ -2475,23 +2611,8 @@ function shell(title, content) {
     <aside class="sidebar">
       <a class="brand brand-home-link" href="/home" aria-label="返回网站首页"><div>${site.logoImageUrl ? `<img src="${attr(site.logoImageUrl)}" alt="logo">` : esc(site.logoText || 'free')}</div><strong>${esc(site.title || '域名注册中心')}</strong></a>
       <nav>
-        ${nav('/apply','＋','注册')}
-        ${nav('/domains','🌐','管理')}
-        ${nav('/points','◆','积分')}
-        ${nav('/invite','↗','邀请')}
-        ${nav('/account','⚙','设置')}
-        ${!isAdmin ? nav('/messages','✉','消息中心') : ''}
-        ${nav('/logs','↩','日志')}
-        <div class="support-nav-group ${currentRoutePath().startsWith('/support/') || currentRoutePath() === '/help' ? 'open' : ''}">
-          <button class="nav support-nav-toggle ${currentRoutePath().startsWith('/support/') || currentRoutePath() === '/help' ? 'active' : ''}" type="button" aria-expanded="${currentRoutePath().startsWith('/support/') || currentRoutePath() === '/help' ? 'true' : 'false'}"><span class="nav-icon">☸</span><span class="nav-label">帮助</span><span class="support-nav-chevron">⌄</span></button>
-          <div class="support-subnav">
-            <a class="support-subnav-link ${['/help','/support/knowledge'].includes(currentRoutePath()) ? 'active' : ''}" href="/support/knowledge"><span>?</span><b>问题库</b></a>
-            <a class="support-subnav-link ${currentRoutePath() === '/support/new' ? 'active' : ''}" href="/support/new"><span>＋</span><b>发起工单</b></a>
-            <a class="support-subnav-link ${currentRoutePath().startsWith('/support/tickets') || currentRoutePath().startsWith('/support/ticket/') ? 'active' : ''}" href="/support/tickets"><span>⌕</span><b>${isAdmin ? '工单管理' : '查询工单'}</b></a>
-            <a class="support-subnav-link ${currentRoutePath() === '/support/contact' ? 'active' : ''}" href="/support/contact"><span>✉</span><b>联系客服</b></a>
-          </div>
-        </div>
-        ${isAdmin ? `<hr>${nav('/admin','▦','管理概览')}${nav('/admin/analytics','◌','分析页')}${nav('/admin/applications','✓','域名审核')}${nav('/admin/users','♟','用户管理')}${nav('/admin/invitation-settings','↗','邀请设置')}${nav('/admin/points-settings','◆','积分设置')}${nav('/admin/registration-keys','⌘','注册密钥')}${nav('/admin/settings','⚙','管理员设置')}${nav('/messages','✉','消息中心')}${nav('/admin/help-settings','☸','帮助中心设置')}${nav('/admin/help','🛠','管理员帮助中心')}${nav('/admin/home-settings','⌂','首页设置')}` : ''}
+        ${renderSidebarGroup('user', !isAdmin)}
+        ${isAdmin ? `<hr>${renderSidebarGroup('admin', true)}` : ''}
       </nav>
       <div class="side-user"><strong>${esc(state.me.username)}</strong><small>${isAdmin ? '管理员' : '普通用户'}</small><button id="logout" class="btn ghost">退出登录</button></div>
     </aside>
@@ -2533,6 +2654,7 @@ function shell(title, content) {
     event.currentTarget.setAttribute('aria-expanded', group?.classList.contains('open') ? 'true' : 'false');
   });
   document.querySelectorAll('.sidebar .nav:not(.support-nav-toggle), .sidebar .support-subnav-link').forEach(a => a.addEventListener('click', closeSidebar));
+  bindSidebarCustomization();
   bindLanguageControls();
   setTimeout(() => applyI18n(), 0);
 }
@@ -2560,7 +2682,7 @@ async function renderPoints() {
       ${settings.enabled === false ? '<div class="notice">当前积分功能暂未开放，历史余额和交易记录仅供查看。</div>' : ''}
       <section class="card points-hero-v131">
         <div><span>当前余额</span><strong>${Number(wallet.balance||0).toLocaleString()}</strong><small>累计获得 ${Number(wallet.lifetime_earned||0).toLocaleString()} · 累计使用 ${Number(wallet.lifetime_spent||0).toLocaleString()}</small></div>
-        <div class="points-price-note"><b>域名积分价格</b><span>${Number(settings.domainApplicationCost||0)>0 ? `每次提交申请 ${Number(settings.domainApplicationCost)} 积分` : '当前域名申请不收取积分'}</span></div>
+        <div class="points-price-note"><b>域名积分价格</b><span>${Number(settings.domainApplicationCost||0)>0 ? `默认每次提交申请 ${Number(settings.domainApplicationCost)} 积分` : '默认域名申请不收取积分'}</span></div>
       </section>
       <section class="card"><div class="section-head"><div><h2>口令兑换</h2><p>输入管理员发放的兑换口令，可兑换积分或域名注册额度。</p></div></div>
         <form id="points-redeem-form" class="inline-form-v131"><input name="code" maxlength="80" required placeholder="请输入兑换口令"><button class="btn primary" type="submit">立即兑换</button></form>
@@ -2568,6 +2690,7 @@ async function renderPoints() {
       <section class="card"><div class="section-head"><div><h2>交易记录</h2><p>记录奖励、兑换、域名申请扣除、退款和管理员发放。</p></div></div>
         <div class="table-wrap"><table><thead><tr><th>时间</th><th>变动</th><th>说明</th><th>余额</th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="muted">暂无积分交易记录</td></tr>'}</tbody></table></div>
       </section>
+      <section class="card"><div class="section-head"><div><h2>域名申请价格</h2><p>不同根域名可以由管理员设置不同积分价格，提交申请时按所选根域名扣除。</p></div></div>${pointPriceTableHtml(settings)}</section>
       <section class="card subtle-card-v131"><h3>积分规则</h3><p class="pre-line-v131">${esc(settings.rulesText || '积分仅用于本站活动和服务，不支持提现或转让。')}</p></section>
     `);
     document.querySelector('#points-redeem-form')?.addEventListener('submit', async e => {
@@ -2629,18 +2752,61 @@ async function renderAdminInvitationSettings() {
   } catch(error){shell('邀请设置',`<div class="notice danger">${esc(error.message)}</div>`)}
 }
 
+
+function adminDomainPointCostRows(settings = {}, suffixes = []) {
+  const customRows = Array.isArray(settings.domainApplicationCosts) ? settings.domainApplicationCosts : [];
+  const customMap = new Map(customRows.map(row => [normalizeSuffixKey(row.suffixAscii || row.suffix), row]));
+  if (!Array.isArray(suffixes) || !suffixes.length) {
+    return '<div class="readonly-box wide"><b>暂无根域名</b><p>请先到“管理员设置 → DNS 配置”添加并启用根域名，然后回来给每个根域名单独设置积分价格。</p></div>';
+  }
+  return `<div class="domain-point-price-editor wide">
+    <div class="domain-point-price-head"><b>单独域名积分价格</b><span>启用后优先使用单独价格；未启用则使用上方默认价格。</span></div>
+    ${suffixes.map((suffix, index) => {
+      const key = normalizeSuffixKey(suffix.suffixAscii || suffix.suffix);
+      const row = customMap.get(key) || {};
+      const enabled = row.enabled === true;
+      const cost = row.cost ?? '';
+      const label = row.label || suffix.label || '';
+      const note = row.note || '';
+      return `<div class="domain-point-price-row" data-domain-point-row data-suffix="${attr(suffix.suffix)}" data-suffix-ascii="${attr(suffix.suffixAscii || suffix.suffix)}">
+        <div class="domain-point-domain"><strong>${esc(suffix.suffix)}</strong><span>${label ? esc(label) : '未设置显示名称'} · ${suffix.enabled === false || suffix.allowRegister === false ? '当前不开放注册' : '开放注册'}</span></div>
+        <label class="check compact"><input name="domainPointEnabled${index}" type="checkbox" ${enabled ? 'checked' : ''}> 单独定价</label>
+        <label class="field compact-field"><span>价格/积分</span><input name="domainPointCost${index}" type="number" min="0" max="1000000" value="${fieldValue(cost)}" placeholder="默认"></label>
+        <label class="field compact-field"><span>显示名称</span><input name="domainPointLabel${index}" maxlength="80" value="${fieldValue(label)}" placeholder="可选"></label>
+        <label class="field compact-field wide-note"><span>备注</span><input name="domainPointNote${index}" maxlength="200" value="${fieldValue(note)}" placeholder="例如：活动域名、稀缺后缀、高成本后缀"></label>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+function collectDomainPointCostsFromForm(form) {
+  return Array.from(form.querySelectorAll('[data-domain-point-row]')).map(row => ({
+    suffix: row.dataset.suffix || '',
+    suffixAscii: row.dataset.suffixAscii || row.dataset.suffix || '',
+    enabled: Boolean(row.querySelector('input[type="checkbox"]')?.checked),
+    cost: Number(row.querySelector('input[name^="domainPointCost"]')?.value || 0),
+    label: String(row.querySelector('input[name^="domainPointLabel"]')?.value || '').trim(),
+    note: String(row.querySelector('input[name^="domainPointNote"]')?.value || '').trim(),
+  }));
+}
+function pointPriceTableHtml(settings = {}) {
+  const rows = Array.isArray(settings.domainApplicationCosts) ? settings.domainApplicationCosts.filter(x => x && x.enabled !== false) : [];
+  if (!rows.length) return `<p>域名申请默认价格：<b>${pointCostLabel(settings.domainApplicationCost || 0)}</b>。管理员未单独设置根域名价格时，所有后缀都按默认价格扣除。</p>`;
+  return `<div class="table-wrap points-price-table"><table><thead><tr><th>根域名</th><th>价格</th><th>说明</th></tr></thead><tbody>${rows.map(row => `<tr><td><strong>${esc(row.suffix)}</strong><p class="muted small">${esc(row.label || '')}</p></td><td><b>${pointCostLabel(row.cost)}</b></td><td>${esc(row.note || '单独价格优先生效')}</td></tr>`).join('')}</tbody></table></div><p class="muted small">没有列出的根域名使用默认价格：${pointCostLabel(settings.domainApplicationCost || 0)}。</p>`;
+}
+
 async function renderAdminPointsSettings() {
   shell('积分设置', `<div class="loading-card">正在读取积分设置…</div>`);
   try {
-    const [data,codesData]=await Promise.all([api('/api/admin/points-settings'),api('/api/admin/point-codes')]); const x=data.settings||{}, stats=data.stats||{};
+    const [data,codesData]=await Promise.all([api('/api/admin/points-settings'),api('/api/admin/point-codes')]); const x=data.settings||{}, stats=data.stats||{}, suffixes=data.suffixes||[];
     const codes=(codesData.codes||[]).map(c=>`<tr><td><code>${esc(c.code)}</code></td><td>${Number(c.points||0)}</td><td>${Number(c.domain_quota||0)}</td><td>${Number(c.used_count||0)} / ${Number(c.max_uses||0)===0?'不限':Number(c.max_uses)}</td><td>${esc(c.status==='active'?'可用':'停用')}</td><td><button class="btn danger small point-code-disable" data-id="${attr(c.id)}">停用</button></td></tr>`).join('');
     shell('积分设置', `
       <section class="stats-grid"><div class="stat-card"><span>积分账户</span><strong>${Number(stats.wallets||0)}</strong></div><div class="stat-card"><span>当前积分总额</span><strong>${Number(stats.balance||0).toLocaleString()}</strong></div><div class="stat-card"><span>累计发放</span><strong>${Number(stats.earned||0).toLocaleString()}</strong></div><div class="stat-card"><span>累计消耗</span><strong>${Number(stats.spent||0).toLocaleString()}</strong></div></section>
       <section class="card admin-feature-settings-v131"><div class="section-head"><div><h2>积分政策</h2><p>设置注册奖励、域名积分价格、退款政策和自动发放。</p></div></div>
         <form id="admin-points-settings-form" class="form-grid settings-grid">
           <label class="check wide"><input name="enabled" type="checkbox" ${x.enabled!==false?'checked':''}> 开启积分系统</label>
-          <label class="field"><span>域名申请价格/积分</span><input name="domainApplicationCost" type="number" min="0" value="${fieldValue(x.domainApplicationCost||0)}"><em>0 表示免费；提交成功时扣除。</em></label>
-          <label class="check"><input name="refundOnReject" type="checkbox" ${x.refundOnReject!==false?'checked':''}> 申请被拒绝自动退回积分</label>
+          <label class="field"><span>默认域名申请价格/积分</span><input name="domainApplicationCost" type="number" min="0" value="${fieldValue(x.domainApplicationCost||0)}"><em>0 表示免费；没有单独定价的根域名使用这个默认价格。</em></label>
+          <label class="check"><input name="refundOnReject" type="checkbox" ${x.refundOnReject!==false?'checked':''}> 申请被拒绝自动退回积分 <em>按实际扣除的积分原路退回。</em></label>
+          ${adminDomainPointCostRows(x, suffixes)}
           <label class="field"><span>新用户注册奖励</span><input name="registrationReward" type="number" min="0" value="${fieldValue(x.registrationReward||0)}"><em>注册成功后发放一次。</em></label>
           <label class="field"><span>首次域名申请奖励</span><input name="firstDomainReward" type="number" min="0" value="${fieldValue(x.firstDomainReward||0)}"><em>普通用户第一次提交域名申请时发放。</em></label>
           <label class="check"><input name="dailyLoginEnabled" type="checkbox" ${x.dailyLoginEnabled?'checked':''}> 开启每日登录奖励</label>
@@ -2660,7 +2826,7 @@ async function renderAdminPointsSettings() {
       <section class="card"><div class="section-head"><div><h2>手动分发积分</h2><p>可给指定用户或所有正常普通用户发放积分，并自动写入交易记录。</p></div></div><form id="admin-point-grant-form" class="form-grid"><label class="field"><span>发放对象</span><select name="targetType"><option value="user">指定用户</option><option value="all">全部正常用户</option></select></label><label class="field"><span>账号/邮箱/用户ID</span><input name="identity" placeholder="全部用户时可留空"></label><label class="field"><span>积分数量</span><input name="amount" type="number" min="1" required></label><label class="field"><span>发放说明</span><input name="description" value="活动积分发放"></label><button class="btn primary wide" type="submit">确认发放</button></form></section>
       <section class="card"><div class="section-head"><div><h2>兑换口令</h2><p>创建可兑换积分、域名额度或两者同时发放的口令。</p></div></div><form id="admin-point-code-form" class="form-grid"><label class="field"><span>兑换口令</span><input name="code" placeholder="留空自动生成"></label><label class="field"><span>积分</span><input name="points" type="number" min="0" value="100"></label><label class="field"><span>域名额度</span><input name="domainQuota" type="number" min="0" value="0"></label><label class="field"><span>总使用次数</span><input name="maxUses" type="number" min="0" value="1"><em>0 表示不限。</em></label><label class="field"><span>每用户可使用次数</span><input name="perUserLimit" type="number" min="0" value="1"></label><label class="field"><span>到期时间</span><input name="expiresAt" type="datetime-local"></label><button class="btn primary wide" type="submit">创建兑换口令</button></form><div class="table-wrap"><table><thead><tr><th>口令</th><th>积分</th><th>额度</th><th>使用</th><th>状态</th><th>操作</th></tr></thead><tbody>${codes||'<tr><td colspan="6" class="muted">暂无兑换口令</td></tr>'}</tbody></table></div></section>
     `);
-    document.querySelector('#admin-points-settings-form')?.addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.currentTarget),body={...Object.fromEntries(f),enabled:f.get('enabled')==='on',refundOnReject:f.get('refundOnReject')==='on',dailyLoginEnabled:f.get('dailyLoginEnabled')==='on',automaticGrantEnabled:f.get('automaticGrantEnabled')==='on'};try{await api('/api/admin/points-settings',{method:'PUT',body});toast('积分政策已保存','success');}catch(error){toast(error.message,'error');}});
+    document.querySelector('#admin-points-settings-form')?.addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.currentTarget),body={...Object.fromEntries(f),enabled:f.get('enabled')==='on',refundOnReject:f.get('refundOnReject')==='on',dailyLoginEnabled:f.get('dailyLoginEnabled')==='on',automaticGrantEnabled:f.get('automaticGrantEnabled')==='on',domainApplicationCosts:collectDomainPointCostsFromForm(e.currentTarget)};try{await api('/api/admin/points-settings',{method:'PUT',body});toast('积分政策已保存','success');await renderAdminPointsSettings();}catch(error){toast(error.message,'error');}});
     document.querySelector('#admin-point-grant-form')?.addEventListener('submit',async e=>{e.preventDefault();const body=Object.fromEntries(new FormData(e.currentTarget));if(body.targetType==='all'&&!confirm('确认向全部正常普通用户发放积分？'))return;try{const r=await api('/api/admin/points/grant',{method:'POST',body});toast(`已成功发放给 ${r.success} 个用户`,'success');await renderAdminPointsSettings();}catch(error){toast(error.message,'error');}});
     document.querySelector('#admin-point-code-form')?.addEventListener('submit',async e=>{e.preventDefault();try{const r=await api('/api/admin/point-codes',{method:'POST',body:Object.fromEntries(new FormData(e.currentTarget))});toast(`兑换口令已创建：${r.code}`,'success');await copyToClipboard(r.code,'兑换口令已复制');await renderAdminPointsSettings();}catch(error){toast(error.message,'error');}});
     document.querySelectorAll('.point-code-disable').forEach(btn=>btn.addEventListener('click',async()=>{if(!confirm('确认停用这个兑换口令？'))return;try{await api(`/api/admin/point-codes/${encodeURIComponent(btn.dataset.id)}`,{method:'DELETE'});toast('兑换口令已停用','success');await renderAdminPointsSettings();}catch(error){toast(error.message,'error');}}));
@@ -2708,7 +2874,7 @@ async function renderApply() {
 
 function showRegisterDomainModal() {
   const suffixes = suffixList();
-  const options = suffixes.map(s => `<option value="${attr(s.suffix)}">${s.label ? `${esc(s.label)} / ` : ''}${esc(s.suffix)}</option>`).join('');
+  const options = suffixes.map(s => `<option value="${attr(s.suffix)}" data-point-cost="${attr(pointCostForSuffix(s.suffix))}">${s.label ? `${esc(s.label)} / ` : ''}${esc(s.suffix)} · ${esc(pointCostLabel(pointCostForSuffix(s.suffix)))}</option>`).join('');
   openModal('注册新域名', '选择根域名并输入前缀，快速注册一个专属您的免费域名', `
     <form id="domain-register-form" class="modal-form">
       <label class="field wide">
@@ -2728,6 +2894,7 @@ function showRegisterDomainModal() {
       <div class="preview-box">
         <span>完整域名预览</span>
         <strong id="full-preview">请选择根域名并输入前缀</strong>
+        <small id="domain-point-cost-preview">申请价格：请选择根域名</small>
       </div>
       <div id="domain-availability" class="domain-availability" aria-live="polite"></div>
       <div class="dns-note"><span>ℹ</span><strong>管理员审核通过后，您才可以设置 DNS 解析</strong><button type="button" id="dns-help">查看完整说明 ›</button></div>
@@ -2751,6 +2918,9 @@ function showRegisterDomainModal() {
     const p = prefix.value.trim().toLowerCase();
     document.querySelector('#suffix-preview').textContent = s ? `.${s}` : '.请选择根域名';
     document.querySelector('#full-preview').textContent = s && p ? `${p}.${s}` : '请选择根域名并输入前缀';
+    const cost = s ? pointCostForSuffix(s) : 0;
+    const costEl = document.querySelector('#domain-point-cost-preview');
+    if (costEl) costEl.textContent = s ? `申请价格：${pointCostLabel(cost)}${cost > 0 ? '，提交申请时扣除' : ''}` : '申请价格：请选择根域名';
     prefix.value = p;
     availabilityOk = false;
     submit.disabled = true;
@@ -6105,7 +6275,10 @@ function openWorkerVariableModal(mode, item = null) {
     <form id="worker-variable-form" class="form-grid">
       <label class="field"><span>类型</span><select name="type"><option value="plain_text" ${type === 'plain_text' ? 'selected' : ''}>文本</option><option value="json" ${type === 'json' ? 'selected' : ''}>JSON</option><option value="secret_text" ${type === 'secret_text' ? 'selected' : ''}>密钥</option></select><em>与 Cloudflare 后台一致：文本、JSON、密钥。密钥不会读取或回显旧值。</em></label>
       <label class="field"><span>变量名称</span><input name="name" value="${fieldValue(name)}" ${isEdit ? 'readonly' : ''} placeholder="例如 CF_ACCOUNT_ID"><em>只能使用字母、数字和下划线，不能以数字开头。</em></label>
-      <label class="field wide"><span>值</span><textarea name="value" rows="6" placeholder="请输入新值">${isEdit && type !== 'secret_text' ? fieldValue(item?.value || '') : ''}</textarea><em>${isEdit && type === 'secret_text' ? '密钥旧值不会显示；输入新值后会覆盖原密钥。' : (type === 'json' ? 'JSON 变量必须填写有效 JSON；系统会保存为结构化 JSON，不是普通字符串。' : '填写内容与 Cloudflare 后台“值”输入框一致。')}</em></label>
+      <label class="field wide"><span>值</span><textarea name="value" rows="6" placeholder="${isEdit ? '留空表示只修改下方用途/添加方法，不改当前变量值' : '请输入新值'}">${isEdit && type !== 'secret_text' ? fieldValue(item?.value || '') : ''}</textarea><em>${isEdit && type === 'secret_text' ? '密钥旧值不会显示；输入新值后会覆盖原密钥。只改用途/添加方法时可留空。' : (type === 'json' ? 'JSON 变量必须填写有效 JSON；编辑时留空可只保存用途/添加方法。' : '填写内容与 Cloudflare 后台“值”输入框一致；编辑时留空可只保存用途/添加方法。')}</em></label>
+      <label class="field"><span>显示名称/说明标题</span><input name="label" maxlength="80" value="${fieldValue(item?.label || info.label || name || '')}" placeholder="例如 GitHub Client ID"><em>用于变量列表下方的小标题，不影响真实变量名称。</em></label>
+      <label class="field wide"><span>用途</span><textarea name="purpose" rows="4" maxlength="1000" placeholder="说明这个变量控制什么功能">${esc(item?.purpose || info.purpose || '')}</textarea><em>保存后会显示在变量列表“用途”里，方便以后排查。</em></label>
+      <label class="field wide"><span>添加方法</span><textarea name="addMethod" rows="4" maxlength="1000" placeholder="说明这个变量应该在 Cloudflare 哪里添加、选择什么类型、填写什么内容">${esc(item?.addMethod || info.addMethod || '')}</textarea><em>保存后会显示在变量列表“添加方法”里。</em></label>
       <div class="readonly-box wide" id="worker-variable-help"><b>${esc(info.label || name || '变量说明')}</b><p><b>用途：</b>${esc(info.purpose || '')}</p><p><b>添加方法：</b>${esc(info.addMethod || '')}</p></div>
       <div class="modal-actions wide"><button class="btn soft" type="button" data-close-modal>取消</button><button class="btn primary" type="submit">${isEdit ? '保存修改' : '添加变量'}</button></div>
     </form>`, 'wide');
@@ -6126,8 +6299,14 @@ function openWorkerVariableModal(mode, item = null) {
       name: String(fd.get('name') || '').trim(),
       type: String(fd.get('type') || 'plain_text'),
       value: String(fd.get('value') || '').trim(),
+      label: String(fd.get('label') || '').trim(),
+      purpose: String(fd.get('purpose') || '').trim(),
+      addMethod: String(fd.get('addMethod') || '').trim(),
     };
-    if (!payload.name || !payload.value) return toast('请填写变量名称和值', 'error');
+    const hasNewValue = payload.value.length > 0;
+    if (!payload.name) return toast('请填写变量名称', 'error');
+    if (!isEdit && !hasNewValue) return toast('请填写变量值', 'error');
+    if (isEdit && !hasNewValue && !payload.label && !payload.purpose && !payload.addMethod) return toast('请填写值、用途或添加方法中的任意一项', 'error');
     if (payload.name === 'CF_WORKERS_API_TOKEN') return toast('CF_WORKERS_API_TOKEN 只能在 Cloudflare 控制台维护', 'error');
     if (workerVariableTypeValue(payload.type) === 'json') {
       try { JSON.parse(payload.value); } catch { return toast('JSON 变量内容不是有效 JSON，请检查引号、逗号、括号和布尔值格式', 'error'); }
@@ -6252,6 +6431,11 @@ async function renderAdminHomepageSettings() {
         <a class="btn soft small" target="_blank" rel="noopener" href="/knowledge" data-public-preview="knowledge">知识库</a>
         <a class="btn soft small" target="_blank" rel="noopener" href="/featured" data-public-preview="featured">优质站点</a>
         <a class="btn soft small" target="_blank" rel="noopener" href="/navigation" data-public-preview="navigation">导航</a>
+      </div>
+
+      <div class="home-settings-summary-v132">
+        <div><b>首页设置优化版</b><span>先改公共设置，再改首页内容，最后处理可用域名、知识库、优质站点、导航和页脚。</span></div>
+        <div><span>保存后可直接点上方预览入口查看效果；公开页面和控制台设置已分开，避免误改登录后台。</span></div>
       </div>
 
       <div class="home-settings-jumpbar">
@@ -6557,6 +6741,13 @@ async function renderAdminSettings() {
         <div><h2>管理员设置</h2><p>配置按功能分组保存到 Workers KV。修改高风险项目时会要求二次确认。</p></div>
         <div class="toolbar-actions"><span class="settings-save-status">设置读取完成</span><button class="btn soft" id="export-settings" type="button">导出配置</button><label class="btn soft file-btn">导入配置<input id="import-settings-file" type="file" accept="application/json,.json" hidden></label></div>
       </div>
+      <div class="admin-settings-quickbar-v132">
+        <button type="button" data-admin-settings-tab="site"><b>界面</b><span>品牌、预设、公告</span></button>
+        <button type="button" data-admin-settings-tab="registration"><b>注册</b><span>GitHub、邮箱、验证</span></button>
+        <button type="button" data-admin-settings-tab="dns"><b>DNS</b><span>根域名、类型、测试</span></button>
+        <button type="button" data-admin-settings-tab="variables"><b>变量</b><span>Cloudflare 变量与密钥</span></button>
+        <button type="button" data-admin-settings-tab="system"><b>系统</b><span>状态、备份、导入</span></button>
+      </div>
       <div class="tabs admin-tabs">
         <button class="tab active" data-tab="site">界面设置</button>
         <button class="tab" data-tab="registration">注册设置</button>
@@ -6820,6 +7011,7 @@ async function renderAdminSettings() {
     </section>`);
 
     bindAdminSettingsTabs();
+    document.querySelectorAll('[data-admin-settings-tab]').forEach(btn=>btn.addEventListener('click',()=>{const tab=btn.dataset.adminSettingsTab; const target=document.querySelector(`.admin-tabs [data-tab="${CSS.escape(tab)}"]`); target?.click(); target?.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});}));
     bindColorPickers();
     bindCaptchaBackgroundUpload();
     bindSettingsTools();
