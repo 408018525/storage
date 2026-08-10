@@ -23,6 +23,10 @@ export interface Env {
   TURNSTILE_ACTION_LOGIN?: string;
   TURNSTILE_ACTION_REGISTER?: string;
 
+  // GitHub OAuth login. Use GITHUB_CLIENT_SECRET as a Workers Secret.
+  GITHUB_CLIENT_ID?: string;
+  GITHUB_CLIENT_SECRET?: string;
+
   // Cloudflare DNS configuration from the Workers dashboard.
   CF_API_TOKEN?: string;
   DNS_SUFFIXES_JSON?: string | unknown[];
