@@ -6431,3 +6431,119 @@ html[data-theme="light"] body.is-admin :where(.btn.secondary,.btn.soft,.btn.ghos
   border-color:#cbd5e1!important;
   outline:none!important;
 }
+
+
+/* v143: sidebar default must be text-only. No pale capsule until hover. */
+.sidebar :where(.nav,a.nav,button.nav,.side-nav-link,.support-nav-toggle,.support-subnav-link,.sidebar-editable-v132,.support-nav-group,[data-sidebar-key]){
+  background:transparent!important;
+  background-color:transparent!important;
+  background-image:none!important;
+  box-shadow:none!important;
+  outline:none!important;
+}
+.sidebar :where(.nav.active,a.nav.active,button.nav.active,.side-nav-link.active,.support-nav-toggle.active,.support-subnav-link.active){
+  background:transparent!important;
+  background-color:transparent!important;
+  background-image:none!important;
+  box-shadow:none!important;
+}
+.sidebar :where(.nav,a.nav,button.nav,.side-nav-link,.support-nav-toggle,.support-subnav-link){
+  transition:background-color .15s ease,color .15s ease,transform .15s ease!important;
+}
+.sidebar :where(.nav,a.nav,button.nav,.side-nav-link,.support-nav-toggle,.support-subnav-link):hover,
+.sidebar :where(.nav,a.nav,button.nav,.side-nav-link,.support-nav-toggle,.support-subnav-link):focus-visible{
+  background:rgba(59,130,246,.09)!important;
+  background-color:rgba(59,130,246,.09)!important;
+  background-image:none!important;
+  box-shadow:none!important;
+  outline:none!important;
+}
+html[data-theme="dark"] .sidebar :where(.nav,a.nav,button.nav,.side-nav-link,.support-nav-toggle,.support-subnav-link):hover,
+html[data-theme="dark"] .sidebar :where(.nav,a.nav,button.nav,.side-nav-link,.support-nav-toggle,.support-subnav-link):focus-visible{
+  background:rgba(96,165,250,.10)!important;
+  background-color:rgba(96,165,250,.10)!important;
+}
+.sidebar :where(.nav.active,a.nav.active,button.nav.active,.side-nav-link.active,.support-nav-toggle.active,.support-subnav-link.active){
+  color:var(--accent)!important;
+}
+html[data-theme="dark"] .sidebar :where(.nav.active,a.nav.active,button.nav.active,.side-nav-link.active,.support-nav-toggle.active,.support-subnav-link.active){
+  color:#dbeafe!important;
+}
+.sidebar :where(.nav-label,.nav-icon,.support-nav-chevron,b,span){
+  background:transparent!important;
+  background-color:transparent!important;
+  background-image:none!important;
+  box-shadow:none!important;
+}
+.sidebar .support-nav-toggle{
+  display:flex!important;
+  align-items:center!important;
+  width:100%!important;
+  border:0!important;
+}
+.sidebar .support-nav-chevron{
+  margin-left:auto!important;
+  width:auto!important;
+  min-width:18px!important;
+  height:18px!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  line-height:1!important;
+  transform:none!important;
+  position:static!important;
+}
+.sidebar .sidebar-editable-v132::after{opacity:0!important;}
+.sidebar .sidebar-editable-v132:hover::after{opacity:.42!important;}
+
+/* v143: inline text edit hints must never create permanent pale blocks in navigation or controls. */
+body.is-admin :where(.sidebar,.sidebar *,button,button *,a,a *,.btn,.btn *,[role="button"],[role="button"] *,.tab,.tab *, .range-chip,.range-chip *) .inline-text-editable-v135,
+body.is-admin :where(button,a,.btn,[role="button"],.nav,.side-nav-link,.support-nav-toggle,.support-subnav-link,.tab,.range-chip).inline-text-editable-v135,
+body.is-admin :where(button,a,.btn,[role="button"],.nav,.side-nav-link,.support-nav-toggle,.support-subnav-link,.tab,.range-chip).inline-text-editable-v135:hover{
+  background:transparent!important;
+  background-color:transparent!important;
+  background-image:none!important;
+  outline:none!important;
+  box-shadow:none!important;
+}
+
+/* v143: stop buttons from becoming transparent while pressed/focused. */
+html[data-theme] :where(button,.btn,a.btn,[role="button"],.icon-btn,.copy-mini,.modal-x,.login-link-btn,.tab,.tabbar button,.filters button,.admin-tabs button,.range-chip,.support-nav-toggle,.support-subnav-link):not(:disabled){
+  opacity:1!important;
+  background-clip:padding-box!important;
+}
+html[data-theme] :where(button,.btn,a.btn,[role="button"],.icon-btn,.copy-mini,.modal-x,.login-link-btn,.tab,.tabbar button,.filters button,.admin-tabs button,.range-chip,.support-nav-toggle,.support-subnav-link):not(:disabled):active,
+html[data-theme] :where(button,.btn,a.btn,[role="button"],.icon-btn,.copy-mini,.modal-x,.login-link-btn,.tab,.tabbar button,.filters button,.admin-tabs button,.range-chip,.support-nav-toggle,.support-subnav-link):not(:disabled):focus,
+html[data-theme] :where(button,.btn,a.btn,[role="button"],.icon-btn,.copy-mini,.modal-x,.login-link-btn,.tab,.tabbar button,.filters button,.admin-tabs button,.range-chip,.support-nav-toggle,.support-subnav-link):not(:disabled):focus-visible{
+  opacity:1!important;
+  outline:none!important;
+  text-decoration:none!important;
+}
+html[data-theme] :where(.btn.primary,button.primary,.btn.blue,button.blue,.public-register-btn,.public-featured-apply):not(:disabled),
+html[data-theme] :where(.btn.primary,button.primary,.btn.blue,button.blue,.public-register-btn,.public-featured-apply):not(:disabled):active,
+html[data-theme] :where(.btn.primary,button.primary,.btn.blue,button.blue,.public-register-btn,.public-featured-apply):not(:disabled):focus,
+html[data-theme] :where(.btn.primary,button.primary,.btn.blue,button.blue,.public-register-btn,.public-featured-apply):not(:disabled):focus-visible{
+  background:linear-gradient(135deg,var(--accent),var(--accent-2))!important;
+  color:#fff!important;
+  border-color:transparent!important;
+  box-shadow:0 10px 24px color-mix(in srgb,var(--accent) 24%,transparent)!important;
+}
+html[data-theme="light"] :where(.btn.secondary,.btn.ghost,.btn.soft,button.secondary,button.ghost,button.soft,.icon-btn,.copy-mini,.modal-x,.login-link-btn,.tab,.tabbar button,.filters button,.admin-tabs button,.range-chip):not(:disabled):active,
+html[data-theme="light"] :where(.btn.secondary,.btn.ghost,.btn.soft,button.secondary,button.ghost,button.soft,.icon-btn,.copy-mini,.modal-x,.login-link-btn,.tab,.tabbar button,.filters button,.admin-tabs button,.range-chip):not(:disabled):focus,
+html[data-theme="light"] :where(.btn.secondary,.btn.ghost,.btn.soft,button.secondary,button.ghost,button.soft,.icon-btn,.copy-mini,.modal-x,.login-link-btn,.tab,.tabbar button,.filters button,.admin-tabs button,.range-chip):not(:disabled):focus-visible{
+  background:#ffffff!important;
+  color:#172033!important;
+  border-color:#cbd5e1!important;
+}
+html[data-theme="dark"] :where(.btn.secondary,.btn.ghost,.btn.soft,button.secondary,button.ghost,button.soft,.icon-btn,.copy-mini,.modal-x,.login-link-btn,.tab,.tabbar button,.filters button,.admin-tabs button,.range-chip):not(:disabled):active,
+html[data-theme="dark"] :where(.btn.secondary,.btn.ghost,.btn.soft,button.secondary,button.ghost,button.soft,.icon-btn,.copy-mini,.modal-x,.login-link-btn,.tab,.tabbar button,.filters button,.admin-tabs button,.range-chip):not(:disabled):focus,
+html[data-theme="dark"] :where(.btn.secondary,.btn.ghost,.btn.soft,button.secondary,button.ghost,button.soft,.icon-btn,.copy-mini,.modal-x,.login-link-btn,.tab,.tabbar button,.filters button,.admin-tabs button,.range-chip):not(:disabled):focus-visible{
+  background:#111827!important;
+  color:#e5e7eb!important;
+  border-color:#334155!important;
+}
+html[data-theme] :where(.btn.danger,button.danger,.danger-btn,.delete-btn):not(:disabled),
+html[data-theme] :where(.btn.danger,button.danger,.danger-btn,.delete-btn):not(:disabled):active,
+html[data-theme] :where(.btn.danger,button.danger,.danger-btn,.delete-btn):not(:disabled):focus{
+  opacity:1!important;
+}
