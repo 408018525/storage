@@ -6272,3 +6272,162 @@ html[data-theme] .sidebar .support-subnav-link.active{
     margin-left:0!important;
   }
 }
+
+
+/* v142: sidebar hover-only labels + stable interactive buttons.
+   The inline text editor must not paint buttons/nav items at rest. */
+html[data-theme] .sidebar .nav,
+html[data-theme] .sidebar .nav.active,
+html[data-theme] .sidebar .side-nav-link,
+html[data-theme] .sidebar .side-nav-link.active,
+html[data-theme] .sidebar .support-nav-toggle,
+html[data-theme] .sidebar .support-nav-toggle.active,
+html[data-theme] .sidebar .support-subnav-link,
+html[data-theme] .sidebar .support-subnav-link.active,
+html[data-theme] .sidebar .support-nav-group,
+html[data-theme] .sidebar .support-nav-group.open,
+html[data-theme] .sidebar .sidebar-editable-v132,
+html[data-theme] .sidebar .sidebar-editable-v132:hover,
+html[data-theme] .sidebar .inline-text-editable-v135,
+html[data-theme] .sidebar .inline-text-editable-v135:hover{
+  background:transparent!important;
+  background-color:transparent!important;
+  background-image:none!important;
+  box-shadow:none!important;
+  outline:none!important;
+}
+html[data-theme] .sidebar .nav:hover,
+html[data-theme] .sidebar .side-nav-link:hover,
+html[data-theme] .sidebar .support-nav-toggle:hover,
+html[data-theme] .sidebar .support-subnav-link:hover,
+html[data-theme] .sidebar .nav:focus-visible,
+html[data-theme] .sidebar .side-nav-link:focus-visible,
+html[data-theme] .sidebar .support-nav-toggle:focus-visible,
+html[data-theme] .sidebar .support-subnav-link:focus-visible{
+  background:rgba(59,130,246,.10)!important;
+  background-color:rgba(59,130,246,.10)!important;
+  color:inherit!important;
+}
+html[data-theme] .sidebar .nav.active,
+html[data-theme] .sidebar .side-nav-link.active,
+html[data-theme] .sidebar .support-nav-toggle.active,
+html[data-theme] .sidebar .support-subnav-link.active{
+  color:var(--accent)!important;
+}
+html[data-theme="dark"] .sidebar .nav.active,
+html[data-theme="dark"] .sidebar .side-nav-link.active,
+html[data-theme="dark"] .sidebar .support-nav-toggle.active,
+html[data-theme="dark"] .sidebar .support-subnav-link.active{
+  color:#dbeafe!important;
+}
+html[data-theme] .sidebar .sidebar-editable-v132::after{opacity:0!important;}
+html[data-theme] .sidebar .sidebar-editable-v132:hover::after{opacity:.45!important;}
+
+/* v142: do not let the admin inline-text hover style overwrite actual controls. */
+body.is-admin :where(button,a,.btn,[role="button"],.tab,.range-chip,.support-nav-toggle,.support-subnav-link,.nav,.side-nav-link).inline-text-editable-v135,
+body.is-admin :where(button,a,.btn,[role="button"],.tab,.range-chip,.support-nav-toggle,.support-subnav-link,.nav,.side-nav-link).inline-text-editable-v135:hover{
+  outline:none!important;
+  box-shadow:inherit!important;
+  border-radius:inherit!important;
+}
+body.is-admin :where(.btn.primary,button.primary).inline-text-editable-v135,
+body.is-admin :where(.btn.primary,button.primary).inline-text-editable-v135:hover,
+html[data-theme] :where(.btn.primary,button.primary):not(:disabled):active,
+html[data-theme] :where(.btn.primary,button.primary):not(:disabled):focus,
+html[data-theme] :where(.btn.primary,button.primary):not(:disabled):focus-visible{
+  background:linear-gradient(135deg,var(--accent),var(--accent-2))!important;
+  color:#fff!important;
+  border-color:transparent!important;
+  opacity:1!important;
+}
+body.is-admin :where(.btn.secondary,button.secondary,.btn.soft,button.soft,.btn.ghost,button.ghost,.icon-btn,.modal-x,.copy-mini,.login-link-btn).inline-text-editable-v135:hover{
+  outline:none!important;
+}
+
+/* v142: broad active/focus fallback. Controls keep a real surface instead of turning transparent. */
+html[data-theme] :where(button,.btn,a.btn,.tab,.tabbar button,.filters button,.admin-tabs button,.range-chip,.icon-btn,.copy-mini,.login-link-btn,.help-input-clear,.help-history-word,.help-history-remove):not(:disabled):active,
+html[data-theme] :where(button,.btn,a.btn,.tab,.tabbar button,.filters button,.admin-tabs button,.range-chip,.icon-btn,.copy-mini,.login-link-btn,.help-input-clear,.help-history-word,.help-history-remove):not(:disabled):focus,
+html[data-theme] :where(button,.btn,a.btn,.tab,.tabbar button,.filters button,.admin-tabs button,.range-chip,.icon-btn,.copy-mini,.login-link-btn,.help-input-clear,.help-history-word,.help-history-remove):not(:disabled):focus-visible{
+  opacity:1!important;
+  outline:none!important;
+  background-clip:padding-box!important;
+}
+html[data-theme="dark"] :where(.btn.secondary,button.secondary,.btn.soft,button.soft,.btn.ghost,button.ghost,.icon-btn,.copy-mini,.login-link-btn,.help-input-clear,.help-history-word,.help-history-remove,.tab,.tabbar button,.filters button,.admin-tabs button,.range-chip):not(:disabled):active,
+html[data-theme="dark"] :where(.btn.secondary,button.secondary,.btn.soft,button.soft,.btn.ghost,button.ghost,.icon-btn,.copy-mini,.login-link-btn,.help-input-clear,.help-history-word,.help-history-remove,.tab,.tabbar button,.filters button,.admin-tabs button,.range-chip):not(:disabled):focus,
+html[data-theme="dark"] :where(.btn.secondary,button.secondary,.btn.soft,button.soft,.btn.ghost,button.ghost,.icon-btn,.copy-mini,.login-link-btn,.help-input-clear,.help-history-word,.help-history-remove,.tab,.tabbar button,.filters button,.admin-tabs button,.range-chip):not(:disabled):focus-visible{
+  background:#111827!important;
+  color:#e5e7eb!important;
+  border-color:#334155!important;
+}
+html[data-theme="light"] :where(.btn.secondary,button.secondary,.btn.soft,button.soft,.btn.ghost,button.ghost,.icon-btn,.copy-mini,.login-link-btn,.help-input-clear,.help-history-word,.help-history-remove,.tab,.tabbar button,.filters button,.admin-tabs button,.range-chip):not(:disabled):active,
+html[data-theme="light"] :where(.btn.secondary,button.secondary,.btn.soft,button.soft,.btn.ghost,button.ghost,.icon-btn,.copy-mini,.login-link-btn,.help-input-clear,.help-history-word,.help-history-remove,.tab,.tabbar button,.filters button,.admin-tabs button,.range-chip):not(:disabled):focus,
+html[data-theme="light"] :where(.btn.secondary,button.secondary,.btn.soft,button.soft,.btn.ghost,button.ghost,.icon-btn,.copy-mini,.login-link-btn,.help-input-clear,.help-history-word,.help-history-remove,.tab,.tabbar button,.filters button,.admin-tabs button,.range-chip):not(:disabled):focus-visible{
+  background:#ffffff!important;
+  color:#172033!important;
+  border-color:#cbd5e1!important;
+}
+html[data-theme] :where(.tab.active,.tabbar button.active,.filters button.active,.admin-tabs button.active,.range-chip.active):not(:disabled):active,
+html[data-theme] :where(.tab.active,.tabbar button.active,.filters button.active,.admin-tabs button.active,.range-chip.active):not(:disabled):focus{
+  background:var(--accent)!important;
+  color:#fff!important;
+  border-color:var(--accent)!important;
+}
+
+/* v142: inline edit hint appears only on hover, never as a permanent pale rectangle. */
+body.is-admin .inline-text-editable-v135{
+  background:transparent!important;
+  outline:none!important;
+  box-shadow:none!important;
+}
+body.is-admin .inline-text-editable-v135:hover{
+  background:color-mix(in srgb,var(--accent) 6%,transparent)!important;
+  outline:1px dashed color-mix(in srgb,var(--accent) 42%,transparent)!important;
+  box-shadow:none!important;
+}
+body.is-admin :where(button,a,.btn,[role="button"],.nav,.support-nav-toggle,.support-subnav-link,.side-nav-link).inline-text-editable-v135:hover{
+  background:inherit!important;
+  outline:none!important;
+}
+
+/* v142 final guard: stale inline-edit class must never erase control backgrounds. */
+body.is-admin .btn.primary.inline-text-editable-v135,
+body.is-admin .btn.primary.inline-text-editable-v135:hover,
+body.is-admin button.primary.inline-text-editable-v135,
+body.is-admin button.primary.inline-text-editable-v135:hover{
+  background:linear-gradient(135deg,var(--accent),var(--accent-2))!important;
+  color:#fff!important;
+  border-color:transparent!important;
+  outline:none!important;
+}
+body.is-admin .btn.danger.inline-text-editable-v135,
+body.is-admin .btn.danger.inline-text-editable-v135:hover,
+body.is-admin button.danger.inline-text-editable-v135,
+body.is-admin button.danger.inline-text-editable-v135:hover{
+  background:#dc2626!important;
+  color:#fff!important;
+  border-color:#dc2626!important;
+  outline:none!important;
+}
+body.is-admin .btn.success.inline-text-editable-v135,
+body.is-admin .btn.success.inline-text-editable-v135:hover,
+body.is-admin button.success.inline-text-editable-v135,
+body.is-admin button.success.inline-text-editable-v135:hover{
+  background:#e8fff5!important;
+  color:#047857!important;
+  border-color:#b7f7d6!important;
+  outline:none!important;
+}
+html[data-theme="dark"] body.is-admin :where(.btn.secondary,.btn.soft,.btn.ghost,button.secondary,button.soft,button.ghost,.icon-btn,.copy-mini,.login-link-btn).inline-text-editable-v135,
+html[data-theme="dark"] body.is-admin :where(.btn.secondary,.btn.soft,.btn.ghost,button.secondary,button.soft,button.ghost,.icon-btn,.copy-mini,.login-link-btn).inline-text-editable-v135:hover{
+  background:#111827!important;
+  color:#e5e7eb!important;
+  border-color:#334155!important;
+  outline:none!important;
+}
+html[data-theme="light"] body.is-admin :where(.btn.secondary,.btn.soft,.btn.ghost,button.secondary,button.soft,button.ghost,.icon-btn,.copy-mini,.login-link-btn).inline-text-editable-v135,
+html[data-theme="light"] body.is-admin :where(.btn.secondary,.btn.soft,.btn.ghost,button.secondary,button.soft,button.ghost,.icon-btn,.copy-mini,.login-link-btn).inline-text-editable-v135:hover{
+  background:#ffffff!important;
+  color:#172033!important;
+  border-color:#cbd5e1!important;
+  outline:none!important;
+}
