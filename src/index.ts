@@ -5914,6 +5914,8 @@ async function adminUpdateSettings(request: Request, env: Env, group: AdminSetti
   const settings = await loadSettings(env);
 
   if (group === 'site') {
+    const nextLogoImageUrl = cleanText(body.logoImageUrl, 520000);
+    const nextLogoText = cleanText(body.logoText, 12) || (nextLogoImageUrl ? '' : 'free');
     settings.site = {
       ...settings.site,
       title: cleanText(body.title, 80) || settings.site.title,
@@ -5930,8 +5932,8 @@ async function adminUpdateSettings(request: Request, env: Env, group: AdminSetti
       noticeEndAt: cleanText(body.noticeEndAt, 80),
       accent: normalizeHexColor(body.accent, '#4f63f6'),
       accent2: normalizeHexColor(body.accent2, '#7c4dff'),
-      logoText: cleanText(body.logoText, 12) || 'free',
-      logoImageUrl: cleanText(body.logoImageUrl, 360000),
+      logoText: nextLogoText,
+      logoImageUrl: nextLogoImageUrl,
       icp: cleanText(body.icp, 200),
       homepageNotice: cleanText(body.homepageNotice, 5000),
       publicHomepageEnabled: asBoolean(body.publicHomepageEnabled, true),
@@ -8636,20 +8638,20 @@ async function adminSystemStatus(request: Request, env: Env): Promise<Response> 
       (SELECT COUNT(*) FROM audit_logs WHERE datetime(created_at) >= datetime('now','-' || ? || ' days')) AS logsRetained
   `).bind(auditRetentionDays).first<any>();
   return ok({
-    version: 'v146',
+    version: 'v147',
     settingsKey: SETTINGS_KEY,
     kv: { storage: 'Workers KV', estimatedKeys: '由 Cloudflare 控制台查看实际占用' },
     cfApi: { configured: Boolean(resolveDnsToken(env, settings)), status: resolveDnsToken(env, settings) ? '已配置' : '未配置' },
     cron: { enabled: Boolean(settings.automation?.enabled), expression: settings.automation?.cronExpression || '' },
     counts: { ...counts, logs4d: Number(counts?.logsRetained || 0) },
     auditRetentionDays,
-    update: { current: 'v146', latest: '请以当前部署包为准' },
+    update: { current: 'v147', latest: '请以当前部署包为准' },
   });
 }
 
 async function adminExportSettings(request: Request, env: Env): Promise<Response> {
   await requireAdmin(env, request);
-  return ok({ exportedAt: new Date().toISOString(), version: 'v146', settings: await loadSettings(env) });
+  return ok({ exportedAt: new Date().toISOString(), version: 'v147', settings: await loadSettings(env) });
 }
 
 async function adminImportSettings(request: Request, env: Env): Promise<Response> {
