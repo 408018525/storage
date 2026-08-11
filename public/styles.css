@@ -5179,3 +5179,269 @@ body:not(.is-admin) .inline-text-editable-v135:hover{
   outline:none!important;
   background:transparent!important;
 }
+
+
+/* v138: centered support arrow, real single-icon theme toggle, safer light/dark surfaces */
+.support-nav-toggle{display:flex!important;align-items:center!important;min-height:44px!important;}
+.support-nav-toggle .support-nav-chevron{
+  margin-left:auto!important;
+  width:22px!important;
+  height:22px!important;
+  min-width:22px!important;
+  display:inline-grid!important;
+  place-items:center!important;
+  line-height:1!important;
+  font-size:0!important;
+  transform:none!important;
+  opacity:.82!important;
+  position:relative!important;
+  top:0!important;
+}
+.support-nav-toggle .support-nav-chevron::before{
+  content:'⌄';
+  display:block;
+  width:22px;
+  height:22px;
+  line-height:20px;
+  text-align:center;
+  font-size:18px;
+  font-weight:900;
+  transform:translateY(-1px);
+}
+.support-nav-group.open .support-nav-chevron{transform:none!important;}
+.support-nav-group.open .support-nav-chevron::before{content:'⌃';transform:translateY(1px);}
+
+.theme-toggle-v134{
+  width:34px!important;
+  height:34px!important;
+  min-width:34px!important;
+  border-radius:9px!important;
+  padding:0!important;
+  display:inline-grid!important;
+  place-items:center!important;
+  overflow:hidden!important;
+  border:1px solid #d7e0ec!important;
+  background:#ffffff!important;
+  color:#111827!important;
+  box-shadow:0 8px 18px rgba(15,23,42,.10)!important;
+}
+.theme-toggle-v134 .theme-toggle-track-v134,
+.theme-toggle-v134 .theme-toggle-sun-v134,
+.theme-toggle-v134 .theme-toggle-moon-v134,
+.theme-toggle-v134 .theme-toggle-knob-v134{display:none!important;}
+.theme-toggle-icon-v138,.theme-toggle-icon-v137{
+  display:block!important;
+  width:100%!important;
+  height:100%!important;
+  line-height:34px!important;
+  text-align:center!important;
+  font-size:20px!important;
+  font-family:Arial,"Microsoft YaHei",sans-serif!important;
+  color:currentColor!important;
+}
+.theme-toggle-v134.is-light{background:#ffffff!important;color:#111827!important;border-color:#d7e0ec!important;}
+.theme-toggle-v134.is-dark{background:#050505!important;color:#ffffff!important;border-color:#050505!important;box-shadow:0 8px 18px rgba(0,0,0,.26)!important;}
+html[data-theme="dark"] .theme-toggle-v134.is-dark{background:#050505!important;color:#ffffff!important;border-color:#050505!important;}
+
+body:not(.is-admin) .inline-text-editable-v135,
+body:not(.is-admin) .inline-text-editable-v135:hover{
+  outline:none!important;
+  background:transparent!important;
+  cursor:inherit!important;
+}
+body.is-admin .inline-text-editable-v135{cursor:context-menu;}
+body.is-admin .inline-text-editable-v135:hover{
+  outline:1px dashed color-mix(in srgb,var(--accent) 58%,transparent)!important;
+  background:color-mix(in srgb,var(--accent) 8%,transparent)!important;
+  border-radius:6px!important;
+}
+
+/* Light mode: remove washed-out blank/overexposed islands and keep contrast readable. */
+html[data-theme="light"] body{background:#f3f7fc!important;color:#172033!important;}
+html[data-theme="light"] .card,
+html[data-theme="light"] .domain-card,
+html[data-theme="light"] .detail-hero,
+html[data-theme="light"] .detail-panel,
+html[data-theme="light"] .info-card,
+html[data-theme="light"] .stat,
+html[data-theme="light"] .stat-card,
+html[data-theme="light"] .quota-hero,
+html[data-theme="light"] .admin-panel,
+html[data-theme="light"] .panel,
+html[data-theme="light"] .box,
+html[data-theme="light"] .notice,
+html[data-theme="light"] .site-notice,
+html[data-theme="light"] .analytics-card,
+html[data-theme="light"] .chart-card,
+html[data-theme="light"] .reg-key-card,
+html[data-theme="light"] .message-card,
+html[data-theme="light"] .message-row,
+html[data-theme="light"] .support-page-head,
+html[data-theme="light"] .support-ticket-row,
+html[data-theme="light"] .support-ticket-controls,
+html[data-theme="light"] .support-thread-item,
+html[data-theme="light"] .support-quick-card,
+html[data-theme="light"] .admin-settings-v79 .settings-quick-card,
+html[data-theme="light"] .admin-settings-v79 .setting-nav-card,
+html[data-theme="light"] .admin-settings-v79 .admin-tabs,
+html[data-theme="light"] .public-feature-grid article,
+html[data-theme="light"] .public-suffix-card,
+html[data-theme="light"] .public-available-grid>article,
+html[data-theme="light"] .public-nav-directory article,
+html[data-theme="light"] .public-about-grid article,
+html[data-theme="light"] .public-contact-grid article,
+html[data-theme="light"] .public-knowledge-category details,
+html[data-theme="light"] .public-faq-list details,
+html[data-theme="light"] .public-home-v114-copy,
+html[data-theme="light"] .public-home-v114-tool,
+html[data-theme="light"] .public-stats,
+html[data-theme="light"] .public-stats>div,
+html[data-theme="light"] .public-home-v113-stats,
+html[data-theme="light"] .public-home-v114-stats,
+html[data-theme="light"] .public-nav-hub-v114 article,
+html[data-theme="light"] .public-nav-hub-v114-title{
+  background:#ffffff!important;
+  color:#172033!important;
+  border-color:#d9e2ee!important;
+  box-shadow:0 14px 38px rgba(24,37,69,.06)!important;
+}
+html[data-theme="light"] .card h1,
+html[data-theme="light"] .card h2,
+html[data-theme="light"] .card h3,
+html[data-theme="light"] .analytics-card strong,
+html[data-theme="light"] .public-section h1,
+html[data-theme="light"] .public-section h2,
+html[data-theme="light"] .public-section h3,
+html[data-theme="light"] .public-home-v114-copy h1,
+html[data-theme="light"] .public-home-v114-copy h1 em{color:#172033!important;}
+html[data-theme="light"] .muted,
+html[data-theme="light"] .card p,
+html[data-theme="light"] .section-head p,
+html[data-theme="light"] .analytics-card span,
+html[data-theme="light"] .analytics-card em,
+html[data-theme="light"] .public-section p,
+html[data-theme="light"] .public-feature-grid p,
+html[data-theme="light"] .public-suffix-card p,
+html[data-theme="light"] .public-faq-list details p{color:#5d6b80!important;}
+html[data-theme="light"] input,
+html[data-theme="light"] textarea,
+html[data-theme="light"] select,
+html[data-theme="light"] .field input,
+html[data-theme="light"] .field textarea,
+html[data-theme="light"] .field select,
+html[data-theme="light"] .search-input input,
+html[data-theme="light"] .public-search-input,
+html[data-theme="light"] .public-search-input input,
+html[data-theme="light"] .public-domain-search select{
+  background:#ffffff!important;
+  color:#172033!important;
+  border-color:#cfd9e8!important;
+}
+html[data-theme="light"] input::placeholder,
+html[data-theme="light"] textarea::placeholder{color:#748196!important;}
+
+/* Dark mode: stronger final pass for cards, forms, tabs, settings blocks and tables. */
+html[data-theme="dark"] body,
+html[data-theme="dark"] .page,
+html[data-theme="dark"] .main,
+html[data-theme="dark"] .content,
+html[data-theme="dark"] .public-site,
+html[data-theme="dark"] .public-main,
+html[data-theme="dark"] .public-page-section,
+html[data-theme="dark"] .public-soft-section{background:#08111f!important;color:#e5e7eb!important;}
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .domain-card,
+html[data-theme="dark"] .detail-hero,
+html[data-theme="dark"] .detail-panel,
+html[data-theme="dark"] .info-card,
+html[data-theme="dark"] .stat,
+html[data-theme="dark"] .stat-card,
+html[data-theme="dark"] .quota-hero,
+html[data-theme="dark"] .admin-panel,
+html[data-theme="dark"] .panel,
+html[data-theme="dark"] .box,
+html[data-theme="dark"] .notice,
+html[data-theme="dark"] .site-notice,
+html[data-theme="dark"] .analytics-card,
+html[data-theme="dark"] .chart-card,
+html[data-theme="dark"] .reg-key-card,
+html[data-theme="dark"] .message-card,
+html[data-theme="dark"] .message-row,
+html[data-theme="dark"] .support-page-head,
+html[data-theme="dark"] .support-ticket-row,
+html[data-theme="dark"] .support-ticket-controls,
+html[data-theme="dark"] .support-thread-item,
+html[data-theme="dark"] .support-quick-card,
+html[data-theme="dark"] .admin-settings-v79 .settings-quick-card,
+html[data-theme="dark"] .admin-settings-v79 .setting-nav-card,
+html[data-theme="dark"] .admin-settings-v79 .admin-tabs,
+html[data-theme="dark"] .admin-settings-v79 .settings-grid > .field,
+html[data-theme="dark"] .admin-settings-v79 .settings-grid > .check,
+html[data-theme="dark"] .settings-subheading,
+html[data-theme="dark"] .public-feature-grid article,
+html[data-theme="dark"] .public-suffix-card,
+html[data-theme="dark"] .public-available-grid>article,
+html[data-theme="dark"] .public-nav-directory article,
+html[data-theme="dark"] .public-about-grid article,
+html[data-theme="dark"] .public-contact-grid article,
+html[data-theme="dark"] .public-knowledge-category details,
+html[data-theme="dark"] .public-faq-list details,
+html[data-theme="dark"] .public-home-v114-copy,
+html[data-theme="dark"] .public-home-v114-tool,
+html[data-theme="dark"] .public-stats,
+html[data-theme="dark"] .public-stats>div,
+html[data-theme="dark"] .public-home-v113-stats,
+html[data-theme="dark"] .public-home-v114-stats,
+html[data-theme="dark"] .public-nav-hub-v114 article,
+html[data-theme="dark"] .public-nav-hub-v114-title,
+html[data-theme="dark"] .public-domain-search-result,
+html[data-theme="dark"] .public-availability-focus,
+html[data-theme="dark"] .public-query-panel,
+html[data-theme="dark"] .public-legal-page{
+  background:#0f172a!important;
+  color:#e5e7eb!important;
+  border-color:#263449!important;
+  box-shadow:0 18px 46px rgba(0,0,0,.28)!important;
+}
+html[data-theme="dark"] input,
+html[data-theme="dark"] textarea,
+html[data-theme="dark"] select,
+html[data-theme="dark"] .field input,
+html[data-theme="dark"] .field textarea,
+html[data-theme="dark"] .field select,
+html[data-theme="dark"] .search-input input,
+html[data-theme="dark"] .search-box input,
+html[data-theme="dark"] .filters input,
+html[data-theme="dark"] .filters select,
+html[data-theme="dark"] .public-search-input,
+html[data-theme="dark"] .public-search-input input,
+html[data-theme="dark"] .public-domain-search select{
+  background:#0b1220!important;
+  color:#e5e7eb!important;
+  border-color:#334155!important;
+}
+html[data-theme="dark"] table,
+html[data-theme="dark"] .table-wrap,
+html[data-theme="dark"] thead,
+html[data-theme="dark"] tbody,
+html[data-theme="dark"] tr,
+html[data-theme="dark"] th,
+html[data-theme="dark"] td{background:transparent!important;color:#dbe4f0!important;border-color:#263449!important;}
+html[data-theme="dark"] thead th{background:#0b1220!important;color:#9aa7b8!important;}
+html[data-theme="dark"] .comparison-track,
+html[data-theme="dark"] .stacked-track,
+html[data-theme="dark"] .analytics-dashboard-v100 .chart-overview .overview-svg,
+html[data-theme="dark"] .analytics-floating-tip,
+html[data-theme="dark"] .analytics-global-tooltip{background:#111827!important;border-color:#334155!important;color:#dbe4f0!important;}
+html[data-theme="dark"] .chart-grid-line,
+html[data-theme="dark"] .chart-axis,
+html[data-theme="dark"] .radar-grid,
+html[data-theme="dark"] .radar-axis{stroke:#334155!important;}
+html[data-theme="dark"] .donut-total,
+html[data-theme="dark"] .donut-caption,
+html[data-theme="dark"] .analytics-donut-total,
+html[data-theme="dark"] .analytics-donut-caption,
+html[data-theme="dark"] .gauge-number,
+html[data-theme="dark"] .gauge-label,
+html[data-theme="dark"] .radar-label,
+html[data-theme="dark"] .chart-axis-text{fill:#cbd5e1!important;color:#cbd5e1!important;}
