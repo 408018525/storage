@@ -7074,7 +7074,7 @@ async function renderAdminSettings() {
           <div class="settings-section-heading wide"><span>01</span><div><h3>品牌与外观</h3><p>配置站点名称、Logo、主题和主色。</p></div></div>
           <label class="field"><span>网站标题</span><input name="title" maxlength="80" value="${fieldValue(site.title)}"><em>显示在浏览器标题和登录页。</em></label>
           <label class="field"><span>副标题</span><input name="subtitle" maxlength="140" value="${fieldValue(site.subtitle)}"><em>显示在前台品牌区域。</em></label>
-          <label class="field"><span>Logo 文字</span><input name="logoText" maxlength="12" value="${fieldValue(site.logoText)}"><em>不使用图片 Logo 时显示。</em></label>
+          <label class="field"><span>Logo 文字</span><input name="logoText" maxlength="12" value="${fieldValue(site.logoText)}"><em>不使用图片 Logo 时显示；上传图片 Logo 后可以留空。</em></label>
           <label class="field wide logo-upload-field-v145"><span>站点 Logo 图片</span><input name="logoImageUrl" value="${fieldValue(site.logoImageUrl)}" placeholder="https://example.com/logo.png 或上传后自动填入"><em>可填写图片 URL，也可直接上传 PNG / JPG / WebP / SVG。上传后会写入当前输入框并保存到系统设置。</em><div class="logo-upload-row-v145"><div class="logo-preview-v145">${site.logoImageUrl ? `<img src="${attr(site.logoImageUrl)}" alt="Logo 预览">` : `<span>${esc(site.logoText || 'free')}</span>`}</div><label class="btn soft small logo-upload-btn-v145">上传 Logo<input id="site-logo-upload-v145" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden></label><button class="btn ghost small" id="clear-site-logo-v145" type="button">清除图片</button></div></label>
           <label class="field"><span>站点 Favicon 地址</span><input name="faviconUrl" value="${fieldValue(site.faviconUrl)}" placeholder="https://example.com/favicon.ico"><em>用于浏览器标签页图标，留空使用默认。</em></label>
           <label class="field wide"><span>风格预设</span><select name="stylePreset"><option value="soft-blue" ${!site.stylePreset || site.stylePreset === 'soft-blue' ? 'selected' : ''}>柔和蓝 · 默认</option><option value="mist" ${site.stylePreset === 'mist' ? 'selected' : ''}>雾白灰 · 极简</option><option value="mint" ${site.stylePreset === 'mint' ? 'selected' : ''}>薄荷青 · 清爽</option><option value="warm" ${site.stylePreset === 'warm' ? 'selected' : ''}>暖米杏 · 柔和</option><option value="mono" ${site.stylePreset === 'mono' ? 'selected' : ''}>黑白灰 · 专业</option><option value="violet" ${site.stylePreset === 'violet' ? 'selected' : ''}>淡紫蓝 · 科技</option></select><em>所有预设都保持浅色背景，只改变主色、卡片层次、圆角和轻量阴影。</em></label>
@@ -7703,8 +7703,8 @@ Object.assign(I18N_EN, {
   '未匹配':'Unmatched',
 });
 
-function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v146</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
-async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v146')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v146')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
+function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v147</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
+async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v147')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v147')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
 function bindSettingsTools() {
   const exportFn = async () => {
     try {
@@ -7908,10 +7908,16 @@ function buildAutomationSettingsPayload(form) {
 function validateSettingsPayload(group, data) {
   const isHex = v => !v || /^#?[0-9a-fA-F]{6}$/.test(String(v).trim());
   const isUrl = v => !v || /^https?:\/\//i.test(String(v).trim()) || String(v).trim().startsWith('/');
+  const isLogoUrl = v => {
+    const s = String(v || '').trim();
+    if (!s) return true;
+    if (/^data:image\/(png|jpe?g|webp|svg\+xml);base64,/i.test(s)) return s.length <= 520000;
+    return isUrl(s);
+  };
   const n = (v, fallback=0) => Number.isFinite(Number(v)) ? Number(v) : fallback;
   if (group === 'site') {
     if (!String(data.title || '').trim()) throw new Error('网站标题不能为空');
-    if (!isUrl(data.logoImageUrl)) throw new Error('Logo 图片 URL 必须以 http://、https:// 或 / 开头');
+    if (!isLogoUrl(data.logoImageUrl)) throw new Error('Logo 图片支持 http://、https://、/ 开头路径，或直接上传 PNG / JPG / WebP / SVG 图片');
     if (!isUrl(data.faviconUrl)) throw new Error('Favicon 地址必须以 http://、https:// 或 / 开头');
     if (!isHex(data.accent) || !isHex(data.accent2)) throw new Error('颜色必须是十六进制格式，例如 #4f63f6');
     if (data.noticeStartAt && data.noticeEndAt && new Date(data.noticeStartAt) > new Date(data.noticeEndAt)) throw new Error('公告结束时间不能早于开始时间');
