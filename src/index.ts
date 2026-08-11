@@ -5863,7 +5863,7 @@ async function adminUpdateSettings(request: Request, env: Env, group: AdminSetti
       accent: normalizeHexColor(body.accent, '#4f63f6'),
       accent2: normalizeHexColor(body.accent2, '#7c4dff'),
       logoText: cleanText(body.logoText, 12) || 'free',
-      logoImageUrl: cleanText(body.logoImageUrl, 500),
+      logoImageUrl: cleanText(body.logoImageUrl, 360000),
       icp: cleanText(body.icp, 200),
       homepageNotice: cleanText(body.homepageNotice, 5000),
       publicHomepageEnabled: asBoolean(body.publicHomepageEnabled, true),
