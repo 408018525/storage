@@ -7014,3 +7014,209 @@ html[data-theme] .public-site :where(.btn.secondary,.btn.ghost,.btn.soft):focus-
   html[data-theme] .public-cta>div:last-child{justify-content:flex-start!important;flex-wrap:wrap!important;}
   html[data-theme] .public-footer-bottom{font-size:12px!important;}
 }
+
+
+/* ===== v145: logo upload + public display correction ===== */
+.logo-upload-field-v145 .logo-upload-row-v145{
+  margin-top:12px;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  flex-wrap:wrap;
+}
+.logo-preview-v145{
+  width:88px;
+  height:52px;
+  border:1px solid var(--v131-line,#d8e0ed);
+  border-radius:14px;
+  background:#fff;
+  display:grid;
+  place-items:center;
+  overflow:hidden;
+  color:#2563eb;
+  font-weight:950;
+  box-shadow:0 10px 24px rgba(15,23,42,.06);
+}
+.logo-preview-v145 img{
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  padding:6px;
+  display:block;
+}
+.brand div img,.public-brand i img,.auth-logo img,.login-free-mark img{
+  width:100%!important;
+  height:100%!important;
+  object-fit:contain!important;
+  display:block!important;
+}
+.auth-logo img,.login-free-mark img{padding:8px!important;}
+
+/* Public pages: tighter, clean reference-like layout, no over-wide blocks */
+html[data-theme] .public-site{
+  background:#f4f7fb!important;
+}
+html[data-theme="dark"] .public-site{
+  background:#07111f!important;
+}
+html[data-theme] .public-main{
+  min-height:calc(100vh - 68px)!important;
+  padding-top:0!important;
+}
+html[data-theme] .public-home-v114-hero{
+  max-width:1160px!important;
+  margin:44px auto 0!important;
+  padding:0 24px!important;
+}
+html[data-theme] .public-home-v114-copy h1{
+  max-width:1060px!important;
+  margin-left:auto!important;
+  margin-right:auto!important;
+  font-size:clamp(54px,6.2vw,92px)!important;
+  line-height:1.02!important;
+  letter-spacing:-4px!important;
+}
+html[data-theme] .public-home-v114-copy>p{
+  max-width:860px!important;
+  font-size:17px!important;
+}
+html[data-theme] .public-home-v114-tool{
+  max-width:860px!important;
+  margin-top:28px!important;
+  padding:16px 20px!important;
+  border-radius:24px!important;
+}
+html[data-theme] .public-home-v114-tool .public-domain-search,
+html[data-theme] .public-query-panel .public-domain-search{
+  grid-template-columns:minmax(0,1fr) 180px 92px!important;
+}
+html[data-theme] .public-search-input,
+html[data-theme] .public-domain-search select,
+html[data-theme] .public-domain-search>.btn{
+  height:50px!important;
+}
+html[data-theme] .public-home-v114-stats,
+html[data-theme] .public-stats{
+  max-width:1120px!important;
+  margin-top:36px!important;
+  border-radius:22px!important;
+}
+html[data-theme] .public-home-v114-stats>div,
+html[data-theme] .public-stats>div{
+  min-height:92px!important;
+}
+html[data-theme] .public-section{
+  max-width:1120px!important;
+  padding-top:70px!important;
+}
+html[data-theme] .public-section>header{
+  margin-bottom:26px!important;
+}
+html[data-theme] .public-feature-grid article,
+html[data-theme] .public-suffix-card,
+html[data-theme] .public-featured-domain-card{
+  min-height:160px!important;
+}
+html[data-theme] .public-feature-grid{
+  grid-template-columns:repeat(3,minmax(0,1fr))!important;
+}
+html[data-theme] .public-feature-grid article{
+  display:grid!important;
+  align-content:center!important;
+}
+html[data-theme] .public-page-hero{
+  max-width:1120px!important;
+  padding:62px 24px 16px!important;
+}
+html[data-theme] .public-page-hero h1{
+  font-size:clamp(38px,4vw,58px)!important;
+  line-height:1.05!important;
+}
+html[data-theme] .public-query-panel{
+  max-width:1120px!important;
+  margin-top:24px!important;
+  padding:34px 36px!important;
+  border-radius:24px!important;
+}
+html[data-theme] .public-query-panel>header{
+  align-items:flex-start!important;
+  text-align:left!important;
+}
+html[data-theme] .public-query-panel>header>span{
+  display:none!important;
+}
+html[data-theme] .public-query-panel>header h2{
+  font-size:clamp(28px,3.2vw,44px)!important;
+}
+html[data-theme] .public-query-panel>header p{
+  max-width:840px!important;
+}
+
+/* Sidebar: absolutely no permanent pale capsule, including help parent and edited labels */
+.sidebar nav :where(a,button,.nav,.support-nav-toggle,.support-nav-group,.support-subnav-link,[data-sidebar-key],.sidebar-editable-v132),
+html[data-theme] .sidebar nav :where(a,button,.nav,.support-nav-toggle,.support-nav-group,.support-subnav-link,[data-sidebar-key],.sidebar-editable-v132),
+html[data-theme="light"] .sidebar nav :where(a,button,.nav,.support-nav-toggle,.support-nav-group,.support-subnav-link,[data-sidebar-key],.sidebar-editable-v132),
+html[data-theme="dark"] .sidebar nav :where(a,button,.nav,.support-nav-toggle,.support-nav-group,.support-subnav-link,[data-sidebar-key],.sidebar-editable-v132){
+  background:transparent!important;
+  background-color:transparent!important;
+  background-image:none!important;
+  box-shadow:none!important;
+}
+.sidebar nav :where(.nav,.support-nav-toggle,.support-subnav-link){
+  border-radius:12px!important;
+}
+.sidebar nav :where(.nav,.support-nav-toggle,.support-subnav-link):hover,
+.sidebar nav :where(.nav,.support-nav-toggle,.support-subnav-link):focus-visible{
+  background:rgba(59,130,246,.08)!important;
+  background-color:rgba(59,130,246,.08)!important;
+}
+.sidebar nav :where(.nav.active,.support-nav-toggle.active,.support-subnav-link.active){
+  background:transparent!important;
+  background-color:transparent!important;
+  color:var(--accent)!important;
+}
+.sidebar .support-nav-toggle .support-nav-chevron{
+  align-self:center!important;
+  margin-left:auto!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  height:20px!important;
+  line-height:20px!important;
+  transform:none!important;
+}
+.sidebar .support-nav-group.open .support-nav-chevron{
+  transform:none!important;
+}
+
+/* Keep controls solid on click/focus */
+html[data-theme] :where(button,.btn,a.btn,.tab,.range-chip,.support-nav-toggle,.support-subnav-link,.public-domain-search>.btn):active,
+html[data-theme] :where(button,.btn,a.btn,.tab,.range-chip,.support-nav-toggle,.support-subnav-link,.public-domain-search>.btn):focus,
+html[data-theme] :where(button,.btn,a.btn,.tab,.range-chip,.support-nav-toggle,.support-subnav-link,.public-domain-search>.btn):focus-visible{
+  opacity:1!important;
+  background-clip:padding-box!important;
+}
+html[data-theme] :where(.btn.primary,button.primary,a.btn.primary,.public-domain-search>.btn):active,
+html[data-theme] :where(.btn.primary,button.primary,a.btn.primary,.public-domain-search>.btn):focus-visible{
+  background:linear-gradient(180deg,#3b82f6,#2563eb)!important;
+  border-color:#2563eb!important;
+  color:#fff!important;
+}
+html[data-theme="dark"] :where(.btn.primary,button.primary,a.btn.primary,.public-domain-search>.btn):active,
+html[data-theme="dark"] :where(.btn.primary,button.primary,a.btn.primary,.public-domain-search>.btn):focus-visible{
+  background:linear-gradient(180deg,#4f8cff,#2f6cf0)!important;
+  border-color:#2f6cf0!important;
+}
+
+@media(max-width:900px){
+  html[data-theme] .public-home-v114-copy h1{font-size:42px!important;letter-spacing:-1.8px!important;}
+  html[data-theme] .public-home-v114-tool .public-domain-search,
+  html[data-theme] .public-query-panel .public-domain-search{
+    grid-template-columns:1fr!important;
+  }
+  html[data-theme] .public-query-panel>header{
+    align-items:center!important;
+    text-align:center!important;
+  }
+  html[data-theme] .public-feature-grid{grid-template-columns:1fr!important;}
+}
