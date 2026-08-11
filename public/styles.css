@@ -5445,3 +5445,341 @@ html[data-theme="dark"] .gauge-number,
 html[data-theme="dark"] .gauge-label,
 html[data-theme="dark"] .radar-label,
 html[data-theme="dark"] .chart-axis-text{fill:#cbd5e1!important;color:#cbd5e1!important;}
+
+
+/* v139: final unified day/night theme layer
+   目标：日夜切换不再依赖零散白色补丁；所有常见卡片、表格、表单、列表、弹窗、
+   前台模块和后台模块统一走主题色。 */
+html[data-theme="dark"]{
+  --v139-page:#08111f;
+  --v139-surface:#0f172a;
+  --v139-surface-2:#111827;
+  --v139-surface-3:#172033;
+  --v139-line:#263449;
+  --v139-line-2:#334155;
+  --v139-text:#e5e7eb;
+  --v139-title:#f8fafc;
+  --v139-muted:#9aa7b8;
+  --v139-soft:#dbeafe;
+  --v139-input:#0b1220;
+  --v139-shadow:0 18px 46px rgba(0,0,0,.28);
+  color-scheme:dark;
+}
+html[data-theme="light"]{
+  --v139-page:#eef4fb;
+  --v139-surface:#f3f7fb;
+  --v139-surface-2:#f8fafc;
+  --v139-surface-3:#e8eff8;
+  --v139-line:#d6e0ec;
+  --v139-line-2:#cbd7e6;
+  --v139-text:#172033;
+  --v139-title:#0f172a;
+  --v139-muted:#5f6f86;
+  --v139-soft:#344256;
+  --v139-input:#f8fbff;
+  --v139-shadow:0 14px 36px rgba(24,37,69,.07);
+  color-scheme:light;
+}
+
+html[data-theme] body,
+html[data-theme] .page,
+html[data-theme] .main,
+html[data-theme] .content,
+html[data-theme] .public-site,
+html[data-theme] .public-main,
+html[data-theme] .auth-wrap,
+html[data-theme] .login-page,
+html[data-theme] .register-page,
+html[data-theme] .setup-page{
+  background:var(--v139-page)!important;
+  color:var(--v139-text)!important;
+}
+
+/* 大范围主题表面。排除按钮/输入/图标/验证码/代码，防止功能控件被误染。 */
+html[data-theme] :where(
+  [class*="card"],
+  [class*="panel"],
+  [class*="box"],
+  [class*="row"],
+  [class*="item"],
+  [class*="list"],
+  [class*="section"],
+  [class*="grid"],
+  [class*="wrap"],
+  [class*="hero"],
+  [class*="head"],
+  [class*="body"],
+  [class*="settings"],
+  [class*="admin"],
+  [class*="public"],
+  [class*="support"],
+  [class*="help"],
+  [class*="message"],
+  [class*="analytics"],
+  [class*="domain"],
+  [class*="quota"],
+  [class*="detail"],
+  [class*="preview"],
+  [class*="readonly"],
+  [class*="toolbar"],
+  [class*="filter"],
+  [class*="table"],
+  [class*="tabbar"],
+  [class*="nav-hub"],
+  [class*="notice"],
+  [class*="ticket"],
+  [class*="modal"],
+  [class*="empty"],
+  [class*="metric"],
+  [class*="stat"],
+  [class*="trend"],
+  [class*="distribution"],
+  [class*="monitor"],
+  [class*="reg-key"],
+  [class*="variable"],
+  [class*="dns-record"],
+  [class*="device"],
+  [class*="log"]
+):not(button):not(input):not(textarea):not(select):not(option):not(svg):not(path):not(circle):not(rect):not(line):not(polyline):not(polygon):not(code):not(pre):not(.theme-toggle-v134):not(.theme-toggle-v134 *):not(.cf-turnstile):not(.turnstile):not(.human-turnstile-slot):not(.image-captcha-picture):not(.status-pill):not(.badge):not([class*="icon"]){
+  background-color:var(--v139-surface)!important;
+  border-color:var(--v139-line)!important;
+  color:var(--v139-text)!important;
+}
+
+/* 日间表面不再过曝，仍保持浅色。 */
+html[data-theme="light"] :where(
+  .card,.domain-card,.detail-hero,.detail-panel,.info-card,.stat,.stat-card,.quota-hero,
+  .admin-panel,.panel,.box,.notice,.site-notice,.analytics-card,.chart-card,.reg-key-card,
+  .message-card,.message-row,.support-page-head,.support-ticket-row,.support-ticket-controls,
+  .support-thread-item,.support-quick-card,.admin-home-settings-head,
+  .admin-settings-v79 .settings-quick-card,.admin-settings-v79 .setting-nav-card,.admin-settings-v79 .admin-tabs,
+  .public-feature-grid article,.public-suffix-card,.public-available-grid>article,
+  .public-nav-directory article,.public-about-grid article,.public-contact-grid article,
+  .public-knowledge-category details,.public-faq-list details,.public-home-v114-copy,
+  .public-home-v114-tool,.public-cta,.public-stats,.public-stats>div,
+  .public-home-v113-stats,.public-home-v114-stats,.public-home-v113-stats>div,
+  .public-home-v114-stats>div,.public-nav-hub-v114 article,.public-nav-hub-v114-title,
+  .public-contact-note,.public-contact-email>a,.public-domain-search-result,.public-query-panel,
+  .public-availability-focus,.public-legal-page,.analytics-hero,.analytics-head,
+  .analytics-dashboard-head,.monitor-card,.trend-card,.distribution-card,
+  .cf-monitor div,.analytics-insight-list article,.public-mini-guide>div,.oauth-bound-row,
+  .side-user,.steps div,.domain-metrics div,.preview-box,.readonly-box,.settings-subheading,
+  .domain-point-price-editor,.domain-point-price-row,.mini-stats-v131 span
+){
+  background:var(--v139-surface-2)!important;
+  color:var(--v139-text)!important;
+  border-color:var(--v139-line)!important;
+  box-shadow:var(--v139-shadow)!important;
+}
+
+/* 夜间强制深色，不让白块漏出。 */
+html[data-theme="dark"] :where(
+  .card,.domain-card,.detail-hero,.detail-panel,.info-card,.stat,.stat-card,.quota-hero,
+  .admin-panel,.panel,.box,.notice,.site-notice,.analytics-card,.chart-card,.reg-key-card,
+  .message-card,.message-row,.support-page-head,.support-ticket-row,.support-ticket-controls,
+  .support-thread-item,.support-quick-card,.admin-home-settings-head,
+  .admin-settings-v79 .settings-quick-card,.admin-settings-v79 .setting-nav-card,.admin-settings-v79 .admin-tabs,
+  .public-feature-grid article,.public-suffix-card,.public-available-grid>article,
+  .public-nav-directory article,.public-about-grid article,.public-contact-grid article,
+  .public-knowledge-category details,.public-faq-list details,.public-home-v114-copy,
+  .public-home-v114-tool,.public-cta,.public-stats,.public-stats>div,
+  .public-home-v113-stats,.public-home-v114-stats,.public-home-v113-stats>div,
+  .public-home-v114-stats>div,.public-nav-hub-v114 article,.public-nav-hub-v114-title,
+  .public-contact-note,.public-contact-email>a,.public-domain-search-result,.public-query-panel,
+  .public-availability-focus,.public-legal-page,.analytics-hero,.analytics-head,
+  .analytics-dashboard-head,.monitor-card,.trend-card,.distribution-card,
+  .cf-monitor div,.analytics-insight-list article,.public-mini-guide>div,.oauth-bound-row,
+  .side-user,.steps div,.domain-metrics div,.preview-box,.readonly-box,.settings-subheading,
+  .domain-point-price-editor,.domain-point-price-row,.mini-stats-v131 span,
+  .help-card,.help-row,.list-row,.stat-row,.quota-left,.metric,.empty,.modal
+){
+  background:var(--v139-surface)!important;
+  color:var(--v139-text)!important;
+  border-color:var(--v139-line)!important;
+  box-shadow:var(--v139-shadow)!important;
+}
+
+html[data-theme] :where(h1,h2,h3,h4,h5,h6,strong,b,.title,.section-title,.card-title,.domain-title h3,.analytics-card strong,.mini-stats-v131 b,.domain-point-price-head b){
+  color:var(--v139-title)!important;
+}
+html[data-theme] :where(p,small,em,.muted,.field em,.section-head p,.card p,.analytics-card span,.analytics-card em,.analytics-card.v75 p,.chart-titlebar small,.public-section p,.public-feature-grid p,.public-suffix-card p,.public-suffix-card small,.public-faq-list details p,.public-footer,.public-footer p,.public-footer a,.domain-point-price-head span,.domain-point-domain span,.mini-stats-v131 span){
+  color:var(--v139-muted)!important;
+}
+
+/* 表单、搜索、筛选、下拉、文本域。 */
+html[data-theme] :where(input,textarea,select,.field input,.field textarea,.field select,.search-input,.search-input input,.search-box,.search-box input,.inline-form-v131 input,.copy-field-v131 input,.public-search-input,.public-search-input input,.public-domain-search select,.login-input-wrap,.login-input-wrap input,.reg-key-tools input,.custom-range input,.analytics-toolbar-v75 input,.analytics-toolbar-v82 input,.analytics-toolbar-v82 select,.filters input,.filters select,.message-card input,.message-card textarea,.message-card select,.support-page input,.support-page textarea,.support-page select,.help-page input,.help-page textarea,.help-page select){
+  background:var(--v139-input)!important;
+  color:var(--v139-text)!important;
+  border-color:var(--v139-line-2)!important;
+  box-shadow:none!important;
+}
+html[data-theme] input::placeholder,
+html[data-theme] textarea::placeholder,
+html[data-theme] .search-input input::placeholder,
+html[data-theme] .public-search-input input::placeholder{color:var(--v139-muted)!important;opacity:.86!important;}
+
+/* 表格统一。 */
+html[data-theme] :where(table,.table-wrap,.analytics-table,.analytics-table table){
+  background:var(--v139-surface)!important;
+  border-color:var(--v139-line)!important;
+  color:var(--v139-text)!important;
+}
+html[data-theme] :where(thead,tbody,tr,th,td,.table-wrap thead th,.analytics-table thead th){
+  background:transparent!important;
+  color:var(--v139-text)!important;
+  border-color:var(--v139-line)!important;
+}
+html[data-theme] :where(thead th,.table-wrap thead th,.analytics-table thead th){
+  background:var(--v139-surface-2)!important;
+  color:var(--v139-muted)!important;
+}
+html[data-theme] tbody tr:hover{background:color-mix(in srgb,var(--v139-surface-3) 68%,transparent)!important;}
+
+/* 标签、Tab、二级导航、非主按钮。 */
+html[data-theme] :where(.tabbar button,.filters button,.range-chip,.admin-settings-v79 .admin-tabs button,.support-subnav-link,.public-nav-desktop a,.public-mobile-menu a,.public-nav-hub-v114 a,.btn.secondary,.btn.ghost,.btn.soft,.github-oauth-btn-v133){
+  background:var(--v139-surface-2)!important;
+  color:var(--v139-soft)!important;
+  border-color:var(--v139-line-2)!important;
+  box-shadow:none!important;
+}
+html[data-theme] :where(.tabbar button.active,.filters button.active,.range-chip.active,.admin-settings-v79 .admin-tabs button.active,.support-subnav-link.active,.support-subnav-link:hover,.public-nav-desktop a.active,.public-nav-desktop a:hover,.public-mobile-menu a.active,.public-mobile-menu a:hover,.public-nav-hub-v114 a:hover){
+  background:var(--accent)!important;
+  color:#fff!important;
+  border-color:var(--accent)!important;
+}
+
+/* 图表和 SVG 文字。 */
+html[data-theme] :where(.comparison-track,.stacked-track,.analytics-dashboard-v100 .chart-overview .overview-svg,.mini-bars,.waffle-grid i){
+  background:var(--v139-surface-2)!important;
+  border-color:var(--v139-line-2)!important;
+}
+html[data-theme] :where(.chart-grid-line,.chart-axis,.radar-grid,.radar-axis){stroke:var(--v139-line-2)!important;}
+html[data-theme] :where(.donut-total,.donut-caption,.analytics-donut-total,.analytics-donut-caption,.gauge-number,.gauge-label,.radar-label,.chart-axis-text){fill:var(--v139-muted)!important;color:var(--v139-muted)!important;}
+
+/* 状态类保留语义色，但去掉白底过曝。 */
+html[data-theme] :where(.trend.up,.pill.success,.status.success,.public-domain-open-status){
+  color:#047857!important;
+  background:#d1fae5!important;
+}
+html[data-theme="dark"] :where(.trend.up,.pill.success,.status.success,.public-domain-open-status){
+  color:#bbf7d0!important;
+  background:rgba(34,197,94,.15)!important;
+  border-color:rgba(34,197,94,.3)!important;
+}
+html[data-theme] :where(.trend.down,.pill.danger,.status.danger){
+  color:#b91c1c!important;
+  background:#fee2e2!important;
+}
+html[data-theme="dark"] :where(.trend.down,.pill.danger,.status.danger){
+  color:#fecaca!important;
+  background:rgba(239,68,68,.16)!important;
+  border-color:rgba(239,68,68,.32)!important;
+}
+
+/* 右上角日夜切换：只显示当前可切换目标的一个图标。 */
+.theme-toggle-v134{
+  width:34px!important;height:34px!important;min-width:34px!important;
+  border-radius:9px!important;padding:0!important;display:inline-grid!important;place-items:center!important;overflow:hidden!important;
+  box-shadow:0 8px 18px rgba(15,23,42,.10)!important;
+}
+.theme-toggle-v134 .theme-toggle-track-v134,.theme-toggle-v134 .theme-toggle-sun-v134,.theme-toggle-v134 .theme-toggle-moon-v134,.theme-toggle-v134 .theme-toggle-knob-v134{display:none!important;}
+.theme-toggle-icon-v139,.theme-toggle-icon-v138,.theme-toggle-icon-v137{
+  display:block!important;width:100%!important;height:100%!important;line-height:34px!important;text-align:center!important;
+  font-size:20px!important;font-family:Arial,"Microsoft YaHei",sans-serif!important;color:currentColor!important;
+}
+.theme-toggle-v134.is-light{background:#fff!important;color:#111827!important;border:1px solid #d7e0ec!important;}
+.theme-toggle-v134.is-dark{background:#050505!important;color:#fff!important;border:1px solid #050505!important;}
+
+/* 帮助菜单箭头上下居中。 */
+.support-nav-toggle{display:flex!important;align-items:center!important;min-height:44px!important;}
+.support-nav-toggle .support-nav-chevron{margin-left:auto!important;width:22px!important;height:22px!important;min-width:22px!important;display:inline-grid!important;place-items:center!important;line-height:1!important;font-size:0!important;transform:none!important;position:static!important;top:auto!important;bottom:auto!important;}
+.support-nav-toggle .support-nav-chevron::before{content:'⌄';font-size:18px;font-weight:900;line-height:22px;text-align:center;display:block;transform:none!important;}
+.support-nav-group.open .support-nav-chevron::before{content:'⌃';transform:none!important;}
+
+/* 优质站点价格 badge：积分价格和免费都清晰可读。 */
+.public-featured-price-badge{
+  display:inline-flex!important;align-items:center!important;justify-content:center!important;
+  min-width:64px!important;padding:8px 14px!important;border-radius:10px!important;
+  background:var(--accent)!important;color:#fff!important;font-weight:1000!important;
+}
+html[data-theme="dark"] .public-featured-price-badge{background:#2563eb!important;color:#fff!important;}
+
+
+/* v139-final: hard stop for remaining white/overexposed blocks after older CSS rules. */
+html[data-theme="dark"] body :where(div,section,article,main,header,footer,aside,nav,form,fieldset,details,summary,table,thead,tbody,tr,td,th,ul,ol,li):not(.cf-turnstile):not(.cf-turnstile *):not(.turnstile):not(.turnstile *):not(.human-turnstile-slot):not(.image-captcha):not(.image-captcha *):not(.theme-toggle-v134):not(.theme-toggle-v134 *):not(.btn):not(.badge):not(.status-pill):not(.public-domain-open-status):not([class*="icon"]):not(svg):not(path):not(circle):not(rect):not(line):not(polyline):not(polygon){
+  background-image:none!important;
+  border-color:var(--v139-line)!important;
+}
+html[data-theme="dark"] body :where(.content,.main,.card,[class*="card"],[class*="panel"],[class*="box"],[class*="hero"],[class*="section"],[class*="toolbar"],[class*="filter"],[class*="settings"],[class*="admin"],[class*="public"],[class*="support"],[class*="help"],[class*="message"],[class*="analytics"],[class*="domain"],[class*="quota"],[class*="detail"],[class*="preview"],[class*="readonly"],[class*="table"],[class*="tabbar"],[class*="notice"],[class*="ticket"],[class*="modal"],[class*="empty"],[class*="metric"],[class*="stat"],[class*="trend"],[class*="distribution"],[class*="monitor"],[class*="reg-key"],[class*="variable"],[class*="dns-record"],[class*="device"],[class*="log"]):not(button):not(input):not(textarea):not(select):not(option):not(a.btn):not(.theme-toggle-v134):not(.theme-toggle-v134 *):not(.cf-turnstile):not(.cf-turnstile *):not(.turnstile):not(.turnstile *):not(.image-captcha):not(.image-captcha *):not([class*="icon"]):not(.status-pill):not(.badge):not(.public-domain-open-status){
+  background-color:var(--v139-surface)!important;
+  color:var(--v139-text)!important;
+  border-color:var(--v139-line)!important;
+}
+html[data-theme="dark"] body :where(.field,.check,.form-row,.form-grid,.settings-grid,.settings-grid > .field,.settings-grid > .check,.admin-settings-v79 .settings-grid > .field,.admin-settings-v79 .settings-grid > .check,.public-home-setting-card,.home-setting-card,.faq-editor-item,.help-editor-item,.message-compose-card,.message-send-card,.analytics-dashboard-v100 .analytics-card,.analytics-dashboard-v100 .chart-card,.analytics-overview-grid > .chart-card,.analytics-three-col > .chart-card,.analytics-two-col > .chart-card,.domain-list-filter,.domain-filter-panel,.operation-log-row,.device-card,.login-device-row){
+  background:var(--v139-surface)!important;
+  color:var(--v139-text)!important;
+  border-color:var(--v139-line)!important;
+  box-shadow:var(--v139-shadow)!important;
+}
+html[data-theme="dark"] body :where(.setting-nav-card,.settings-quick-card,.admin-settings-v79 .setting-nav-card,.admin-settings-v79 .settings-quick-card,.public-site-settings-preview,.home-settings-preview,.quick-preview,.public-home-settings-preview,.admin-settings-v79 .settings-section-heading,.message-editor-box,.support-search-card,.help-search-card,.analytics-summary-strip,.analytics-mini-overview,.chart-overview,.overview-svg,.domain-dns-summary,.dns-summary,.domain-record-summary,.read-users-box,.recipient-box,.template-box){
+  background:var(--v139-surface-2)!important;
+  color:var(--v139-text)!important;
+  border-color:var(--v139-line)!important;
+}
+html[data-theme="dark"] body :where(input,textarea,select,.input,.textarea,.select,.search-input,.search-box,.public-search-input,.login-input-wrap){
+  background:#0b1220!important;
+  color:#e5e7eb!important;
+  border-color:#334155!important;
+  box-shadow:none!important;
+}
+html[data-theme="dark"] body :where(input,textarea,select)::placeholder{color:#7c8ba1!important;opacity:.9!important;}
+html[data-theme="dark"] body :where(button:not(.btn):not(.theme-toggle-v134),.range-chip,.tabbar button,.filters button,.admin-tabs button,.support-subnav-link){
+  background:#111827!important;
+  color:#dbe4f0!important;
+  border-color:#334155!important;
+}
+html[data-theme="dark"] body :where(.btn.primary,.public-featured-apply){color:#fff!important;}
+html[data-theme="dark"] body :where(.btn.secondary,.btn.ghost,.btn.soft){background:#111827!important;color:#dbe4f0!important;border-color:#334155!important;}
+html[data-theme="dark"] body :where(.empty,.public-empty,.help-empty,.message-empty){background:#0f172a!important;color:#9aa7b8!important;border-color:#263449!important;}
+
+/* Light mode is intentionally soft, not pure-white overexposed. */
+html[data-theme="light"] body :where(.card,[class*="card"],[class*="panel"],[class*="box"],[class*="hero"],[class*="section"],[class*="toolbar"],[class*="filter"],[class*="settings"],[class*="admin"],[class*="public"],[class*="support"],[class*="help"],[class*="message"],[class*="analytics"],[class*="domain"],[class*="quota"],[class*="detail"],[class*="preview"],[class*="readonly"],[class*="table"],[class*="tabbar"],[class*="notice"],[class*="ticket"],[class*="modal"],[class*="empty"],[class*="metric"],[class*="stat"],[class*="trend"],[class*="distribution"],[class*="monitor"],[class*="reg-key"],[class*="variable"],[class*="dns-record"],[class*="device"],[class*="log"]):not(button):not(input):not(textarea):not(select):not(option):not(a.btn):not(.theme-toggle-v134):not(.theme-toggle-v134 *):not(.cf-turnstile):not(.cf-turnstile *){
+  background-color:var(--v139-surface-2)!important;
+  border-color:var(--v139-line)!important;
+  color:var(--v139-text)!important;
+}
+html[data-theme="light"] body :where(input,textarea,select,.input,.textarea,.select,.search-input,.search-box,.public-search-input,.login-input-wrap){
+  background:#f8fbff!important;
+  color:#172033!important;
+  border-color:#cbd7e6!important;
+  box-shadow:none!important;
+}
+html[data-theme="light"] body :where(.btn.secondary,.btn.ghost,.btn.soft,.range-chip,.tabbar button,.filters button,.admin-tabs button,.support-subnav-link){
+  background:#f3f7fb!important;
+  color:#344256!important;
+  border-color:#cbd7e6!important;
+  box-shadow:none!important;
+}
+html[data-theme="light"] body :where(.public-featured-price-badge){background:var(--accent)!important;color:#fff!important;}
+
+/* Keep help expand/collapse arrow vertically centered, independent of line-height. */
+.support-nav-toggle,.help-nav-toggle,.support-category-toggle{display:flex!important;align-items:center!important;}
+.support-nav-toggle .support-nav-chevron,.help-nav-toggle .support-nav-chevron,.support-category-toggle .support-nav-chevron{align-self:center!important;display:inline-grid!important;place-items:center!important;line-height:1!important;top:auto!important;bottom:auto!important;transform:none!important;}
+
+/* v139-final: homepage suffix price must follow points pricing, not fixed FREE copy. */
+.public-suffix-price-badge{
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  width:max-content!important;
+  min-width:58px!important;
+  margin-top:10px!important;
+  padding:6px 12px!important;
+  border-radius:10px!important;
+  background:var(--accent)!important;
+  color:#fff!important;
+  font-size:13px!important;
+  font-weight:1000!important;
+  line-height:1.1!important;
+}
+html[data-theme="dark"] .public-suffix-price-badge{background:#2563eb!important;color:#fff!important;}
