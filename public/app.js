@@ -741,6 +741,9 @@ function applyDisplayTheme(mode = currentDisplayTheme()) {
   if (meta) meta.setAttribute('content', next === 'dark' ? '#0f172a' : '#5468ff');
   syncThemeButtons();
 }
+function syncBodyRoleClassV137() {
+  try { document.body.classList.toggle('is-admin', state.me?.role === 'admin'); } catch (_) {}
+}
 function setDisplayTheme(mode) {
   const next = mode === 'dark' ? 'dark' : 'light';
   try { localStorage.setItem(DISPLAY_THEME_KEY, next); } catch (_) {}
@@ -823,16 +826,34 @@ function setInlineElementTextV135(el, text) {
 }
 function applyInlineTextOverridesV135(root = document) {
   const overrides = inlineTextOverridesV135();
+  const isAdmin = state.me?.role === 'admin';
+  root.querySelectorAll?.('.inline-text-editable-v135').forEach(el => {
+    if (!isAdmin) {
+      el.classList.remove('inline-text-editable-v135');
+      el.removeAttribute('title');
+    }
+  });
   root.querySelectorAll?.(INLINE_TEXT_SELECTOR_V135).forEach(el => {
-    if (!isInlineTextCandidateV135(el)) return;
+    if (!isInlineTextCandidateV135(el)) {
+      if (!isAdmin) {
+        el.classList?.remove?.('inline-text-editable-v135');
+        el.removeAttribute?.('title');
+      }
+      return;
+    }
     const current = normalizedInlineTextV135(el.dataset.inlineTextOriginal || el.textContent || '');
     if (!el.dataset.inlineTextOriginal) el.dataset.inlineTextOriginal = current;
     const key = inlineTextKeyV135(current);
     el.dataset.inlineTextKey = key;
-    el.classList.add('inline-text-editable-v135');
-    if (state.me?.role === 'admin') el.setAttribute('title', '管理员可右键/长按修改显示文字');
     const next = overrides[key];
     if (next && normalizedInlineTextV135(el.textContent) !== normalizedInlineTextV135(next)) setInlineElementTextV135(el, next);
+    if (isAdmin) {
+      el.classList.add('inline-text-editable-v135');
+      el.setAttribute('title', '管理员可右键/长按修改显示文字');
+    } else {
+      el.classList.remove('inline-text-editable-v135');
+      el.removeAttribute('title');
+    }
   });
 }
 async function editInlineTextTargetV135(el) {
@@ -853,23 +874,38 @@ async function editInlineTextTargetV135(el) {
     toast(error.message || '文字保存失败', 'error');
   }
 }
+function findInlineTextTargetV137(start) {
+  if (state.me?.role !== 'admin' || !start) return null;
+  const fromKey = start.closest?.('[data-inline-text-key]');
+  if (fromKey && !inlineTextBlockedV135(fromKey) && isInlineTextCandidateV135(fromKey)) return fromKey;
+  const direct = start.closest?.(INLINE_TEXT_SELECTOR_V135);
+  if (direct && !inlineTextBlockedV135(direct) && isInlineTextCandidateV135(direct)) {
+    const current = normalizedInlineTextV135(direct.dataset.inlineTextOriginal || direct.textContent || '');
+    if (!direct.dataset.inlineTextOriginal) direct.dataset.inlineTextOriginal = current;
+    direct.dataset.inlineTextKey = inlineTextKeyV135(current);
+    direct.classList.add('inline-text-editable-v135');
+    direct.setAttribute('title', '管理员可右键/长按修改显示文字');
+    return direct;
+  }
+  return null;
+}
 function bindInlineTextEditingV135() {
   if (window.__inlineTextEditingV135Bound) return;
   window.__inlineTextEditingV135Bound = true;
   document.addEventListener('contextmenu', event => {
-    const target = event.target?.closest?.('[data-inline-text-key]');
-    if (!target || state.me?.role !== 'admin' || inlineTextBlockedV135(target)) return;
+    const target = findInlineTextTargetV137(event.target);
+    if (!target) return;
     event.preventDefault();
     event.stopPropagation();
     editInlineTextTargetV135(target);
-  });
+  }, true);
   let timer = 0;
   let target = null;
   document.addEventListener('touchstart', event => {
-    target = event.target?.closest?.('[data-inline-text-key]') || null;
-    if (!target || state.me?.role !== 'admin' || inlineTextBlockedV135(target)) return;
+    target = findInlineTextTargetV137(event.target);
+    if (!target) return;
     timer = setTimeout(() => { try { editInlineTextTargetV135(target); } finally { timer = 0; target = null; } }, 720);
-  }, { passive:true });
+  }, { passive:true, capture:true });
   ['touchmove','touchend','touchcancel'].forEach(type => document.addEventListener(type, () => { if (timer) clearTimeout(timer); timer = 0; target = null; }, { passive:true }));
 }
 Object.assign(I18N_EN, {
@@ -877,7 +913,7 @@ Object.assign(I18N_EN, {
   '上一页':'Previous','下一页':'Next','根域名':'Root Domain'
 });
 
-function afterRender() { applyDisplayTheme(currentDisplayTheme()); bindThemeControls(); applyI18n(); applyInlineTextOverridesV135(); bindInlineTextEditingV135(); }
+function afterRender() { applyDisplayTheme(currentDisplayTheme()); syncBodyRoleClassV137(); bindThemeControls(); applyI18n(); applyInlineTextOverridesV135(); bindInlineTextEditingV135(); }
 function analyticsVisitorId() {
   const key = 'storage_analytics_visitor_id';
   try {
