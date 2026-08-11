@@ -737,8 +737,10 @@ function currentDisplayTheme() {
 function applyDisplayTheme(mode = currentDisplayTheme()) {
   const next = mode === 'dark' ? 'dark' : 'light';
   document.documentElement.dataset.theme = next;
+  document.body?.classList?.toggle('theme-dark-v139', next === 'dark');
+  document.body?.classList?.toggle('theme-light-v139', next !== 'dark');
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute('content', next === 'dark' ? '#0f172a' : '#5468ff');
+  if (meta) meta.setAttribute('content', next === 'dark' ? '#08111f' : '#f3f7fc');
   syncThemeButtons();
 }
 function syncBodyRoleClassV137() {
@@ -759,7 +761,7 @@ function themeToggleHtml() {
   const dark = currentDisplayTheme() === 'dark';
   const icon = dark ? '☀' : '☾';
   const label = dark ? '切换到日间显示' : '切换到夜间显示';
-  return `<button class="theme-toggle-v134 ${dark ? 'is-dark' : 'is-light'}" type="button" data-theme-toggle aria-label="${label}" title="${label}"><span class="theme-toggle-icon-v138">${icon}</span></button>`;
+  return `<button class="theme-toggle-v134 ${dark ? 'is-dark' : 'is-light'}" type="button" data-theme-toggle aria-label="${label}" title="${label}"><span class="theme-toggle-icon-v139">${icon}</span></button>`;
 }
 function themeCornerHtml() {
   return `<div class="theme-corner-v134">${themeToggleHtml()}</div>`;
@@ -773,11 +775,14 @@ function syncThemeButtons() {
     const label = dark ? '切换到日间显示' : '切换到夜间显示';
     btn.setAttribute('aria-label', label);
     btn.setAttribute('title', label);
-    const icon = btn.querySelector('.theme-toggle-icon-v138,.theme-toggle-icon-v137');
-    if (icon) {
-      icon.classList.add('theme-toggle-icon-v138');
-      icon.textContent = dark ? '☀' : '☾';
+    let icon = btn.querySelector('.theme-toggle-icon-v139');
+    if (!icon) {
+      icon = document.createElement('span');
+      icon.className = 'theme-toggle-icon-v139';
+      btn.innerHTML = '';
+      btn.appendChild(icon);
     }
+    icon.textContent = dark ? '☀' : '☾';
   });
 }
 function bindThemeControls(root = document) {
@@ -1874,7 +1879,12 @@ function renderPublicHome() {
   const suffixLimit = Math.max(1, Math.min(24, Number(site.publicHomepageDomainsLimit || 6)));
   const suffixStatus = String(site.publicHomepageDomainsStatusText || pub('当前开放申请','Currently open for applications')).trim();
   const suffixLinkText = String(site.publicHomepageDomainsLinkText || pub('立即查询','Check now')).trim();
-  const suffixCards = suffixes.slice(0,suffixLimit).map((item,index) => `<article class="public-suffix-card"><div><span>${String(index+1).padStart(2,'0')}</span><h3 title="*.${attr(item.suffix)}">${formatPublicRootSuffixLabel(item.suffix)}</h3></div><p>${item.label?esc(item.label):esc(suffixStatus)}</p><small>${pub('可直接查询是否可注册','Check availability instantly')}</small><a href="/available">${esc(suffixLinkText)} →</a></article>`).join('');
+  const suffixCards = suffixes.slice(0,suffixLimit).map((item,index) => {
+    const pointCost = Number.isFinite(Number(item.pointCost)) ? Number(item.pointCost) : pointCostForSuffix(item.suffix);
+    const priceText = pointCost > 0 ? (item.pointCostLabel || pointCostLabel(pointCost)) : pub('免费','Free');
+    const priceHint = pointCost > 0 ? pub('按该根域名单独积分价格扣除','Deducted by this root domain price') : pub('当前申请不扣除积分','No points deducted currently');
+    return `<article class="public-suffix-card"><div><span>${String(index+1).padStart(2,'0')}</span><h3 title="*.${attr(item.suffix)}">${formatPublicRootSuffixLabel(item.suffix)}</h3><b class="public-suffix-price-badge">${esc(priceText)}</b></div><p>${item.label?esc(item.label):esc(suffixStatus)}</p><small>${esc(priceHint)} · ${pub('可直接查询是否可注册','Check availability instantly')}</small><a href="/available">${esc(suffixLinkText)} →</a></article>`;
+  }).join('');
 
   const heroSearch = site.publicHomepageShowSearch === false ? '' : `<div class="public-home-v114-tool"><div class="public-home-v114-tool-head"><span>${esc(searchEyebrow)}</span><b>${esc(searchTitle)}</b></div>${publicDomainSearchHtml('home-domain-search', true, { placeholder:searchPlaceholder, buttonText:searchButtonText })}<p>${esc(searchNote)}</p></div>`;
 
@@ -2063,13 +2073,15 @@ function publicFeaturedDomainCards() {
   if (!suffixes.length) return `<div class="public-empty">${pub('当前暂无开放申请的域名。','No domains are currently open for applications.')}</div>`;
   const statusText = String(site.publicFeaturedCardStatusText || pub('开放申请','Open for applications')).trim();
   const actionText = String(site.publicFeaturedCardButtonText || pub('立即申请','Apply Now')).trim();
-  const badgeText = String(site.publicFeaturedCardBadgeText || pub('免费','FREE')).trim();
-  const fallbackDescription = String(site.publicFeaturedCardFallbackDescription || pub('免费二级域名，可用于合规的个人项目、学习、展示与测试。','Free subdomain for compliant personal projects, learning, demos, and testing.')).trim();
+  const freeBadgeText = String(site.publicFeaturedCardBadgeText || pub('免费','FREE')).trim();
+  const fallbackDescription = String(site.publicFeaturedCardFallbackDescription || pub('二级域名，可用于合规的个人项目、学习、展示与测试。','Subdomain for compliant personal projects, learning, demos, and testing.')).trim();
   return `<div class="public-featured-domain-grid">${suffixes.map(item => {
     const description = item.label || fallbackDescription;
+    const pointCost = Number.isFinite(Number(item.pointCost)) ? Number(item.pointCost) : pointCostForSuffix(item.suffix);
+    const badgeText = pointCost > 0 ? (item.pointCostLabel || pointCostLabel(pointCost)) : freeBadgeText;
     return `<article class="public-featured-domain-card">
       <div class="public-featured-domain-main"><h2>*.${esc(item.suffix)}</h2><p>${esc(description)}</p>${site.publicFeaturedShowCardStatus === false ? '' : `<span class="public-domain-open-status"><i></i>${esc(statusText)}</span>`}</div>
-      <div class="public-featured-domain-actions">${site.publicFeaturedShowCardBadge === false ? '' : `<b>${esc(badgeText)}</b>`}${site.publicFeaturedShowCardButton === false ? '' : `<a href="${applyHref}" class="btn public-featured-apply">${esc(actionText)}</a>`}</div>
+      <div class="public-featured-domain-actions">${site.publicFeaturedShowCardBadge === false ? '' : `<b class="public-featured-price-badge">${esc(badgeText)}</b>`}${site.publicFeaturedShowCardButton === false ? '' : `<a href="${applyHref}" class="btn public-featured-apply">${esc(actionText)}</a>`}</div>
     </article>`;
   }).join('')}</div>`;
 }
@@ -7982,6 +7994,7 @@ async function mountTurnstile(selector, action, options = {}) {
       'refresh-timeout': 'auto',
       appearance: 'always',
       size: 'flexible',
+      theme: currentDisplayTheme() === 'dark' ? 'dark' : 'light',
       callback: token => {
         if (options.scene && humanSceneState(options.scene).mountId !== mountId) return;
         state.turnstileTokenValue = token || '';
