@@ -7220,3 +7220,179 @@ html[data-theme="dark"] :where(.btn.primary,button.primary,a.btn.primary,.public
   }
   html[data-theme] .public-feature-grid{grid-template-columns:1fr!important;}
 }
+
+/* ===== v146: WHOIS page + white-first public portal ===== */
+html,
+body,
+html[data-theme="dark"],
+html[data-theme="dark"] body,
+html[data-theme="light"],
+html[data-theme="light"] body{
+  background:#ffffff!important;
+}
+html[data-theme] .public-site,
+html[data-theme] .public-site .public-main,
+.public-site,
+.public-site .public-main{
+  background:#ffffff!important;
+  color:#0f172a!important;
+}
+.public-header,
+html[data-theme] .public-header{
+  background:rgba(255,255,255,.96)!important;
+  border-bottom:1px solid #e5e7eb!important;
+  box-shadow:none!important;
+}
+.public-header-inner,
+html[data-theme] .public-header-inner{
+  background:transparent!important;
+}
+.public-nav-desktop a,
+.public-header-actions a,
+.public-brand b,
+html[data-theme] .public-nav-desktop a,
+html[data-theme] .public-header-actions a,
+html[data-theme] .public-brand b{
+  color:#111827!important;
+}
+.public-nav-desktop a.active,
+.public-nav-desktop a:hover{
+  color:#2563eb!important;
+}
+.public-home-v114-badge,
+html[data-theme] .public-home-v114-badge{
+  display:none!important;
+}
+.public-home-v114-copy,
+.public-home-v114-tool,
+.public-stats,
+.public-section>header,
+.public-feature-grid article,
+.public-suffix-card,
+.public-faq-list details,
+.public-query-panel,
+.public-page-hero,
+.public-availability-focus,
+.public-cta,
+.public-footer-grid>div,
+html[data-theme] .public-home-v114-copy,
+html[data-theme] .public-home-v114-tool,
+html[data-theme] .public-stats,
+html[data-theme] .public-section>header,
+html[data-theme] .public-feature-grid article,
+html[data-theme] .public-suffix-card,
+html[data-theme] .public-faq-list details,
+html[data-theme] .public-query-panel,
+html[data-theme] .public-page-hero,
+html[data-theme] .public-availability-focus,
+html[data-theme] .public-cta,
+html[data-theme] .public-footer-grid>div{
+  background:#ffffff!important;
+  color:#111827!important;
+  border-color:#e5e7eb!important;
+  box-shadow:0 16px 40px rgba(15,23,42,.045)!important;
+}
+.public-whois-page{
+  width:min(100%,1040px);
+  margin:0 auto;
+  padding:64px 24px 96px;
+  color:#111827;
+}
+.public-whois-page h1{
+  margin:0 0 12px;
+  font-size:clamp(32px,3.4vw,44px);
+  line-height:1.08;
+  letter-spacing:-.8px;
+  color:#020617;
+}
+.public-whois-page>p{
+  margin:0 0 44px;
+  color:#64748b;
+  font-size:18px;
+  line-height:1.7;
+}
+.public-whois-search{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 220px 116px;
+  gap:12px;
+  align-items:stretch;
+  margin:0 0 36px;
+}
+.public-whois-input,
+.public-whois-search select{
+  min-height:58px;
+  border:1px solid #dbe3ee;
+  background:#fff;
+  border-radius:14px;
+  overflow:hidden;
+}
+.public-whois-input input,
+.public-whois-search select{
+  width:100%;
+  height:58px;
+  border:0!important;
+  outline:0!important;
+  background:#fff!important;
+  color:#111827!important;
+  font-size:18px;
+  box-shadow:none!important;
+}
+.public-whois-input input{padding:0 20px;}
+.public-whois-input input::placeholder{color:#8a96a8!important;}
+.public-whois-search select{padding:0 18px;color:#475569!important;}
+.public-whois-search .btn{
+  min-height:58px!important;
+  border-radius:12px!important;
+  font-size:17px!important;
+  box-shadow:none!important;
+}
+.public-whois-search .btn:disabled{
+  opacity:1!important;
+  background:#91adfb!important;
+  border-color:#91adfb!important;
+  color:#fff!important;
+  cursor:not-allowed!important;
+}
+.public-whois-card{
+  background:#fff!important;
+  border:1px solid #e2e8f0!important;
+  border-radius:18px!important;
+  box-shadow:0 8px 20px rgba(15,23,42,.08)!important;
+  padding:52px 40px!important;
+  color:#111827!important;
+}
+.public-whois-card.loading{
+  padding:28px 32px!important;
+  color:#64748b!important;
+}
+.public-whois-card dl{
+  display:grid;
+  grid-template-columns:120px minmax(0,1fr);
+  gap:20px 28px;
+  margin:0;
+  align-items:start;
+}
+.public-whois-card dt{
+  color:#9a5f36;
+  font-size:18px;
+  line-height:1.6;
+}
+.public-whois-card dd{
+  margin:0;
+  color:#020617;
+  font-size:18px;
+  line-height:1.7;
+  word-break:break-word;
+}
+.public-whois-card dd strong{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  font-weight:900;
+}
+@media(max-width:760px){
+  .public-whois-page{padding:42px 16px 70px;}
+  .public-whois-page>p{font-size:15px;margin-bottom:26px;}
+  .public-whois-search{grid-template-columns:1fr;gap:10px;}
+  .public-whois-card{padding:28px 20px!important;}
+  .public-whois-card dl{grid-template-columns:76px minmax(0,1fr);gap:14px 16px;}
+  .public-whois-card dt,.public-whois-card dd{font-size:15px;}
+}
