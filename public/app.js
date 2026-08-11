@@ -732,7 +732,7 @@ function currentDisplayTheme() {
     const saved = localStorage.getItem(DISPLAY_THEME_KEY);
     if (saved === 'dark' || saved === 'light') return saved;
   } catch (_) {}
-  return 'light';
+  return 'dark';
 }
 function applyDisplayTheme(mode = currentDisplayTheme()) {
   const next = mode === 'dark' ? 'dark' : 'light';
