@@ -744,6 +744,9 @@ function applyDisplayTheme(mode = currentDisplayTheme()) {
 function syncBodyRoleClassV137() {
   try { document.body.classList.toggle('is-admin', state.me?.role === 'admin'); } catch (_) {}
 }
+function syncBodyRoleClassV138() {
+  try { document.body.classList.toggle('is-admin', state.me?.role === 'admin'); } catch (_) {}
+}
 function setDisplayTheme(mode) {
   const next = mode === 'dark' ? 'dark' : 'light';
   try { localStorage.setItem(DISPLAY_THEME_KEY, next); } catch (_) {}
@@ -754,7 +757,9 @@ function toggleDisplayTheme() {
 }
 function themeToggleHtml() {
   const dark = currentDisplayTheme() === 'dark';
-  return `<button class="theme-toggle-v134 ${dark ? 'is-dark' : 'is-light'}" type="button" data-theme-toggle aria-label="切换日夜显示" title="切换日夜显示"><span class="theme-toggle-track-v134"><span class="theme-toggle-sun-v134">☀</span><span class="theme-toggle-moon-v134">☾</span><span class="theme-toggle-knob-v134"></span></span></button>`;
+  const icon = dark ? '☀' : '☾';
+  const label = dark ? '切换到日间显示' : '切换到夜间显示';
+  return `<button class="theme-toggle-v134 ${dark ? 'is-dark' : 'is-light'}" type="button" data-theme-toggle aria-label="${label}" title="${label}"><span class="theme-toggle-icon-v138">${icon}</span></button>`;
 }
 function themeCornerHtml() {
   return `<div class="theme-corner-v134">${themeToggleHtml()}</div>`;
@@ -765,7 +770,14 @@ function syncThemeButtons() {
     btn.classList.toggle('is-dark', dark);
     btn.classList.toggle('is-light', !dark);
     btn.setAttribute('aria-pressed', dark ? 'true' : 'false');
-    btn.setAttribute('title', dark ? '切换到日间显示' : '切换到夜间显示');
+    const label = dark ? '切换到日间显示' : '切换到夜间显示';
+    btn.setAttribute('aria-label', label);
+    btn.setAttribute('title', label);
+    const icon = btn.querySelector('.theme-toggle-icon-v138,.theme-toggle-icon-v137');
+    if (icon) {
+      icon.classList.add('theme-toggle-icon-v138');
+      icon.textContent = dark ? '☀' : '☾';
+    }
   });
 }
 function bindThemeControls(root = document) {
@@ -889,11 +901,26 @@ function findInlineTextTargetV137(start) {
   }
   return null;
 }
+function findInlineTextTargetV138(start) {
+  if (state.me?.role !== 'admin' || !start) return null;
+  const fromKey = start.closest?.('[data-inline-text-key]');
+  if (fromKey && !inlineTextBlockedV135(fromKey) && isInlineTextCandidateV135(fromKey)) return fromKey;
+  const direct = start.closest?.(INLINE_TEXT_SELECTOR_V135);
+  if (direct && !inlineTextBlockedV135(direct) && isInlineTextCandidateV135(direct)) {
+    const current = normalizedInlineTextV135(direct.dataset.inlineTextOriginal || direct.textContent || '');
+    if (!direct.dataset.inlineTextOriginal) direct.dataset.inlineTextOriginal = current;
+    direct.dataset.inlineTextKey = inlineTextKeyV135(current);
+    direct.classList.add('inline-text-editable-v135');
+    direct.setAttribute('title', '管理员可右键/长按修改显示文字');
+    return direct;
+  }
+  return null;
+}
 function bindInlineTextEditingV135() {
   if (window.__inlineTextEditingV135Bound) return;
   window.__inlineTextEditingV135Bound = true;
   document.addEventListener('contextmenu', event => {
-    const target = findInlineTextTargetV137(event.target);
+    const target = findInlineTextTargetV138(event.target);
     if (!target) return;
     event.preventDefault();
     event.stopPropagation();
@@ -902,7 +929,7 @@ function bindInlineTextEditingV135() {
   let timer = 0;
   let target = null;
   document.addEventListener('touchstart', event => {
-    target = findInlineTextTargetV137(event.target);
+    target = findInlineTextTargetV138(event.target);
     if (!target) return;
     timer = setTimeout(() => { try { editInlineTextTargetV135(target); } finally { timer = 0; target = null; } }, 720);
   }, { passive:true, capture:true });
@@ -913,7 +940,7 @@ Object.assign(I18N_EN, {
   '上一页':'Previous','下一页':'Next','根域名':'Root Domain'
 });
 
-function afterRender() { applyDisplayTheme(currentDisplayTheme()); syncBodyRoleClassV137(); bindThemeControls(); applyI18n(); applyInlineTextOverridesV135(); bindInlineTextEditingV135(); }
+function afterRender() { applyDisplayTheme(currentDisplayTheme()); syncBodyRoleClassV138(); bindThemeControls(); applyI18n(); applyInlineTextOverridesV135(); bindInlineTextEditingV135(); }
 function analyticsVisitorId() {
   const key = 'storage_analytics_visitor_id';
   try {
