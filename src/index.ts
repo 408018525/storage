@@ -1339,15 +1339,20 @@ async function publicConfigHandler(env: Env): Promise<Response> {
         .map((item, index) => ({ item, index }))
         .filter(({ item }) => item.enabled && item.allowRegister !== false)
         .sort((a, b) => Number(a.item.registerOrder || a.index + 1) - Number(b.item.registerOrder || b.index + 1) || a.index - b.index)
-        .map(({ item: x }) => ({
-          label: x.label || '',
-          suffix: x.suffix,
-          allowedTypes: x.allowedTypes,
-          defaultType: x.defaultType,
-          ttl: x.ttl,
-          proxied: x.proxied,
-          registerOrder: Number(x.registerOrder || 0),
-        })),
+        .map(({ item: x }) => {
+          const pointCost = settings.points.enabled === false ? 0 : resolveDomainApplicationPointCost(settings, x);
+          return {
+            label: x.label || '',
+            suffix: x.suffix,
+            allowedTypes: x.allowedTypes,
+            defaultType: x.defaultType,
+            ttl: x.ttl,
+            proxied: x.proxied,
+            registerOrder: Number(x.registerOrder || 0),
+            pointCost,
+            pointCostLabel: pointCost > 0 ? `${pointCost.toLocaleString('zh-CN')} 积分` : '免费',
+          };
+        }),
       points: {
         enabled: settings.points.enabled !== false,
         domainApplicationCost: settings.points.domainApplicationCost,
