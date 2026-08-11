@@ -6113,3 +6113,162 @@ html[data-theme="dark"] .sidebar .support-subnav-link{
 /* v140: avoid legacy transparent active rules leaking through after this block. */
 html[data-theme] .btn:not(:disabled):not(.disabled){background-clip:padding-box!important;}
 html[data-theme] button:not(:disabled):not(.theme-toggle-v134):not(.menu-btn):empty{min-width:32px!important;min-height:32px!important;}
+
+
+/* v141: public homepage content-width lock. Prevent wide desktop screens from stretching sections/cards across the full viewport. */
+html[data-theme] .public-home-v114 .public-home-v114-section,
+html[data-theme] .public-home-v114 .public-section,
+html[data-theme] .public-home-v114 .public-soft-section.public-home-v114-section,
+html[data-theme] .public-featured-domain-section,
+html[data-theme] .public-page-hero,
+html[data-theme] .public-query-panel,
+html[data-theme] .public-mini-guide,
+html[data-theme] .public-availability-focus{
+  width:min(1180px, calc(100vw - 64px))!important;
+  max-width:1180px!important;
+  margin-left:auto!important;
+  margin-right:auto!important;
+  padding-left:0!important;
+  padding-right:0!important;
+  box-sizing:border-box!important;
+}
+html[data-theme] .public-home-v114 .public-home-v114-section > header,
+html[data-theme] .public-home-v114 .public-section > header,
+html[data-theme] .public-home-v114 .public-feature-grid,
+html[data-theme] .public-home-v114 .public-suffix-grid,
+html[data-theme] .public-home-v114 .public-faq-list,
+html[data-theme] .public-featured-domain-grid,
+html[data-theme] .public-available-grid,
+html[data-theme] .public-nav-directory,
+html[data-theme] .public-about-grid,
+html[data-theme] .public-contact-grid,
+html[data-theme] .public-knowledge-list,
+html[data-theme] .public-knowledge-tools{
+  width:100%!important;
+  max-width:1180px!important;
+  margin-left:auto!important;
+  margin-right:auto!important;
+  box-sizing:border-box!important;
+}
+html[data-theme] .public-home-v114 .public-feature-grid,
+html[data-theme] .public-home-v114 .public-suffix-grid,
+html[data-theme] .public-featured-domain-grid{
+  display:grid!important;
+  grid-template-columns:repeat(3, minmax(0, 1fr))!important;
+  gap:18px!important;
+  align-items:stretch!important;
+}
+html[data-theme] .public-home-v114 .public-feature-grid article,
+html[data-theme] .public-home-v114 .public-suffix-card,
+html[data-theme] .public-featured-domain-card{
+  width:100%!important;
+  max-width:none!important;
+  min-width:0!important;
+  box-sizing:border-box!important;
+}
+html[data-theme] .public-home-v114 .public-feature-grid article{
+  min-height:180px!important;
+}
+html[data-theme] .public-home-v114 .public-suffix-card{
+  min-height:188px!important;
+}
+html[data-theme] .public-home-v114 .public-suffix-card h3,
+html[data-theme] .public-featured-domain-card h2{
+  white-space:normal!important;
+  word-break:normal!important;
+  overflow-wrap:anywhere!important;
+  line-height:1.2!important;
+}
+html[data-theme] .public-home-v114 .public-section>header>a,
+html[data-theme] .public-section>header>a{
+  white-space:nowrap!important;
+  word-break:keep-all!important;
+  min-width:max-content!important;
+}
+html[data-theme] .public-home-v114 .public-faq-list{
+  border-radius:18px!important;
+  overflow:hidden!important;
+}
+
+/* v141: stable button visual states. Do not let click/focus/active become transparent. */
+html[data-theme] :where(.btn,button,.tabbar button,.filters button,.admin-tabs button,.side-nav-link,.support-subnav-link):not(:disabled):active,
+html[data-theme] :where(.btn,button,.tabbar button,.filters button,.admin-tabs button,.side-nav-link,.support-subnav-link):not(:disabled):focus,
+html[data-theme] :where(.btn,button,.tabbar button,.filters button,.admin-tabs button,.side-nav-link,.support-subnav-link):not(:disabled):focus-visible{
+  opacity:1!important;
+  background-clip:padding-box!important;
+  outline:none!important;
+}
+html[data-theme] .btn.primary:not(:disabled):active,
+html[data-theme] .btn.primary:not(:disabled):focus,
+html[data-theme] button.primary:not(:disabled):active,
+html[data-theme] button.primary:not(:disabled):focus{
+  background:linear-gradient(135deg,var(--accent),var(--accent-2))!important;
+  color:#fff!important;
+}
+html[data-theme="dark"] .btn.secondary:not(:disabled):active,
+html[data-theme="dark"] .btn.secondary:not(:disabled):focus,
+html[data-theme="dark"] button.secondary:not(:disabled):active,
+html[data-theme="dark"] button.secondary:not(:disabled):focus{
+  background:#111827!important;
+  color:#e5e7eb!important;
+  border-color:#334155!important;
+}
+html[data-theme="light"] .btn.secondary:not(:disabled):active,
+html[data-theme="light"] .btn.secondary:not(:disabled):focus,
+html[data-theme="light"] button.secondary:not(:disabled):active,
+html[data-theme="light"] button.secondary:not(:disabled):focus{
+  background:#ffffff!important;
+  color:#172033!important;
+  border-color:#cbd5e1!important;
+}
+
+/* v141: sidebar labels stay clean, no gray inline-edit background. */
+html[data-theme] .sidebar .inline-text-editable-v135,
+html[data-theme] .sidebar .inline-text-editable-v135:hover,
+html[data-theme] .sidebar .side-nav-link,
+html[data-theme] .sidebar .side-nav-link:hover,
+html[data-theme] .sidebar .support-nav-toggle,
+html[data-theme] .sidebar .support-subnav-link{
+  background:transparent!important;
+  box-shadow:none!important;
+}
+html[data-theme] .sidebar .side-nav-link.active,
+html[data-theme] .sidebar .support-subnav-link.active{
+  background:rgba(59,130,246,.12)!important;
+}
+
+@media (max-width: 1100px){
+  html[data-theme] .public-home-v114 .public-feature-grid,
+  html[data-theme] .public-home-v114 .public-suffix-grid,
+  html[data-theme] .public-featured-domain-grid{
+    grid-template-columns:repeat(2, minmax(0, 1fr))!important;
+  }
+}
+@media (max-width: 720px){
+  html[data-theme] .public-home-v114 .public-home-v114-section,
+  html[data-theme] .public-home-v114 .public-section,
+  html[data-theme] .public-home-v114 .public-soft-section.public-home-v114-section,
+  html[data-theme] .public-featured-domain-section,
+  html[data-theme] .public-page-hero,
+  html[data-theme] .public-query-panel,
+  html[data-theme] .public-mini-guide,
+  html[data-theme] .public-availability-focus{
+    width:min(100%, calc(100vw - 24px))!important;
+    padding-left:0!important;
+    padding-right:0!important;
+  }
+  html[data-theme] .public-home-v114 .public-feature-grid,
+  html[data-theme] .public-home-v114 .public-suffix-grid,
+  html[data-theme] .public-featured-domain-grid{
+    grid-template-columns:1fr!important;
+  }
+  html[data-theme] .public-home-v114 .public-section>header{
+    display:grid!important;
+    grid-template-columns:auto minmax(0,1fr)!important;
+  }
+  html[data-theme] .public-home-v114 .public-section>header>a{
+    grid-column:2!important;
+    justify-self:start!important;
+    margin-left:0!important;
+  }
+}
