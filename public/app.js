@@ -2290,7 +2290,7 @@ function authTemplate(title, subtitle, formHtml) {
   const site = state.config?.site || {};
   return `${themeCornerHtml()}${langButton()}<main class="auth-wrap">
     <section class="auth-brand">
-      <div class="auth-logo">${esc(site.logoText || '域')}</div>
+      <div class="auth-logo">${site.logoImageUrl ? `<img src="${attr(site.logoImageUrl)}" alt="logo">` : esc(site.logoText || '域')}</div>
       <h1>${esc(site.title || '免费二级域名注册中心')}</h1>
       <p>${esc(site.subtitle || '快速注册并管理您的专属免费域名')}</p>
     </section>
@@ -2507,7 +2507,7 @@ async function renderLogin() {
       </section>
       <section class="auth-card login-compact-card">
         <div class="login-compact-head">
-          <div class="login-free-mark">free</div>
+          <div class="login-free-mark">${site.logoImageUrl ? `<img src="${attr(site.logoImageUrl)}" alt="logo">` : esc(site.logoText || 'free')}</div>
           <h2>欢迎登录</h2>
           <p>登录到您的free二级域名系统账户</p>
         </div>
@@ -7005,7 +7005,7 @@ async function renderAdminSettings() {
           <label class="field"><span>网站标题</span><input name="title" maxlength="80" value="${fieldValue(site.title)}"><em>显示在浏览器标题和登录页。</em></label>
           <label class="field"><span>副标题</span><input name="subtitle" maxlength="140" value="${fieldValue(site.subtitle)}"><em>显示在前台品牌区域。</em></label>
           <label class="field"><span>Logo 文字</span><input name="logoText" maxlength="12" value="${fieldValue(site.logoText)}"><em>不使用图片 Logo 时显示。</em></label>
-          <label class="field"><span>站点 Logo 图片 URL</span><input name="logoImageUrl" value="${fieldValue(site.logoImageUrl)}" placeholder="https://example.com/logo.png"><em>填写后优先显示图片 Logo。</em></label>
+          <label class="field wide logo-upload-field-v145"><span>站点 Logo 图片</span><input name="logoImageUrl" value="${fieldValue(site.logoImageUrl)}" placeholder="https://example.com/logo.png 或上传后自动填入"><em>可填写图片 URL，也可直接上传 PNG / JPG / WebP / SVG。上传后会写入当前输入框并保存到系统设置。</em><div class="logo-upload-row-v145"><div class="logo-preview-v145">${site.logoImageUrl ? `<img src="${attr(site.logoImageUrl)}" alt="Logo 预览">` : `<span>${esc(site.logoText || 'free')}</span>`}</div><label class="btn soft small logo-upload-btn-v145">上传 Logo<input id="site-logo-upload-v145" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden></label><button class="btn ghost small" id="clear-site-logo-v145" type="button">清除图片</button></div></label>
           <label class="field"><span>站点 Favicon 地址</span><input name="faviconUrl" value="${fieldValue(site.faviconUrl)}" placeholder="https://example.com/favicon.ico"><em>用于浏览器标签页图标，留空使用默认。</em></label>
           <label class="field wide"><span>风格预设</span><select name="stylePreset"><option value="soft-blue" ${!site.stylePreset || site.stylePreset === 'soft-blue' ? 'selected' : ''}>柔和蓝 · 默认</option><option value="mist" ${site.stylePreset === 'mist' ? 'selected' : ''}>雾白灰 · 极简</option><option value="mint" ${site.stylePreset === 'mint' ? 'selected' : ''}>薄荷青 · 清爽</option><option value="warm" ${site.stylePreset === 'warm' ? 'selected' : ''}>暖米杏 · 柔和</option><option value="mono" ${site.stylePreset === 'mono' ? 'selected' : ''}>黑白灰 · 专业</option><option value="violet" ${site.stylePreset === 'violet' ? 'selected' : ''}>淡紫蓝 · 科技</option></select><em>所有预设都保持浅色背景，只改变主色、卡片层次、圆角和轻量阴影。</em></label>
           <input type="hidden" name="themeMode" value="light">
@@ -7251,6 +7251,7 @@ async function renderAdminSettings() {
     bindAdminSettingsTabs();
     document.querySelectorAll('[data-admin-settings-tab]').forEach(btn=>btn.addEventListener('click',()=>{const tab=btn.dataset.adminSettingsTab; const target=document.querySelector(`.admin-tabs [data-tab="${CSS.escape(tab)}"]`); target?.click(); target?.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});}));
     bindColorPickers();
+    bindLogoUploadV145();
     bindCaptchaBackgroundUpload();
     bindSettingsTools();
     bindDnsTypePolicyEditor();
@@ -7327,6 +7328,44 @@ async function renderAdminSettings() {
     if (reg.cloudflareEmailAccountId && reg.cloudflareEmailApiTokenConfigured) syncCloudflareEmailRecipients(false).catch(() => undefined);
     loadSystemStatusPanel();
   } catch (error) { toast(error.message, 'error'); }
+}
+
+
+function bindLogoUploadV145() {
+  const fileInput = document.querySelector('#site-logo-upload-v145');
+  const urlInput = document.querySelector('input[name="logoImageUrl"]');
+  const preview = document.querySelector('.logo-preview-v145');
+  const clearBtn = document.querySelector('#clear-site-logo-v145');
+  if (!urlInput) return;
+  const renderPreview = value => {
+    const v = String(value || '').trim();
+    if (!preview) return;
+    if (v) preview.innerHTML = `<img src="${attr(v)}" alt="Logo 预览">`;
+    else preview.innerHTML = `<span>${esc(document.querySelector('input[name="logoText"]')?.value || 'free')}</span>`;
+  };
+  urlInput.addEventListener('input', () => renderPreview(urlInput.value));
+  document.querySelector('input[name="logoText"]')?.addEventListener('input', () => { if (!urlInput.value.trim()) renderPreview(''); });
+  fileInput?.addEventListener('change', async event => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const allowed = ['image/png','image/jpeg','image/webp','image/svg+xml'];
+    if (!allowed.includes(file.type)) { toast('Logo 只支持 PNG / JPG / WebP / SVG', 'error'); fileInput.value = ''; return; }
+    if (file.size > 300 * 1024) { toast('Logo 图片不能超过 300KB，请先压缩后再上传', 'error'); fileInput.value = ''; return; }
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error('Logo 读取失败'));
+      reader.readAsDataURL(file);
+    });
+    urlInput.value = dataUrl;
+    renderPreview(dataUrl);
+    toast('Logo 已读取，请点击“保存设置”生效', 'success');
+  });
+  clearBtn?.addEventListener('click', () => {
+    urlInput.value = '';
+    if (fileInput) fileInput.value = '';
+    renderPreview('');
+  });
 }
 
 function bindCaptchaBackgroundUpload() {
