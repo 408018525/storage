@@ -670,6 +670,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   if (method === 'GET' && pathname === '/api/public/help') return publicHelpHandler(env);
   if (method === 'GET' && pathname === '/api/public/stats') return publicStatsHandler(env);
   if (method === 'POST' && pathname === '/api/public/domain-check') return publicDomainCheckHandler(request, env);
+  if (method === 'POST' && pathname === '/api/public/whois') return publicWhoisHandler(request, env);
   if (method === 'POST' && pathname === '/api/public/visit') return publicTrackVisitHandler(request, env);
 
   if (method === 'POST' && pathname === '/api/setup/bootstrap') return bootstrapAdmin(request, env);
@@ -1444,6 +1445,73 @@ async function publicTrackVisitHandler(request: Request, env: Env): Promise<Resp
       last_seen_at=excluded.last_seen_at
   `).bind(day, area, visitorKey, user?.id || null, now, now).run();
   return ok({ tracked:true });
+}
+
+async function publicWhoisHandler(request: Request, env: Env): Promise<Response> {
+  await rateLimit(env, request, 'public-whois', 90, 3600);
+  const body = await readJson<Record<string, unknown>>(request, 16 * 1024);
+  const settings = await loadSettings(env);
+  const prefix = normalizePrefix(body.prefix);
+  const suffixInput = normalizeSuffix(String(body.suffix || ''));
+  const suffix = settings.dns.suffixes.find(item => item.enabled && (item.suffix === suffixInput || item.suffixAscii === suffixInput));
+  const fqdnUnicode = suffix ? `${prefix.unicode}.${suffix.suffix}` : `${prefix.unicode}.${suffixInput}`;
+  const fqdnAscii = suffix ? `${prefix.ascii}.${suffix.suffixAscii}` : `${prefix.ascii}.${suffixInput}`;
+
+  const minLen = settings.domain.prefixMinLength || 2;
+  const maxLen = settings.domain.prefixMaxLength || 36;
+  if (prefix.unicode.length < minLen || prefix.unicode.length > maxLen) {
+    return ok({ available:false, registered:false, fqdnUnicode, fqdnAscii, status:'invalid', message:`域名前缀长度必须为 ${minLen}-${maxLen} 位。` });
+  }
+  if (!settings.domain.allowUnderscorePrefix && prefix.unicode.includes('_')) {
+    return ok({ available:false, registered:false, fqdnUnicode, fqdnAscii, status:'invalid', message:'当前不允许使用下划线前缀。' });
+  }
+  if (!settings.domain.allowNumericPrefix && /^\d+$/.test(prefix.unicode)) {
+    return ok({ available:false, registered:false, fqdnUnicode, fqdnAscii, status:'invalid', message:'当前不允许使用纯数字前缀。' });
+  }
+  if (!suffix || suffix.allowRegister === false) {
+    return ok({ available:false, registered:false, fqdnUnicode, fqdnAscii, status:'closed_suffix', message:'该根域名当前不可申请。' });
+  }
+
+  const reserved = new Set(settings.dns.reservedPrefixes.map(x => x.toLowerCase()));
+  const blacklistRules = [
+    ...sanitizeStringList(settings.domain.prefixBlacklistText || ''),
+    ...sanitizeStringList(settings.domain.blockedPrefixText || ''),
+    ...(settings.blacklist?.prefixes || []),
+  ];
+  const adminOnlyRules = sanitizeStringList(settings.domain.adminOnlyPrefixText || '');
+  if (reserved.has(prefix.unicode) || reserved.has(prefix.ascii)) {
+    return ok({ available:false, registered:false, fqdnUnicode, fqdnAscii, status:'reserved', message:'该域名属于系统保留前缀,不可被注册。' });
+  }
+  if (prefixMatchesRule(prefix.unicode, blacklistRules) || prefixMatchesRule(prefix.ascii, blacklistRules)) {
+    return ok({ available:false, registered:false, fqdnUnicode, fqdnAscii, status:'blocked', message:'该域名被系统规则限制,不可被注册。' });
+  }
+  if (prefixMatchesRule(prefix.unicode, adminOnlyRules) || prefixMatchesRule(prefix.ascii, adminOnlyRules)) {
+    return ok({ available:false, registered:false, fqdnUnicode, fqdnAscii, status:'admin_only', message:'该域名属于管理员保留范围,不可由普通用户注册。' });
+  }
+
+  const duplicate = await env.DB.prepare(`
+    SELECT id FROM domain_applications
+    WHERE fqdn_ascii=? COLLATE NOCASE
+      AND status NOT IN ('rejected','revoked')
+      AND (deleted_at IS NULL OR deleted_at='')
+    LIMIT 1
+  `).bind(fqdnAscii).first<{ id: string }>();
+  if (duplicate) return ok({ available:false, registered:true, fqdnUnicode, fqdnAscii, status:'registered', message:'该域名已被注册或占用。' });
+
+  const token = resolveDnsToken(env, settings, suffix);
+  let cloudflareChecked = false;
+  if (token && suffix.zoneId) {
+    cloudflareChecked = true;
+    try {
+      const remoteRecords = await listCloudflareDnsRecordsByName(token, suffix.zoneId, fqdnAscii);
+      if (remoteRecords.length) return ok({ available:false, registered:true, fqdnUnicode, fqdnAscii, cloudflareChecked, status:'dns_occupied', message:'该域名已有 DNS 记录,不可被注册。' });
+    } catch (error) {
+      console.error('public whois cloudflare check failed', error);
+      throw new HttpError(502, 'PUBLIC_WHOIS_FAILED', '暂时无法确认该域名状态，请稍后重试。');
+    }
+  }
+
+  return ok({ available:true, registered:false, fqdnUnicode, fqdnAscii, cloudflareChecked, status:'available', message:'该域名当前可以申请。' });
 }
 
 async function publicDomainCheckHandler(request: Request, env: Env): Promise<Response> {
@@ -8568,20 +8636,20 @@ async function adminSystemStatus(request: Request, env: Env): Promise<Response> 
       (SELECT COUNT(*) FROM audit_logs WHERE datetime(created_at) >= datetime('now','-' || ? || ' days')) AS logsRetained
   `).bind(auditRetentionDays).first<any>();
   return ok({
-    version: 'v131',
+    version: 'v146',
     settingsKey: SETTINGS_KEY,
     kv: { storage: 'Workers KV', estimatedKeys: '由 Cloudflare 控制台查看实际占用' },
     cfApi: { configured: Boolean(resolveDnsToken(env, settings)), status: resolveDnsToken(env, settings) ? '已配置' : '未配置' },
     cron: { enabled: Boolean(settings.automation?.enabled), expression: settings.automation?.cronExpression || '' },
     counts: { ...counts, logs4d: Number(counts?.logsRetained || 0) },
     auditRetentionDays,
-    update: { current: 'v131', latest: '请以当前部署包为准' },
+    update: { current: 'v146', latest: '请以当前部署包为准' },
   });
 }
 
 async function adminExportSettings(request: Request, env: Env): Promise<Response> {
   await requireAdmin(env, request);
-  return ok({ exportedAt: new Date().toISOString(), version: 'v131', settings: await loadSettings(env) });
+  return ok({ exportedAt: new Date().toISOString(), version: 'v146', settings: await loadSettings(env) });
 }
 
 async function adminImportSettings(request: Request, env: Env): Promise<Response> {
