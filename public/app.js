@@ -797,7 +797,7 @@ function bindThemeControls(root = document) {
   syncThemeButtons();
 }
 
-const INLINE_TEXT_SELECTOR_V135 = 'h1,h2,h3,h4,h5,h6,p,small,label,legend,button,a,th,summary,b,strong,span,em,li';
+const INLINE_TEXT_SELECTOR_V135 = 'h1,h2,h3,h4,h5,h6,p,small,label,legend,th,summary,b,strong,span,em,li';
 function normalizedInlineTextV135(value) {
   return String(value || '').replace(/\s+/g, ' ').trim();
 }
@@ -825,7 +825,7 @@ function textLooksSensitiveV135(value) {
 }
 function inlineTextBlockedV135(el) {
   if (!el || el.nodeType !== 1) return true;
-  return Boolean(el.closest('input,textarea,select,[contenteditable="true"],.sidebar,.theme-toggle-v134,.lang-toggle,.turnstile,.cf-turnstile,.image-captcha,.image-captcha-wrap,code,pre,.mono,.modal-x,#toast-root,.toast,.nav-badge,.status-pill,.table-wrap td,.worker-variable-card,.variable-card,.dns-record-card,.dns-record-row,.registration-key-card,.domain-title code,.domain-name,.copy-field-v131'));
+  return Boolean(el.closest('input,textarea,select,button,a,[role="button"],[contenteditable="true"],.btn,.tab,.tabbar,.filters,.admin-tabs,.range-chip,.sidebar,.nav,.support-nav-toggle,.support-subnav-link,.side-nav-link,.theme-toggle-v134,.lang-toggle,.turnstile,.cf-turnstile,.image-captcha,.image-captcha-wrap,code,pre,.mono,.modal-x,#toast-root,.toast,.nav-badge,.status-pill,.table-wrap td,.worker-variable-card,.variable-card,.dns-record-card,.dns-record-row,.registration-key-card,.domain-title code,.domain-name,.copy-field-v131'));
 }
 function isInlineTextCandidateV135(el) {
   if (!el || !el.matches?.(INLINE_TEXT_SELECTOR_V135)) return false;
@@ -845,17 +845,17 @@ function applyInlineTextOverridesV135(root = document) {
   const overrides = inlineTextOverridesV135();
   const isAdmin = state.me?.role === 'admin';
   root.querySelectorAll?.('.inline-text-editable-v135').forEach(el => {
-    if (!isAdmin) {
+    if (!isAdmin || !isInlineTextCandidateV135(el)) {
       el.classList.remove('inline-text-editable-v135');
       el.removeAttribute('title');
+      el.removeAttribute('data-inline-text-key');
     }
   });
   root.querySelectorAll?.(INLINE_TEXT_SELECTOR_V135).forEach(el => {
     if (!isInlineTextCandidateV135(el)) {
-      if (!isAdmin) {
-        el.classList?.remove?.('inline-text-editable-v135');
-        el.removeAttribute?.('title');
-      }
+      el.classList?.remove?.('inline-text-editable-v135');
+      el.removeAttribute?.('title');
+      el.removeAttribute?.('data-inline-text-key');
       return;
     }
     const current = normalizedInlineTextV135(el.dataset.inlineTextOriginal || el.textContent || '');
@@ -1844,8 +1844,8 @@ function safePublicHomepageHref(value, fallback) {
 }
 
 function formatPublicRootSuffixLabel(suffix) {
-  const safe = esc(String(suffix || ''));
-  return ('*.' + safe).replace(/([.-])/g, '$1<wbr>');
+  const safe = esc(String(suffix || '')).trim();
+  return '*.' + safe;
 }
 
 function homepageSectionOrder(value) {
@@ -7594,8 +7594,8 @@ Object.assign(I18N_EN, {
   '未匹配':'Unmatched',
 });
 
-function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v131</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
-async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v131')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v131')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
+function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v140</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
+async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v140')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v140')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
 function bindSettingsTools() {
   const exportFn = async () => {
     try {
