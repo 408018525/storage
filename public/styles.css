@@ -5110,3 +5110,72 @@ html[data-theme="dark"] .turnstile,
 html[data-theme="dark"] .image-captcha,
 html[data-theme="dark"] .theme-toggle-v134,
 html[data-theme="dark"] .theme-toggle-v134 *{box-shadow:inherit;}
+
+
+/* v137: admin-only inline text hints + single-icon day/night toggle */
+html:not([data-theme]) .inline-text-editable-v135,
+body:not(.is-admin) .inline-text-editable-v135{
+  outline:none!important;
+  background:transparent!important;
+}
+.inline-text-editable-v135{cursor:context-menu;}
+.inline-text-editable-v135:hover{
+  outline:1px dashed color-mix(in srgb,var(--accent) 58%,transparent)!important;
+  background:color-mix(in srgb,var(--accent) 8%,transparent)!important;
+  border-radius:6px;
+}
+
+/* v137 replaces the two-icon switch with one icon:
+   light mode shows moon, dark mode shows sun. */
+.theme-toggle-v134{
+  width:34px!important;
+  height:34px!important;
+  min-width:34px!important;
+  border-radius:9px!important;
+  display:inline-grid!important;
+  place-items:center!important;
+  padding:0!important;
+  border:1px solid #d7e0ec!important;
+  background:#ffffff!important;
+  color:#111827!important;
+  box-shadow:0 8px 18px rgba(15,23,42,.10)!important;
+}
+.theme-toggle-v134 .theme-toggle-track-v134,
+.theme-toggle-v134 .theme-toggle-sun-v134,
+.theme-toggle-v134 .theme-toggle-moon-v134,
+.theme-toggle-v134 .theme-toggle-knob-v134{display:none!important;}
+.theme-toggle-icon-v137{
+  display:block!important;
+  font-size:20px!important;
+  line-height:1!important;
+  font-family:Arial,"Microsoft YaHei",sans-serif!important;
+  color:currentColor!important;
+}
+.theme-toggle-v134.is-light{
+  background:#ffffff!important;
+  color:#111827!important;
+  border-color:#d7e0ec!important;
+}
+.theme-toggle-v134.is-dark{
+  background:#050505!important;
+  color:#ffffff!important;
+  border-color:#050505!important;
+}
+html[data-theme="dark"] .theme-toggle-v134.is-dark{
+  background:#050505!important;
+  color:#ffffff!important;
+  border-color:#050505!important;
+  box-shadow:0 8px 18px rgba(0,0,0,.26)!important;
+}
+html[data-theme="dark"] .theme-toggle-v134.is-light{
+  background:#ffffff!important;
+  color:#111827!important;
+  border-color:#d7e0ec!important;
+}
+
+/* v137: remove accidental edit outline for guests completely */
+html[data-theme="dark"] body:not(.is-admin) .inline-text-editable-v135:hover,
+body:not(.is-admin) .inline-text-editable-v135:hover{
+  outline:none!important;
+  background:transparent!important;
+}
