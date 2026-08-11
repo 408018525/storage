@@ -4767,3 +4767,346 @@ html[data-theme="dark"] .public-home-v114-tool .public-search-input,
 html[data-theme="dark"] .public-home-v114-tool .public-domain-search select{background:#0b1220!important;border-color:#334155!important;color:#e5e7eb!important;}
 html[data-theme="dark"] .public-search-input input{background:transparent!important;color:#e5e7eb!important;}
 html[data-theme="dark"] .public-search-input input::placeholder{color:#64748b!important;}
+
+
+/* v136: force full dark-mode coverage for admin/public pages */
+html[data-theme="dark"]{
+  color-scheme:dark;
+}
+html[data-theme="dark"] body,
+html[data-theme="dark"] .page,
+html[data-theme="dark"] .main,
+html[data-theme="dark"] .content,
+html[data-theme="dark"] .public-site,
+html[data-theme="dark"] .public-main,
+html[data-theme="dark"] .sidebar,
+html[data-theme="dark"] .topbar,
+html[data-theme="dark"] .public-header,
+html[data-theme="dark"] .public-page-section,
+html[data-theme="dark"] .public-soft-section,
+html[data-theme="dark"] .public-home-v113-section,
+html[data-theme="dark"] .public-home-v114-section,
+html[data-theme="dark"] .analytics-v75,
+html[data-theme="dark"] .analytics-v76,
+html[data-theme="dark"] .analytics-dashboard-v100,
+html[data-theme="dark"] .support-page,
+html[data-theme="dark"] .help-page,
+html[data-theme="dark"] .message-page,
+html[data-theme="dark"] .settings-page{
+  background:#08111f!important;
+  color:#e5e7eb!important;
+}
+
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .domain-card,
+html[data-theme="dark"] .detail-hero,
+html[data-theme="dark"] .detail-panel,
+html[data-theme="dark"] .info-card,
+html[data-theme="dark"] .stat,
+html[data-theme="dark"] .stat-card,
+html[data-theme="dark"] .quota-hero,
+html[data-theme="dark"] .admin-panel,
+html[data-theme="dark"] .panel,
+html[data-theme="dark"] .box,
+html[data-theme="dark"] .empty,
+html[data-theme="dark"] .notice,
+html[data-theme="dark"] .site-notice,
+html[data-theme="dark"] .admin-callout,
+html[data-theme="dark"] .settings-hint,
+html[data-theme="dark"] .help-card,
+html[data-theme="dark"] .message-card,
+html[data-theme="dark"] .support-page-head,
+html[data-theme="dark"] .support-ticket-row,
+html[data-theme="dark"] .support-ticket-controls,
+html[data-theme="dark"] .support-thread-item,
+html[data-theme="dark"] .support-quick-card,
+html[data-theme="dark"] .admin-home-settings-head,
+html[data-theme="dark"] .analytics-hero,
+html[data-theme="dark"] .analytics-head,
+html[data-theme="dark"] .analytics-card,
+html[data-theme="dark"] .chart-card,
+html[data-theme="dark"] .reg-key-card,
+html[data-theme="dark"] .worker-variable-card,
+html[data-theme="dark"] .variable-card,
+html[data-theme="dark"] .dns-record-card,
+html[data-theme="dark"] .registration-key-card,
+html[data-theme="dark"] .domain-management-card,
+html[data-theme="dark"] .domain-detail-card,
+html[data-theme="dark"] .device-card,
+html[data-theme="dark"] .log-card,
+html[data-theme="dark"] .message-row,
+html[data-theme="dark"] .help-row,
+html[data-theme="dark"] .list-row,
+html[data-theme="dark"] .quota-left,
+html[data-theme="dark"] .metric,
+html[data-theme="dark"] .stat-row,
+html[data-theme="dark"] .analytics-dashboard-head,
+html[data-theme="dark"] .monitor-card,
+html[data-theme="dark"] .trend-card,
+html[data-theme="dark"] .distribution-card,
+html[data-theme="dark"] .public-feature-grid article,
+html[data-theme="dark"] .public-suffix-card,
+html[data-theme="dark"] .public-available-grid > article,
+html[data-theme="dark"] .public-nav-directory article,
+html[data-theme="dark"] .public-about-grid article,
+html[data-theme="dark"] .public-contact-grid article,
+html[data-theme="dark"] .public-knowledge-category details,
+html[data-theme="dark"] .public-faq-list details,
+html[data-theme="dark"] .public-home-v114-copy,
+html[data-theme="dark"] .public-home-v114-tool,
+html[data-theme="dark"] .public-cta,
+html[data-theme="dark"] .public-stats,
+html[data-theme="dark"] .public-stats > div,
+html[data-theme="dark"] .public-home-v113-stats,
+html[data-theme="dark"] .public-home-v114-stats,
+html[data-theme="dark"] .public-nav-hub-v114 article,
+html[data-theme="dark"] .public-nav-hub-v114-title,
+html[data-theme="dark"] .public-contact-note,
+html[data-theme="dark"] .public-contact-email > a,
+html[data-theme="dark"] .public-domain-search-result,
+html[data-theme="dark"] .analytics-insight-list article,
+html[data-theme="dark"] .cf-monitor div,
+html[data-theme="dark"] .admin-settings-v79 .settings-quick-card,
+html[data-theme="dark"] .admin-settings-v79 .setting-nav-card,
+html[data-theme="dark"] .admin-settings-v79 .admin-tabs,
+html[data-theme="dark"] .admin-settings-v79 .settings-grid > .field,
+html[data-theme="dark"] .admin-settings-v79 .settings-grid > .check,
+html[data-theme="dark"] .public-mini-guide > div,
+html[data-theme="dark"] .oauth-bound-row,
+html[data-theme="dark"] .side-user,
+html[data-theme="dark"] .steps div,
+html[data-theme="dark"] .domain-metrics div,
+html[data-theme="dark"] .preview-box,
+html[data-theme="dark"] .readonly-box,
+html[data-theme="dark"] .settings-subheading,
+html[data-theme="dark"] .domain-point-price-editor,
+html[data-theme="dark"] .domain-point-price-row,
+html[data-theme="dark"] .mini-stats-v131 span,
+html[data-theme="dark"] .public-home-v114.layout-data .public-home-v114-tool,
+html[data-theme="dark"] .public-home-v114.layout-data .public-home-v114-copy,
+html[data-theme="dark"] .public-home-v114-stats > div,
+html[data-theme="dark"] .public-home-v113-stats > div,
+html[data-theme="dark"] .public-site .tabbar,
+html[data-theme="dark"] .filters,
+html[data-theme="dark"] .tabbar{
+  background:#0f172a!important;
+  border-color:#263449!important;
+  color:#e5e7eb!important;
+  box-shadow:0 18px 46px rgba(0,0,0,.28)!important;
+}
+
+html[data-theme="dark"] .admin-settings-v79 .admin-tabs button,
+html[data-theme="dark"] .tabbar button,
+html[data-theme="dark"] .filters button,
+html[data-theme="dark"] .range-chip,
+html[data-theme="dark"] .public-nav-desktop a,
+html[data-theme="dark"] .public-mobile-menu a,
+html[data-theme="dark"] .support-subnav-link,
+html[data-theme="dark"] .analytics-donut-legend button,
+html[data-theme="dark"] .public-nav-hub-v114 a,
+html[data-theme="dark"] .public-footer a,
+html[data-theme="dark"] .btn.secondary,
+html[data-theme="dark"] .btn.ghost,
+html[data-theme="dark"] .btn.soft,
+html[data-theme="dark"] .github-oauth-btn-v133{
+  background:#111827!important;
+  border-color:#334155!important;
+  color:#dbe4f0!important;
+}
+html[data-theme="dark"] .admin-settings-v79 .admin-tabs button.active,
+html[data-theme="dark"] .tabbar button.active,
+html[data-theme="dark"] .filters button.active,
+html[data-theme="dark"] .range-chip.active,
+html[data-theme="dark"] .public-nav-desktop a.active,
+html[data-theme="dark"] .public-mobile-menu a.active,
+html[data-theme="dark"] .support-subnav-link.active,
+html[data-theme="dark"] .support-subnav-link:hover,
+html[data-theme="dark"] .public-nav-desktop a:hover,
+html[data-theme="dark"] .public-mobile-menu a:hover,
+html[data-theme="dark"] .public-nav-hub-v114 a:hover{
+  background:#172033!important;
+  border-color:#334155!important;
+  color:#ffffff!important;
+}
+
+html[data-theme="dark"] input,
+html[data-theme="dark"] textarea,
+html[data-theme="dark"] select,
+html[data-theme="dark"] .field input,
+html[data-theme="dark"] .field textarea,
+html[data-theme="dark"] .field select,
+html[data-theme="dark"] .inline-form-v131 input,
+html[data-theme="dark"] .copy-field-v131 input,
+html[data-theme="dark"] .public-site input,
+html[data-theme="dark"] .public-site select,
+html[data-theme="dark"] .public-site textarea,
+html[data-theme="dark"] .login-input-wrap,
+html[data-theme="dark"] .login-input-wrap input,
+html[data-theme="dark"] .search-input,
+html[data-theme="dark"] .search-input input,
+html[data-theme="dark"] .search-box,
+html[data-theme="dark"] .search-box input,
+html[data-theme="dark"] .reg-key-tools input,
+html[data-theme="dark"] .custom-range input,
+html[data-theme="dark"] .public-domain-search select,
+html[data-theme="dark"] .public-search-input,
+html[data-theme="dark"] .public-search-input input,
+html[data-theme="dark"] .analytics-toolbar-v75 input,
+html[data-theme="dark"] .analytics-toolbar-v82 input,
+html[data-theme="dark"] .analytics-toolbar-v82 select,
+html[data-theme="dark"] .filters input,
+html[data-theme="dark"] .filters select,
+html[data-theme="dark"] .message-card input,
+html[data-theme="dark"] .message-card textarea,
+html[data-theme="dark"] .message-card select,
+html[data-theme="dark"] .support-page input,
+html[data-theme="dark"] .support-page textarea,
+html[data-theme="dark"] .support-page select,
+html[data-theme="dark"] .help-page input,
+html[data-theme="dark"] .help-page textarea,
+html[data-theme="dark"] .help-page select{
+  background:#0b1220!important;
+  border-color:#334155!important;
+  color:#e5e7eb!important;
+}
+html[data-theme="dark"] input::placeholder,
+html[data-theme="dark"] textarea::placeholder,
+html[data-theme="dark"] .search-input input::placeholder,
+html[data-theme="dark"] .public-search-input input::placeholder{color:#7c8ba1!important;}
+
+html[data-theme="dark"] table,
+html[data-theme="dark"] .table-wrap,
+html[data-theme="dark"] .analytics-table,
+html[data-theme="dark"] .analytics-table table,
+html[data-theme="dark"] .analytics-table thead,
+html[data-theme="dark"] .analytics-table tbody,
+html[data-theme="dark"] thead tr,
+html[data-theme="dark"] tbody tr,
+html[data-theme="dark"] th,
+html[data-theme="dark"] td{
+  background:transparent!important;
+  border-color:#263449!important;
+  color:#dbe4f0!important;
+}
+html[data-theme="dark"] thead th,
+html[data-theme="dark"] .table-wrap thead th,
+html[data-theme="dark"] .analytics-table thead th{
+  background:#0b1220!important;
+  color:#9aa7b8!important;
+}
+html[data-theme="dark"] tbody tr:hover,
+html[data-theme="dark"] .analytics-table tbody tr:hover{background:rgba(148,163,184,.06)!important;}
+
+html[data-theme="dark"] .comparison-track,
+html[data-theme="dark"] .stacked-track,
+html[data-theme="dark"] .analytics-dashboard-v100 .chart-overview .overview-svg,
+html[data-theme="dark"] .analytics-floating-tip,
+html[data-theme="dark"] .analytics-global-tooltip,
+html[data-theme="dark"] .donut-bg,
+html[data-theme="dark"] .analytics-donut-bg,
+html[data-theme="dark"] .gauge-bg,
+html[data-theme="dark"] .waffle-grid i,
+html[data-theme="dark"] .mini-bars{
+  background:#111827!important;
+  border-color:#334155!important;
+  color:#dbe4f0!important;
+}
+html[data-theme="dark"] .analytics-floating-tip,
+html[data-theme="dark"] .analytics-global-tooltip{border-color:#334155!important;box-shadow:0 16px 40px rgba(0,0,0,.35)!important;}
+html[data-theme="dark"] .donut-total,
+html[data-theme="dark"] .donut-caption,
+html[data-theme="dark"] .analytics-donut-total,
+html[data-theme="dark"] .analytics-donut-caption,
+html[data-theme="dark"] .gauge-number,
+html[data-theme="dark"] .gauge-label,
+html[data-theme="dark"] .radar-label,
+html[data-theme="dark"] .chart-axis-text{fill:#cbd5e1!important;color:#cbd5e1!important;}
+html[data-theme="dark"] .chart-grid-line,
+html[data-theme="dark"] .chart-axis,
+html[data-theme="dark"] .radar-grid,
+html[data-theme="dark"] .radar-axis{stroke:#334155!important;}
+
+html[data-theme="dark"] .comparison-label span,
+html[data-theme="dark"] .comparison-values,
+html[data-theme="dark"] .comparison-key,
+html[data-theme="dark"] .distribution-list span,
+html[data-theme="dark"] .chart-titlebar small,
+html[data-theme="dark"] .chart-legend,
+html[data-theme="dark"] .donut-legend p,
+html[data-theme="dark"] .stacked-label,
+html[data-theme="dark"] .stacked-label span,
+html[data-theme="dark"] .waffle-copy span,
+html[data-theme="dark"] .waffle-copy small,
+html[data-theme="dark"] .analytics-insight-list p,
+html[data-theme="dark"] .analytics-card span,
+html[data-theme="dark"] .analytics-card em,
+html[data-theme="dark"] .analytics-card.v75 p,
+html[data-theme="dark"] .cf-monitor span,
+html[data-theme="dark"] .public-feature-grid p,
+html[data-theme="dark"] .public-suffix-card p,
+html[data-theme="dark"] .public-suffix-card small,
+html[data-theme="dark"] .public-home-v114-copy > p,
+html[data-theme="dark"] .public-faq-list details p,
+html[data-theme="dark"] .public-footer,
+html[data-theme="dark"] .public-footer p,
+html[data-theme="dark"] .public-footer a,
+html[data-theme="dark"] .card p,
+html[data-theme="dark"] .section-head p,
+html[data-theme="dark"] .muted,
+html[data-theme="dark"] .field em,
+html[data-theme="dark"] .mini-stats-v131 span,
+html[data-theme="dark"] .domain-point-price-head span,
+html[data-theme="dark"] .domain-point-domain span,
+html[data-theme="dark"] .auth-card > p,
+html[data-theme="dark"] .auth-brand p,
+html[data-theme="dark"] .login-register-row,
+html[data-theme="dark"] .login-feedback-row,
+html[data-theme="dark"] .topbar-actions .status-pill,
+html[data-theme="dark"] .empty.small,
+html[data-theme="dark"] .admin-settings-v79 .settings-quick-card p,
+html[data-theme="dark"] .admin-settings-v79 .setting-nav-card p,
+html[data-theme="dark"] .admin-settings-v79 .setting-nav-card small{color:#9aa7b8!important;}
+
+html[data-theme="dark"] .analytics-card strong,
+html[data-theme="dark"] .card h1,
+html[data-theme="dark"] .card h2,
+html[data-theme="dark"] .card h3,
+html[data-theme="dark"] .card h4,
+html[data-theme="dark"] .section-head h2,
+html[data-theme="dark"] .analytics-head h1,
+html[data-theme="dark"] .analytics-head h2,
+html[data-theme="dark"] .distribution-list b,
+html[data-theme="dark"] .comparison-values strong,
+html[data-theme="dark"] .waffle-copy strong,
+html[data-theme="dark"] .cf-monitor strong,
+html[data-theme="dark"] .public-section h1,
+html[data-theme="dark"] .public-section h2,
+html[data-theme="dark"] .public-section h3,
+html[data-theme="dark"] .public-home-v114-copy h1,
+html[data-theme="dark"] .public-home-v114-copy h1 em,
+html[data-theme="dark"] .public-footer-grid > div > b,
+html[data-theme="dark"] .domain-title h3,
+html[data-theme="dark"] .auth-card h1,
+html[data-theme="dark"] .auth-card h2,
+html[data-theme="dark"] .modal-titlebar h2,
+html[data-theme="dark"] .mini-stats-v131 b,
+html[data-theme="dark"] .domain-point-price-head b,
+html[data-theme="dark"] .settings-subheading,
+html[data-theme="dark"] .side-user strong,
+html[data-theme="dark"] .oauth-bound-row strong{color:#f8fafc!important;}
+
+html[data-theme="dark"] .public-footer,
+html[data-theme="dark"] footer{background:#0b1220!important;border-color:#263449!important;}
+html[data-theme="dark"] .public-header-actions .btn,
+html[data-theme="dark"] .public-login-btn,
+html[data-theme="dark"] .public-register-btn{box-shadow:none!important;}
+html[data-theme="dark"] .modal-backdrop{background:rgba(2,6,23,.68)!important;}
+html[data-theme="dark"] .modal{background:#0f172a!important;border-color:#263449!important;}
+html[data-theme="dark"] .toast{background:#111827!important;border-color:#334155!important;color:#e5e7eb!important;}
+
+/* keep native/brand widgets untouched */
+html[data-theme="dark"] .cf-turnstile,
+html[data-theme="dark"] .turnstile,
+html[data-theme="dark"] .image-captcha,
+html[data-theme="dark"] .theme-toggle-v134,
+html[data-theme="dark"] .theme-toggle-v134 *{box-shadow:inherit;}
