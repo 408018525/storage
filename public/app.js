@@ -704,6 +704,7 @@ function applyI18n(root = app) {
     '/available':['可用域名查询','查询本站开放的二级域名是否可以注册。'],
     '/knowledge':['知识库','二级域名、DNS 配置、申请与常见问题知识库。'],
     '/featured':['可用根域名','查看目前开放申请的免费二级域名后缀。'],
+    '/whois':['WHOIS 查询','查询某个域名的注册信息与状态。'],
     '/navigation':['站点导航','快速访问本站公开服务、工具和帮助页面。'],
     '/about':['关于本站','了解本站免费二级域名服务与使用方式。'],
     '/contact':['联系我们','通过站内工单或管理员邮箱联系本站。'],
@@ -1655,7 +1656,7 @@ async function copyToClipboard(text, successText = '已复制') {
 
 // v114 public website portal -------------------------------------------------
 const PUBLIC_ROUTES = new Set([
-  '/home', '/available', '/knowledge', '/featured', '/navigation',
+  '/home', '/available', '/whois', '/knowledge', '/featured', '/navigation',
   '/about', '/contact', '/abuse', '/faq', '/terms', '/privacy'
 ]);
 
@@ -1679,6 +1680,7 @@ function publicHeader(active = 'home') {
   const items = [
     ['home', String(site.publicNavHomeLabel || pub('首页','Home')), '/home', site.publicNavShowHome !== false],
     ['available', String(site.publicNavAvailableLabel || pub('可用域名','Available')), '/available', site.publicNavShowAvailable !== false],
+    ['whois', String(site.publicNavWhoisLabel || pub('WHOIS查询','WHOIS')), '/whois', site.publicNavShowWhois !== false],
     ['knowledge', String(site.publicNavKnowledgeLabel || pub('知识库','Knowledge')), '/knowledge', site.publicNavShowKnowledge !== false],
     ['featured', String(site.publicNavFeaturedLabel || pub('优质站点','Featured')), '/featured', site.publicNavShowFeatured !== false],
     ['navigation', String(site.publicNavNavigationLabel || pub('导航','Navigation')), '/navigation', site.publicNavShowNavigation !== false],
@@ -1715,7 +1717,7 @@ function publicFooter() {
   return `<footer class="public-footer">
     <div class="public-footer-grid">
       ${site.publicFooterShowBrand === false ? '' : `<div><div class="public-footer-brand">${publicBrandHtml()}</div><p>${esc(footerSubtitle)}</p></div>`}
-      <div><b>${esc(servicesTitle)}</b><a href="/available">${esc(site.publicNavAvailableLabel || pub('可用域名','Available Domains'))}</a><a href="/knowledge">${esc(site.publicNavKnowledgeLabel || pub('知识库','Knowledge Base'))}</a><a href="/featured">${esc(site.publicNavFeaturedLabel || pub('优质站点','Featured'))}</a></div>
+      <div><b>${esc(servicesTitle)}</b><a href="/available">${esc(site.publicNavAvailableLabel || pub('可用域名','Available Domains'))}</a><a href="/whois">${esc(site.publicNavWhoisLabel || pub('WHOIS查询','WHOIS'))}</a><a href="/knowledge">${esc(site.publicNavKnowledgeLabel || pub('知识库','Knowledge Base'))}</a><a href="/featured">${esc(site.publicNavFeaturedLabel || pub('优质站点','Featured'))}</a></div>
       <div><b>${esc(infoTitle)}</b><a href="/about">${pub('关于本站','About')}</a><a href="/contact">${pub('联系我们','Contact')}</a><a href="/abuse">${pub('举报滥用','Report Abuse')}</a><a href="/faq">${pub('常见问题','FAQ')}</a><a href="/terms">${pub('服务协议','Terms')}</a><a href="/privacy">${pub('隐私政策','Privacy')}</a></div>
       <div><b>${esc(startTitle)}</b>${state.me?`<a href="/apply">${pub('进入控制台','Dashboard')}</a><a href="/domains">${pub('我的域名','My Domains')}</a>`:`<a href="/login">${pub('登录','Login')}</a><a href="/register">${pub('注册账户','Create Account')}</a>`}</div>
     </div>
@@ -1779,6 +1781,57 @@ function bindPublicDomainSearch(id) {
   const form = document.getElementById(id);
   if (!form) return;
   form.addEventListener('submit', e => { e.preventDefault(); runPublicDomainCheck(form); });
+}
+
+function publicWhoisSearchHtml(id = 'public-whois-search') {
+  const suffixes = publicSuffixes();
+  const placeholder = pub('输入域名前缀,如 abc','Enter a prefix, e.g. abc');
+  return `<form class="public-whois-search" id="${attr(id)}">
+    <div class="public-whois-input"><input name="prefix" autocomplete="off" placeholder="${attr(placeholder)}" maxlength="63"></div>
+    <select name="suffix" aria-label="${pub('选择根域名','Select root domain')}">${suffixes.map(item => `<option value="${attr(item.suffix)}">.${esc(item.suffix)}</option>`).join('')}</select>
+    <button class="btn primary" type="submit" disabled>${pub('查询','Search')}</button>
+  </form>`;
+}
+
+async function runPublicWhoisCheck(form) {
+  if (!form) return;
+  const prefix = String(form.elements.prefix?.value || '').trim();
+  const suffix = String(form.elements.suffix?.value || '').trim();
+  const result = document.querySelector('#public-whois-result');
+  const button = form.querySelector('button[type="submit"]');
+  if (!result) return;
+  if (!prefix) {
+    result.innerHTML = '';
+    if (button) button.disabled = true;
+    return;
+  }
+  if (button) button.disabled = true;
+  result.innerHTML = `<div class="public-whois-card loading">${pub('正在查询，请稍候…','Checking…')}</div>`;
+  try {
+    const data = await api('/api/public/whois', { method:'POST', body:{ prefix, suffix } });
+    const domain = data.fqdnUnicode || `${prefix}.${suffix}`;
+    result.innerHTML = `<section class="public-whois-card ${data.available ? 'available' : 'unavailable'}">
+      <dl>
+        <dt>${pub('域名','Domain')}</dt><dd><strong>${esc(domain)}</strong></dd>
+        <dt>${pub('状态','Status')}</dt><dd>${esc(data.message || (data.available ? pub('该域名当前可以申请。','This domain is available.') : pub('该域名暂不可注册。','This domain is not available.')))}</dd>
+      </dl>
+    </section>`;
+  } catch (error) {
+    result.innerHTML = `<section class="public-whois-card unavailable"><dl><dt>${pub('状态','Status')}</dt><dd>${esc(error.message || pub('查询失败，请稍后重试。','Lookup failed. Please try again later.'))}</dd></dl></section>`;
+  } finally {
+    if (button) button.disabled = !String(form.elements.prefix?.value || '').trim();
+  }
+}
+
+function bindPublicWhois(id = 'public-whois-search') {
+  const form = document.getElementById(id);
+  if (!form) return;
+  const input = form.elements.prefix;
+  const button = form.querySelector('button[type="submit"]');
+  const sync = () => { if (button) button.disabled = !String(input?.value || '').trim(); };
+  input?.addEventListener('input', sync);
+  sync();
+  form.addEventListener('submit', e => { e.preventDefault(); runPublicWhoisCheck(form); });
 }
 
 async function loadPublicStats() {
@@ -1958,6 +2011,22 @@ function renderPublicAvailableDomains() {
     ${showGuide ? `<section class="public-section public-mini-guide public-availability-guide"><div><b>${esc(guideAvailableTitle)}</b><p>${esc(guideAvailableText)}</p></div><div><b>${esc(guideUnavailableTitle)}</b><p>${esc(guideUnavailableText)}</p></div></section>` : ''}
   `, 'public-available');
   bindPublicDomainSearch('available-domain-search');
+}
+
+function renderPublicWhois() {
+  const site = state.config?.site || {};
+  const hasSuffixes = publicSuffixes().length > 0;
+  const title = String(site.publicWhoisTitle || pub('WHOIS 查询','WHOIS Lookup')).trim();
+  const description = String(site.publicWhoisDescription || pub('查询某个域名的注册信息与状态。','Look up a domain registration status.')).trim();
+  app.innerHTML = publicShell('whois', `
+    <section class="public-whois-page">
+      <h1>${esc(title)}</h1>
+      <p>${esc(description)}</p>
+      ${hasSuffixes ? publicWhoisSearchHtml('public-whois-search') : `<div class="public-empty">${pub('当前暂无可查询的根域名。','No root domains are currently available.')}</div>`}
+      <div id="public-whois-result" aria-live="polite"></div>
+    </section>
+  `, 'public-whois');
+  if (hasSuffixes) bindPublicWhois('public-whois-search');
 }
 
 function publicKnowledgeCategories() {
@@ -2237,6 +2306,7 @@ async function route() {
     return renderPublicHome();
   }
   if (hash === '/available') return renderPublicAvailableDomains();
+  if (hash === '/whois') return renderPublicWhois();
   if (hash === '/knowledge') return renderPublicKnowledge();
   if (hash === '/featured') return renderPublicFeatured();
   if (hash === '/navigation') return renderPublicNavigation();
@@ -7633,8 +7703,8 @@ Object.assign(I18N_EN, {
   '未匹配':'Unmatched',
 });
 
-function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v140</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
-async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v140')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v140')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
+function renderSystemStatusSkeleton(){ return `<div class="stat-card"><span>程序版本</span><strong>v146</strong></div><div class="stat-card"><span>KV 存储</span><strong>读取中</strong></div><div class="stat-card"><span>CF API</span><strong>读取中</strong></div><div class="stat-card"><span>定时任务</span><strong>读取中</strong></div><div class="stat-card"><span>更新检测</span><strong>读取中</strong></div>`; }
+async function loadSystemStatusPanel(){ const box=document.querySelector('#system-status-box'); if(!box)return; try{ const r=await api('/api/admin/system-status'); box.innerHTML=`<div class="stat-card"><span>程序版本</span><strong>${esc(r.version||'v146')}</strong></div><div class="stat-card"><span>KV 存储</span><strong>${esc(r.kv?.storage||'Workers KV')}</strong><small>${esc(r.kv?.estimatedKeys||'')}</small></div><div class="stat-card"><span>CF API</span><strong>${esc(r.cfApi?.status||'未知')}</strong></div><div class="stat-card"><span>定时任务</span><strong>${r.cron?.enabled?'已开启':'未开启'}</strong><small>${esc(r.cron?.expression||'')}</small></div><div class="stat-card"><span>更新检测</span><strong>${esc(r.update?.current||'v146')}</strong></div>`; applyI18n(box); }catch(e){ box.innerHTML=`<div class="notice danger wide">系统状态读取失败：${esc(e.message)}</div>`; applyI18n(box); } }
 function bindSettingsTools() {
   const exportFn = async () => {
     try {
